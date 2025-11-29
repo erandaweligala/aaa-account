@@ -1,0 +1,124 @@
+# Server Configuration
+quarkus:
+  http:
+    root-path: /api/v1
+    port: 9905
+
+
+  datasource:
+    db-kind: oracle
+    username: aaa
+    password: Aaa!89nky78D
+    reactive:
+      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      max-size: 20
+      idle-timeout: PT10M
+
+  vertx:
+    event-loops-pool-size: 32
+    warning-exception-time: 10s
+    max-event-loop-execute-time: 5s
+    max-worker-execute-time: 60s
+    prefer-native-transport: true
+    caching: true
+
+  thread-pool:
+    core-threads: 50
+    max-threads: 200
+    queue-size: 2000
+    growth-resistance: 0
+    shutdown-timeout: 30s
+  #  datasource:
+  #    db-kind: oracle
+  #    username: system
+  #    password: admin
+  #    reactive:
+  #      url: oracle:thin:@localhost:1521/freepdb1
+  #      max-size: 20
+  #      idle-timeout: PT10M
+
+
+  file:
+   enable: true
+   path: /var/log/dte
+   level: INFO
+   format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+  console:
+    format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+  level: INFO
+  category:
+    "org.apache.kafka":
+      level: WARN
+    "io.smallrye.reactive.messaging.kafka":
+      level: DEBUG
+    "io.quarkus.config":
+      level: DEBUG
+    "io.smallrye.config":
+      level: DEBUG
+console:
+  color: true
+
+
+  redis:
+    hosts: http://redis.redis.svc.cluster.local:6379
+    timeout: 10s
+    max-pool-size: 20
+    max-pool-waiting: 24
+
+# Kafka Configuration
+kafka:
+  bootstrap.servers: confluent-ctrl-0-svc.rkafkacone.svc.cluster.local:9092
+
+mp:
+  messaging:
+    outgoing:
+      db-write-events:
+        connector: smallrye-kafka
+        topic: DC-DR
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        acks: all
+        retries: 3
+        max.in.flight.requests.per.connection: 5
+        compression.type: snappy
+        batch.size: 16384
+        linger.ms: 10
+
+      accounting-resp-events:
+        connector: smallrye-kafka
+        topic: accounting-response
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        acks: all
+        retries: 3
+        max.in.flight.requests.per.connection: 5
+        compression.type: snappy
+        batch.size: 16384
+        linger.ms: 10
+
+#      accounting-cdr-events:
+#        connector: smallrye-kafka
+#        topic: cdr-event
+#        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+#        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+#        acks: all
+#        retries: 3
+#        max.in.flight.requests.per.connection: 5
+#        compression.type: snappy
+#        batch.size: 16384
+#        linger.ms: 10
+
+    incoming:
+      accounting-events:
+        connector: smallrye-kafka
+        topic: accounting
+        group.id: accounting-consumer-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: earliest
+        enable.auto.commit: true
+        max.poll.records: 100
+        max.poll.interval.ms: 300000
+        session.timeout.ms: 30000
+        failure-strategy: ignore
+
