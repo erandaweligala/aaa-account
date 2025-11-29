@@ -20,7 +20,7 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
 
 @ApplicationScoped
 public class UserBucketRepository {
-
+//todo this method handling 500 tps handling used proper best pracise and optimize code
     private static final Logger log = Logger.getLogger(UserBucketRepository.class);
 
     final Pool client;

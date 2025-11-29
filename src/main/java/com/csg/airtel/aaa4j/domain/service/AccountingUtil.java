@@ -198,7 +198,7 @@ public class AccountingUtil {
             }
 
             LocalDateTime serviceStartDate = balance.getServiceStartDate();
-            // Optimized comparison: use !isAfter instead of isBefore || isEqual
+
             if (!serviceStartDate.isAfter(now) && activeStatus.equals(balance.getServiceStatus())) {
                 long priority = balance.getPriority();
                 LocalDateTime expiry = balance.getBucketExpiryDate();
