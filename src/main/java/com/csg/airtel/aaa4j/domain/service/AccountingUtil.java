@@ -410,7 +410,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Process balance update (optimized flow with early exits and minimal allocations).
+     * Process balance update (refactored for reduced cognitive complexity).
      */
     private Uni<UpdateResult> processBalanceUpdate(
             UserSessionData userData,
@@ -420,80 +420,198 @@ public class AccountingUtil {
             List<Balance> combinedBalances,
             long totalUsage) {
 
-        //todo this method having Cognitive Complexity of methods should not be too high
-
-        // Early exit: no valid balance
         if (foundBalance == null) {
-            if (log.isDebugEnabled()) {
-                log.debugf("No valid balance found for user: %s", request.username());
-            }
-            return Uni.createFrom().item(UpdateResult.failure("error"));
+            return handleNoValidBalance(request);
         }
+
+        BalanceUpdateContext context = prepareBalanceUpdateContext(
+                sessionData, foundBalance, combinedBalances, totalUsage);
+
+        long newQuota = updateQuotaForBucketChange(
+                userData, sessionData, context.effectiveBalance, combinedBalances,
+                context.previousUsageBucketId, context.bucketChanged, totalUsage);
+
+        Uni<UpdateResult> consumptionLimitResult = checkAndHandleConsumptionLimit(
+                userData, request, context.effectiveBalance, context.usageDelta,
+                newQuota, context.previousUsageBucketId);
+
+        if (consumptionLimitResult != null) {
+            return consumptionLimitResult;
+        }
+
+        return finalizeBalanceUpdate(userData, sessionData, request, context.effectiveBalance,
+                newQuota, context.previousUsageBucketId, totalUsage);
+    }
+
+    /**
+     * Handle the case when no valid balance is found.
+     */
+    private Uni<UpdateResult> handleNoValidBalance(AccountingRequestDto request) {
+        if (log.isDebugEnabled()) {
+            log.debugf("No valid balance found for user: %s", request.username());
+        }
+        return Uni.createFrom().item(UpdateResult.failure("error"));
+    }
+
+    /**
+     * Prepare balance update context with all necessary information.
+     */
+    private BalanceUpdateContext prepareBalanceUpdateContext(
+            Session sessionData,
+            Balance foundBalance,
+            List<Balance> combinedBalances,
+            long totalUsage) {
 
         String previousUsageBucketId = getPreviousUsageBucketId(sessionData, foundBalance);
         String currentBucketId = foundBalance.getBucketId();
         boolean bucketChanged = !previousUsageBucketId.equals(currentBucketId);
 
-        // If bucket changed, use the previous balance for subsequent operations
-        if (bucketChanged) {
-            Balance previousBalance = findBalanceByBucketId(combinedBalances, previousUsageBucketId);
-            if (previousBalance != null) {
-                foundBalance = previousBalance;
-                if (log.isTraceEnabled()) {
-                    log.tracef("Bucket changed - using previous balance %s instead of new balance", previousUsageBucketId);
-                }
-            }
+        Balance effectiveBalance = determineEffectiveBalance(
+                foundBalance, combinedBalances, previousUsageBucketId, bucketChanged);
+
+        long usageDelta = calculateUsageDelta(sessionData, totalUsage);
+
+        return new BalanceUpdateContext(previousUsageBucketId, bucketChanged, effectiveBalance, usageDelta);
+    }
+
+    /**
+     * Determine which balance to use based on bucket change status.
+     */
+    private Balance determineEffectiveBalance(
+            Balance foundBalance,
+            List<Balance> combinedBalances,
+            String previousUsageBucketId,
+            boolean bucketChanged) {
+
+        if (!bucketChanged) {
+            return foundBalance;
         }
 
-        // Calculate usage delta (optimized with null check)
+        Balance previousBalance = findBalanceByBucketId(combinedBalances, previousUsageBucketId);
+        if (previousBalance != null) {
+            if (log.isTraceEnabled()) {
+                log.tracef("Bucket changed - using previous balance %s instead of new balance",
+                        previousUsageBucketId);
+            }
+            return previousBalance;
+        }
+
+        return foundBalance;
+    }
+
+    /**
+     * Calculate usage delta with null safety.
+     */
+    private long calculateUsageDelta(Session sessionData, long totalUsage) {
         Long previousUsageObj = sessionData.getPreviousTotalUsageQuotaValue();
         long previousUsage = (previousUsageObj != null) ? previousUsageObj : 0L;
-        long usageDelta = Math.max(totalUsage - previousUsage, 0);
+        return Math.max(totalUsage - previousUsage, 0);
+    }
 
-        // Update quota for bucket change
-        long newQuota = updateQuotaForBucketChange(
-                userData, sessionData, foundBalance, combinedBalances,
-                previousUsageBucketId, bucketChanged, totalUsage
-        );
+    /**
+     * Check consumption limit and handle if exceeded.
+     *
+     * @return Uni<UpdateResult> if consumption limit is exceeded, null otherwise
+     */
+    private Uni<UpdateResult> checkAndHandleConsumptionLimit(
+            UserSessionData userData,
+            AccountingRequestDto request,
+            Balance balance,
+            long usageDelta,
+            long newQuota,
+            String previousUsageBucketId) {
 
-        // Check consumption limits (if configured)
-        Long consumptionLimit = foundBalance.getConsumptionLimit();
-        Long consumptionLimitWindow = foundBalance.getConsumptionLimitWindow();
-
-        if (consumptionLimit != null && consumptionLimit > 0 &&
-                consumptionLimitWindow != null && consumptionLimitWindow > 0) {
-
-            long previousConsumption = calculateConsumptionInWindow(foundBalance, consumptionLimitWindow);
-
-            if (previousConsumption < consumptionLimit) {
-                recordConsumption(foundBalance, usageDelta);
-            }
-
-            if (isConsumptionLimitExceeded(foundBalance, previousConsumption, usageDelta)) {
-                if (log.isDebugEnabled()) {
-                    log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Triggering disconnect.",
-                            request.username(), foundBalance.getBucketId());
-                }
-
-                UpdateResult result = UpdateResult.success(newQuota, foundBalance.getBucketId(),
-                        foundBalance, previousUsageBucketId);
-
-                return handleConsumptionLimitExceeded(userData, request, foundBalance, result);
-            }
+        if (!hasConsumptionLimit(balance)) {
+            return null;
         }
 
-        // Update session data
-        updateSessionData(sessionData, foundBalance, totalUsage, request.sessionTime());
+        long consumptionLimitWindow = balance.getConsumptionLimitWindow();
+        long previousConsumption = calculateConsumptionInWindow(balance, consumptionLimitWindow);
 
-        UpdateResult result = UpdateResult.success(newQuota, foundBalance.getBucketId(),
-                foundBalance, previousUsageBucketId);
-
-        // Check if session should be disconnected
-        if (shouldDisconnectSession(result, foundBalance, previousUsageBucketId)) {
-            return handleSessionDisconnect(userData, request, foundBalance, result);
+        if (previousConsumption < balance.getConsumptionLimit()) {
+            recordConsumption(balance, usageDelta);
         }
 
-        return updateCacheForNormalOperation(userData, request, foundBalance, result);
+        if (isConsumptionLimitExceeded(balance, previousConsumption, usageDelta)) {
+            return handleConsumptionLimitExceededScenario(
+                    userData, request, balance, newQuota, previousUsageBucketId);
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if balance has consumption limit configured.
+     */
+    private boolean hasConsumptionLimit(Balance balance) {
+        Long consumptionLimit = balance.getConsumptionLimit();
+        Long consumptionLimitWindow = balance.getConsumptionLimitWindow();
+
+        return consumptionLimit != null && consumptionLimit > 0 &&
+                consumptionLimitWindow != null && consumptionLimitWindow > 0;
+    }
+
+    /**
+     * Handle consumption limit exceeded scenario.
+     */
+    private Uni<UpdateResult> handleConsumptionLimitExceededScenario(
+            UserSessionData userData,
+            AccountingRequestDto request,
+            Balance balance,
+            long newQuota,
+            String previousUsageBucketId) {
+
+        if (log.isDebugEnabled()) {
+            log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Triggering disconnect.",
+                    request.username(), balance.getBucketId());
+        }
+
+        UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
+                balance, previousUsageBucketId);
+
+        return handleConsumptionLimitExceeded(userData, request, balance, result);
+    }
+
+    /**
+     * Finalize balance update with session data and cache operations.
+     */
+    private Uni<UpdateResult> finalizeBalanceUpdate(
+            UserSessionData userData,
+            Session sessionData,
+            AccountingRequestDto request,
+            Balance balance,
+            long newQuota,
+            String previousUsageBucketId,
+            long totalUsage) {
+
+        updateSessionData(sessionData, balance, totalUsage, request.sessionTime());
+
+        UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
+                balance, previousUsageBucketId);
+
+        if (shouldDisconnectSession(result, balance, previousUsageBucketId)) {
+            return handleSessionDisconnect(userData, request, balance, result);
+        }
+
+        return updateCacheForNormalOperation(userData, request, balance, result);
+    }
+
+    /**
+     * Context class to hold balance update state.
+     */
+    private static class BalanceUpdateContext {
+        final String previousUsageBucketId;
+        final boolean bucketChanged;
+        final Balance effectiveBalance;
+        final long usageDelta;
+
+        BalanceUpdateContext(String previousUsageBucketId, boolean bucketChanged,
+                             Balance effectiveBalance, long usageDelta) {
+            this.previousUsageBucketId = previousUsageBucketId;
+            this.bucketChanged = bucketChanged;
+            this.effectiveBalance = effectiveBalance;
+            this.usageDelta = usageDelta;
+        }
     }
 
     private String getPreviousUsageBucketId(Session sessionData, Balance foundBalance) {
