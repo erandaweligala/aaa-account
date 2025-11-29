@@ -12,7 +12,6 @@ import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
@@ -21,35 +20,20 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * High-performance accounting utility optimized for 500 TPS throughput.
- *
- * Performance optimizations implemented:
- * - Reduced object allocations and garbage collection pressure
- * - Optimized reactive chains with minimal transformations
- * - Cached LocalDateTime calculations to reduce temporal overhead
- * - Efficient collection operations with proper sizing
- * - Minimized lock contention with concurrent data structures
- * - Streamlined error handling paths
- */
+
 @ApplicationScoped
 public class AccountingUtil {
 
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
     private static final long GIGAWORD_MULTIPLIER = 4294967296L;
-    private static final int DEFAULT_BALANCE_LIST_SIZE = 8;
-    private static final int DEFAULT_SESSION_LIST_SIZE = 4;
     private static final String DEFAULT_GROUP_ID = "1";
     private static final String DISCONNECT_ACTION = "Disconnect";
     private static final String BUCKET_INSTANCE_TABLE = "BUCKET_INSTANCE";
 
-    // Time window constants
     private static final long WINDOW_24_HOURS = 24;
     private static final long WINDOW_12_HOURS = 12;
 
-    // Consumption history initial capacity
     private static final int CONSUMPTION_HISTORY_INITIAL_CAPACITY = 24;
 
     // Retry configuration for COA events
@@ -58,7 +42,6 @@ public class AccountingUtil {
     private static final int COA_RETRY_MAX_ATTEMPTS = 2;
     private static final long COA_TIMEOUT_SECONDS = 45;
 
-    // Cache for frequently accessed temporal values (thread-safe for high concurrency)
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
     private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
 
@@ -100,6 +83,7 @@ public class AccountingUtil {
      * Clear temporal cache after request processing (call from cleanup if needed).
      */
     private void clearTemporalCache() {
+        //todo need to set usage possion this method
         CACHED_NOW.remove();
         CACHED_TODAY.remove();
     }
@@ -295,7 +279,7 @@ public class AccountingUtil {
         }
 
         // Use removeIf for efficient in-place removal
-        history.removeIf(record -> record.getTimestamp().isBefore(windowStartTime));
+        history.removeIf(consumptionRecord -> consumptionRecord.getTimestamp().isBefore(windowStartTime));
     }
 
     /**
@@ -315,11 +299,10 @@ public class AccountingUtil {
         LocalDate today = getToday();
         LocalDateTime windowStartTime = calculateWindowStartTime(windowHours, now, today);
 
-        // Use direct iteration instead of stream to reduce overhead
         long total = 0L;
-        for (ConsumptionRecord record : history) {
-            if (record.getTimestamp().isAfter(windowStartTime)) {
-                total += record.getBytesConsumed();
+        for (ConsumptionRecord consumptionRecord : history) {
+            if (consumptionRecord.getTimestamp().isAfter(windowStartTime)) {
+                total += consumptionRecord.getBytesConsumed();
             }
         }
         return total;
@@ -338,13 +321,12 @@ public class AccountingUtil {
         Long consumptionLimit = balance.getConsumptionLimit();
         Long consumptionLimitWindow = balance.getConsumptionLimitWindow();
 
-        // Fast path: no limit configured
         if (consumptionLimit == null || consumptionLimit <= 0 ||
                 consumptionLimitWindow == null || consumptionLimitWindow <= 0) {
             return false;
         }
 
-        // Cleanup old records first
+
         LocalDateTime now = getNow();
         LocalDate today = getToday();
         LocalDateTime windowStartTime = calculateWindowStartTime(consumptionLimitWindow, now, today);
@@ -364,7 +346,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Record new consumption in balance's consumption history (optimized allocation).
+     * Record new consumption in balance's consumption history.
      *
      * @param balance balance to update
      * @param bytesConsumed bytes consumed in this update
@@ -372,14 +354,14 @@ public class AccountingUtil {
     private void recordConsumption(Balance balance, long bytesConsumed) {
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null) {
-            // Initialize with reasonable capacity to avoid resizing
+
             history = new ArrayList<>(CONSUMPTION_HISTORY_INITIAL_CAPACITY);
             balance.setConsumptionHistory(history);
         }
 
         LocalDateTime now = getNow();
-        ConsumptionRecord record = new ConsumptionRecord(now, bytesConsumed);
-        history.add(record);
+        ConsumptionRecord consumptionRecord = new ConsumptionRecord(now, bytesConsumed);
+        history.add(consumptionRecord);
 
         if (log.isTraceEnabled()) {
             log.tracef("Recorded consumption for bucket %s: %d bytes at %s",
