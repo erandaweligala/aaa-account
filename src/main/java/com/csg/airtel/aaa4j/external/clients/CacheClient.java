@@ -26,9 +26,27 @@ import java.time.Duration;
 public class CacheClient {
 
     private static final Logger log = Logger.getLogger(CacheClient.class);
+    private static final String KEY_PREFIX = "user:";
+
+    // Circuit Breaker Configuration
+    private static final int CIRCUIT_BREAKER_REQUEST_VOLUME_THRESHOLD = 10;
+    private static final double CIRCUIT_BREAKER_FAILURE_RATIO = 0.5;
+    private static final long CIRCUIT_BREAKER_DELAY_MS = 5000;
+    private static final int CIRCUIT_BREAKER_SUCCESS_THRESHOLD = 2;
+
+    // Retry Configuration
+    private static final int RETRY_MAX_RETRIES = 2;
+    private static final long RETRY_DELAY_MS = 100;
+    private static final long RETRY_MAX_DURATION_MS = 5000;
+
+    // Timeout Configuration
+    private static final long TIMEOUT_MS = 5000;
+
+    // Cache Expiration
+    private static final long CACHE_EXPIRATION_HOURS = 1000;
+
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;
-    private static final String KEY_PREFIX = "user:";
 
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource, ObjectMapper objectMapper) {
@@ -54,17 +72,17 @@ public class CacheClient {
      * Retrieve user data from Redis
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = CIRCUIT_BREAKER_REQUEST_VOLUME_THRESHOLD,
+            failureRatio = CIRCUIT_BREAKER_FAILURE_RATIO,
+            delay = CIRCUIT_BREAKER_DELAY_MS,
+            successThreshold = CIRCUIT_BREAKER_SUCCESS_THRESHOLD
     )
     @Retry(
-            maxRetries = 2,
-            delay = 100,
-            maxDuration = 5000
+            maxRetries = RETRY_MAX_RETRIES,
+            delay = RETRY_DELAY_MS,
+            maxDuration = RETRY_MAX_DURATION_MS
     )
-    @Timeout(value = 5000)
+    @Timeout(value = TIMEOUT_MS)
     public Uni<UserSessionData> getUserData(String userId) {
         long startTime = System.currentTimeMillis();
         log.infof("Retrieving user data for cache userId: %s", userId);
@@ -83,7 +101,7 @@ public class CacheClient {
                         throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR,ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
                     }
                 }))
-                .onFailure().invoke(e -> log.error("Failed to get user data for userId: " + "10001", e));
+                .onFailure().invoke(e -> log.error("Failed to get user data for userId: " + userId, e));
     }
 
 
@@ -96,7 +114,7 @@ public class CacheClient {
                 .onItem().invoke(json -> log.infof("Updating cache for user {}: {}", userId, json))
                 .onItem().transformToUni(serializedData ->
                         reactiveRedisDataSource.value(String.class)
-                                .set(userKey, serializedData, new SetArgs().ex(Duration.ofHours(1000)))
+                                .set(userKey, serializedData, new SetArgs().ex(Duration.ofHours(CACHE_EXPIRATION_HOURS)))
                 )
                 .onItem().invoke(() -> log.infof("Cache update complete for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime)))
                 .onFailure().invoke(err -> log.error("Failed to update cache for user {}", userId, err))

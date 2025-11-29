@@ -39,10 +39,11 @@ public class StopHandler {
         log.infof("[traceId: %s] Processing accounting stop for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
-                .onItem().invoke(() -> log.infof("[traceId: %s] User data retrieved for user: %s", request.username()))
+                .onItem().invoke(() -> log.infof("[traceId: %s] User data retrieved for user: %s", traceId, request.username()))
                 .onItem().transformToUni(userSessionData ->
                         userSessionData != null ?
-                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> log.infof("[traceId: %s] Completed processing for eventType=%s, action=%s, bucketId=%s", traceId, bucketId)): null
+                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> log.infof("[traceId: %s] Completed processing for eventType=%s, action=%s, bucketId=%s", traceId, bucketId))
+                                 : Uni.createFrom().voidItem()
                 )
                 .onFailure().recoverWithUni(throwable -> {
                     log.errorf(throwable, "Error processing accounting for user: %s", request.username());
@@ -177,19 +178,7 @@ public class StopHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        try {
-            AccountingCDREvent cdrEvent = CdrMappingUtil.buildStopCDREvent(request, session);
-
-            // run asynchronously without blocking
-            accountProducer.produceAccountingCDREvent(cdrEvent)
-                    .subscribe()
-                    .with(
-                            success -> log.infof("CDR event sent successfully for session: %s", request.sessionId()),
-                            failure -> log.errorf(failure, "Failed to send CDR event for session: %s", request.sessionId())
-                    );
-        } catch (Exception e) {
-            log.errorf(e, "Error building CDR event for session: %s", request.sessionId());
-        }
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent);
     }
 
 }
