@@ -4,11 +4,13 @@ import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.cdr.EventTypes;
 import com.csg.airtel.aaa4j.domain.model.cdr.*;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
+import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 
 /**
  * Utility class for mapping AccountingRequestDto and Session data to CDR events.
@@ -202,5 +204,34 @@ public class CdrMappingUtil {
                 .acctInputGigawords(metrics.getInputGigawords() != null ? metrics.getInputGigawords() : 0)
                 .acctOutputGigawords(metrics.getOutputGigawords() != null ? metrics.getOutputGigawords() : 0)
                 .build();
+    }
+
+    /**
+     * Generates and sends a CDR event asynchronously.
+     * This method consolidates the duplicate CDR generation logic from StartHandler, InterimHandler, and StopHandler.
+     *
+     * @param request The accounting request
+     * @param session The session data
+     * @param accountProducer The producer to send the CDR event
+     * @param cdrBuilder Function that builds the appropriate CDR event type
+     */
+    public static void generateAndSendCDR(
+            AccountingRequestDto request,
+            Session session,
+            AccountProducer accountProducer,
+            BiFunction<AccountingRequestDto, Session, AccountingCDREvent> cdrBuilder) {
+        try {
+            AccountingCDREvent cdrEvent = cdrBuilder.apply(request, session);
+
+            // Run asynchronously without blocking
+            accountProducer.produceAccountingCDREvent(cdrEvent)
+                    .subscribe()
+                    .with(
+                            success -> log.infof("CDR event sent successfully for session: %s", request.sessionId()),
+                            failure -> log.errorf(failure, "Failed to send CDR event for session: %s", request.sessionId())
+                    );
+        } catch (Exception e) {
+            log.errorf(e, "Error building CDR event for session: %s", request.sessionId());
+        }
     }
 }

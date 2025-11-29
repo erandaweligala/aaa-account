@@ -66,8 +66,8 @@ public class StartHandler {
                 }
             })
             .onFailure().recoverWithUni(throwable -> {
-                log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s", request.username());
-                return null;
+                log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s", traceId, request.username());
+                return Uni.createFrom().voidItem();
             });
 }
 
@@ -101,7 +101,7 @@ public class StartHandler {
             double availableBalance = calculateAvailableBalance(combinedBalances);
 
             if (availableBalance <= 0) {
-                log.warnf("[traceId: %s] User: %s has exhausted their data balance. Cannot start new session.",
+                log.warnf("User: %s has exhausted their data balance. Cannot start new session.",
                         request.username());
                 return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "Data balance exhausted",
@@ -265,19 +265,7 @@ public class StartHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        try {
-            AccountingCDREvent cdrEvent = CdrMappingUtil.buildStartCDREvent(request, session);
-
-            // run asynchronously without blocking
-            accountProducer.produceAccountingCDREvent(cdrEvent)
-                    .subscribe()
-                    .with(
-                            success -> log.infof("CDR event sent successfully for session: %s", request.sessionId()),
-                            failure -> log.errorf(failure, "Failed to send CDR event for session: %s", request.sessionId())
-                    );
-        } catch (Exception e) {
-            log.errorf(e, "Error building CDR event for session: %s", request.sessionId());
-        }
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
     }
 
 

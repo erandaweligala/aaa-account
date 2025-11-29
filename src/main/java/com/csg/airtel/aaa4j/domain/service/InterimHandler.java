@@ -112,7 +112,7 @@ public class InterimHandler {
             log.warnf("TraceId: %s Duplicate Session time unchanged for sessionId: %s", traceId,request.sessionId());
             return Uni.createFrom().voidItem();
 
-        }else {
+        } else {
             Session finalSession = session;
             return accountingUtil.updateSessionAndBalance(userData, session, request,null)
                     .onItem().transformToUni(updateResult -> {  // Changed from transform to transformToUni
@@ -130,6 +130,9 @@ public class InterimHandler {
 
     private Session findSession(UserSessionData userData, String sessionId) {
         List<Session> sessions = userData.getSessions();
+        if (sessions == null || sessions.isEmpty()) {
+            return null;
+        }
         for (Session session : sessions) {
             if (session.getSessionId().equals(sessionId)) {
                 return session;
@@ -154,19 +157,7 @@ public class InterimHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        try {
-            AccountingCDREvent cdrEvent = CdrMappingUtil.buildInterimCDREvent(request, session);
-
-            // run asynchronously without blocking
-            accountProducer.produceAccountingCDREvent(cdrEvent)
-                    .subscribe()
-                    .with(
-                            success -> log.infof("CDR event sent successfully for session: %s", request.sessionId()),
-                            failure -> log.errorf(failure, "Failed to send CDR event for session: %s", request.sessionId())
-                    );
-        } catch (Exception e) {
-            log.errorf(e, "Error building CDR event for session: %s", request.sessionId());
-        }
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
     }
 
 

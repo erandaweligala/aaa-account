@@ -34,8 +34,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Minimized lock contention with concurrent data structures
  * - Streamlined error handling paths
  */
-
-// todo have same sonar issues pls fixed
 @ApplicationScoped
 public class AccountingUtil {
 
@@ -46,6 +44,19 @@ public class AccountingUtil {
     private static final String DEFAULT_GROUP_ID = "1";
     private static final String DISCONNECT_ACTION = "Disconnect";
     private static final String BUCKET_INSTANCE_TABLE = "BUCKET_INSTANCE";
+
+    // Time window constants
+    private static final long WINDOW_24_HOURS = 24;
+    private static final long WINDOW_12_HOURS = 12;
+
+    // Consumption history initial capacity
+    private static final int CONSUMPTION_HISTORY_INITIAL_CAPACITY = 24;
+
+    // Retry configuration for COA events
+    private static final long COA_RETRY_INITIAL_BACKOFF_MS = 100;
+    private static final long COA_RETRY_MAX_BACKOFF_SECONDS = 2;
+    private static final int COA_RETRY_MAX_ATTEMPTS = 2;
+    private static final long COA_TIMEOUT_SECONDS = 45;
 
     // Cache for frequently accessed temporal values (thread-safe for high concurrency)
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
@@ -257,9 +268,9 @@ public class AccountingUtil {
      * @return LocalDateTime representing the start of the consumption window
      */
     private LocalDateTime calculateWindowStartTime(long windowHours, LocalDateTime now, LocalDate today) {
-        if (windowHours == 24) {
+        if (windowHours == WINDOW_24_HOURS) {
             return today.atTime(LocalTime.MIDNIGHT);
-        } else if (windowHours == 12) {
+        } else if (windowHours == WINDOW_12_HOURS) {
             LocalTime currentTime = now.toLocalTime();
             if (currentTime.isBefore(LocalTime.NOON)) {
                 return today.atTime(LocalTime.MIDNIGHT);
@@ -362,7 +373,7 @@ public class AccountingUtil {
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null) {
             // Initialize with reasonable capacity to avoid resizing
-            history = new ArrayList<>(24); // Assume hourly records for a day
+            history = new ArrayList<>(CONSUMPTION_HISTORY_INITIAL_CAPACITY);
             balance.setConsumptionHistory(history);
         }
 
@@ -749,8 +760,8 @@ public class AccountingUtil {
                                         )
                                 )
                                 .onFailure().retry()
-                                .withBackOff(Duration.ofMillis(100), Duration.ofSeconds(2))
-                                .atMost(2)
+                                .withBackOff(Duration.ofMillis(COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(COA_RETRY_MAX_BACKOFF_SECONDS))
+                                .atMost(COA_RETRY_MAX_ATTEMPTS)
                                 .onFailure().invoke(failure -> {
                                     if (log.isDebugEnabled()) {
                                         log.debugf(failure, "Failed to produce disconnect event for session: %s",
@@ -761,7 +772,7 @@ public class AccountingUtil {
                 )
                 .merge() // Parallel execution instead of sequential
                 .collect().asList()
-                .ifNoItem().after(Duration.ofSeconds(45)).fail()
+                .ifNoItem().after(Duration.ofSeconds(COA_TIMEOUT_SECONDS)).fail()
                 .replaceWithVoid();
     }
 
