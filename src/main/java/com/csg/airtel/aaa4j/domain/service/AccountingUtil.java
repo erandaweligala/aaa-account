@@ -80,10 +80,19 @@ public class AccountingUtil {
     }
 
     /**
-     * Clear temporal cache after request processing (call from cleanup if needed).
+     * Clear temporal cache after request processing.
+     * This method should be called at the end of each request to prevent memory leaks
+     * and ensure fresh temporal values for subsequent requests.
      */
-    private void clearTemporalCache() {
-        //todo need to set usage possion this method
+    public void clearTemporalCache() {
+        if (log.isTraceEnabled()) {
+            LocalDateTime cachedNow = CACHED_NOW.get();
+            LocalDate cachedToday = CACHED_TODAY.get();
+            if (cachedNow != null || cachedToday != null) {
+                log.tracef("Clearing temporal cache - cached now: %s, cached today: %s",
+                    cachedNow, cachedToday);
+            }
+        }
         CACHED_NOW.remove();
         CACHED_TODAY.remove();
     }
@@ -234,7 +243,9 @@ public class AccountingUtil {
                                 .onItem().transformToUni(foundBalance ->
                                         processBalanceUpdate(userData, sessionData, request, foundBalance, combinedBalances, totalUsage)
                                 )
-                );
+                )
+                .invoke(result -> clearTemporalCache())
+                .onFailure().invoke(error -> clearTemporalCache());
     }
 
     private long calculateTotalUsage(AccountingRequestDto request) {
