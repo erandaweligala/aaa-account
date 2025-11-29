@@ -34,6 +34,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Minimized lock contention with concurrent data structures
  * - Streamlined error handling paths
  */
+
+// todo have same sonar issues pls fixed
 @ApplicationScoped
 public class AccountingUtil {
 
