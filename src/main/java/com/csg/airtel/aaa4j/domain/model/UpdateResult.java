@@ -3,8 +3,6 @@ package com.csg.airtel.aaa4j.domain.model;
 
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 
-
-
 public record UpdateResult(
         boolean success,
         String errorMessage,

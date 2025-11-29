@@ -420,6 +420,8 @@ public class AccountingUtil {
             List<Balance> combinedBalances,
             long totalUsage) {
 
+        //todo this method having Cognitive Complexity of methods should not be too high
+
         // Early exit: no valid balance
         if (foundBalance == null) {
             if (log.isDebugEnabled()) {
@@ -789,8 +791,8 @@ public class AccountingUtil {
     private Uni<Void> updateBalanceInDatabase(Balance balance, long newQuota, String sessionId,
                                               String bucketUser, String userName) {
         // Pre-size maps to avoid resizing (typical size is 3 for each)
-        Map<String, Object> columnValues = new HashMap<>(4);
-        Map<String, Object> whereConditions = new HashMap<>(3);
+        Map<String, Object> columnValues = HashMap.newHashMap(4);
+        Map<String, Object> whereConditions = HashMap.newHashMap(3);
 
         // Update balance with new quota
         balance.setQuota(Math.max(newQuota, 0));
