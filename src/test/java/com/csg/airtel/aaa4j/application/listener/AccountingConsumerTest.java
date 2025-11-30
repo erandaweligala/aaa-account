@@ -69,7 +69,6 @@ class AccountingConsumerTest {
         CompletionStage<Void> ackStage = CompletableFuture.completedFuture(null);
 
         when(message.getPayload()).thenReturn(request);
-        when(message.getMetadata()).thenReturn(Metadata.empty());
         when(message.ack()).thenReturn(ackStage);
         when(accountingHandlerFactory.getHandler(eq(request), eq(request.eventId())))
                 .thenReturn(Uni.createFrom().voidItem());
