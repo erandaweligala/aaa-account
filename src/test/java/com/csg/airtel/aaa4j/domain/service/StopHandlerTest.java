@@ -53,7 +53,7 @@ class StopHandlerTest {
 
         when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), eq(bucketId)))
-                .thenReturn(Uni.createFrom().item(new UpdateResult(true, createBalance())));
+                .thenReturn(Uni.createFrom().item(UpdateResult.success(5000L, bucketId, createBalance(), null)));
         when(accountProducer.produceDBWriteEvent(any(DBWriteRequest.class)))
                 .thenReturn(Uni.createFrom().voidItem());
         when(cacheUtil.updateUserAndRelatedCaches(eq(request.username()), any(UserSessionData.class)))
@@ -133,7 +133,7 @@ class StopHandlerTest {
 
         when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), eq(bucketId)))
-                .thenReturn(Uni.createFrom().item(new UpdateResult(false, createBalance())));
+                .thenReturn(Uni.createFrom().item(UpdateResult.failure("Session update failed")));
         when(accountProducer.produceDBWriteEvent(any(DBWriteRequest.class)))
                 .thenReturn(Uni.createFrom().voidItem());
         when(cacheUtil.updateUserAndRelatedCaches(eq(request.username()), any(UserSessionData.class)))
@@ -158,7 +158,7 @@ class StopHandlerTest {
 
         when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), isNull()))
-                .thenReturn(Uni.createFrom().item(new UpdateResult(true, createBalance())));
+                .thenReturn(Uni.createFrom().item(UpdateResult.success(5000L, "BUCKET-1", createBalance(), null)));
         when(accountProducer.produceDBWriteEvent(any(DBWriteRequest.class)))
                 .thenReturn(Uni.createFrom().failure(new RuntimeException("DB write failed")));
         when(cacheUtil.updateUserAndRelatedCaches(eq(request.username()), any(UserSessionData.class)))
@@ -182,7 +182,7 @@ class StopHandlerTest {
 
         when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), isNull()))
-                .thenReturn(Uni.createFrom().item(new UpdateResult(true, createBalance())));
+                .thenReturn(Uni.createFrom().item(UpdateResult.success(5000L, "BUCKET-1", createBalance(), null)));
         when(accountProducer.produceDBWriteEvent(any(DBWriteRequest.class)))
                 .thenReturn(Uni.createFrom().voidItem());
         when(cacheUtil.updateUserAndRelatedCaches(eq(request.username()), any(UserSessionData.class)))
