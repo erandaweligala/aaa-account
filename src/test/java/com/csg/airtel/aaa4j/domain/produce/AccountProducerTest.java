@@ -64,9 +64,9 @@ class AccountProducerTest {
 
         doAnswer(invocation -> {
             Message<DBWriteRequest> message = invocation.getArgument(0);
-            message.getAck().get().run();
+            message.getAck().get();
             return null;
-        }).when(dbWriteRequestEmitter).send(any());
+        }).when(dbWriteRequestEmitter).send(any(Message.class));
 
         accountProducer.produceDBWriteEvent(request)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
@@ -84,16 +84,16 @@ class AccountProducerTest {
 
         doAnswer(invocation -> {
             Message<DBWriteRequest> message = invocation.getArgument(0);
-            message.getNack().get().apply(new RuntimeException("Send failed"));
+            message.getNack().apply(new RuntimeException("Send failed"));
             return null;
-        }).when(dbWriteRequestEmitter).send(any());
+        }).when(dbWriteRequestEmitter).send(any(Message.class));
 
         accountProducer.produceDBWriteEvent(request)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitFailure()
                 .assertFailedWith(RuntimeException.class);
 
-        verify(dbWriteRequestEmitter, times(1)).send(any());
+        verify(dbWriteRequestEmitter, times(1)).send(any(Message.class));
     }
 
     @Test
@@ -102,9 +102,9 @@ class AccountProducerTest {
 
         doAnswer(invocation -> {
             Message<AccountingResponseEvent> message = invocation.getArgument(0);
-            message.getAck().get().run();
+            message.getAck().get();
             return null;
-        }).when(accountingResponseEmitter).send(any());
+        }).when(accountingResponseEmitter).send(any(Message.class));
 
         accountProducer.produceAccountingResponseEvent(event)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
@@ -122,16 +122,16 @@ class AccountProducerTest {
 
         doAnswer(invocation -> {
             Message<AccountingResponseEvent> message = invocation.getArgument(0);
-            message.getNack().get().apply(new RuntimeException("Send failed"));
+            message.getNack().apply(new RuntimeException("Send failed"));
             return null;
-        }).when(accountingResponseEmitter).send(any());
+        }).when(accountingResponseEmitter).send(any(Message.class));
 
         accountProducer.produceAccountingResponseEvent(event)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitFailure()
                 .assertFailedWith(RuntimeException.class);
 
-        verify(accountingResponseEmitter, times(1)).send(any());
+        verify(accountingResponseEmitter, times(1)).send(any(Message.class));
     }
 
     @Test
@@ -140,9 +140,9 @@ class AccountProducerTest {
 
         doAnswer(invocation -> {
             Message<AccountingCDREvent> message = invocation.getArgument(0);
-            message.getAck().get().run();
+            message.getAck().get();
             return null;
-        }).when(accountingCDREventEmitter).send(any());
+        }).when(accountingCDREventEmitter).send(any(Message.class));
 
         accountProducer.produceAccountingCDREvent(event)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
@@ -160,16 +160,16 @@ class AccountProducerTest {
 
         doAnswer(invocation -> {
             Message<AccountingCDREvent> message = invocation.getArgument(0);
-            message.getNack().get().apply(new RuntimeException("CDR Send failed"));
+            message.getNack().apply(new RuntimeException("CDR Send failed"));
             return null;
-        }).when(accountingCDREventEmitter).send(any());
+        }).when(accountingCDREventEmitter).send(any(Message.class));
 
         accountProducer.produceAccountingCDREvent(event)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitFailure()
                 .assertFailedWith(RuntimeException.class);
 
-        verify(accountingCDREventEmitter, times(1)).send(any());
+        verify(accountingCDREventEmitter, times(1)).send(any(Message.class));
     }
 
     @Test
@@ -179,16 +179,16 @@ class AccountProducerTest {
         doAnswer(invocation -> {
             Message<DBWriteRequest> message = invocation.getArgument(0);
             assertNotNull(message.getMetadata());
-            message.getAck().get().run();
+            message.getAck().get();
             return null;
-        }).when(dbWriteRequestEmitter).send(any());
+        }).when(dbWriteRequestEmitter).send(any(Message.class));
 
         accountProducer.produceDBWriteEvent(request)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem()
                 .assertCompleted();
 
-        verify(dbWriteRequestEmitter, times(1)).send(any());
+        verify(dbWriteRequestEmitter, times(1)).send(any(Message.class));
     }
 
     private DBWriteRequest createDBWriteRequest() {
