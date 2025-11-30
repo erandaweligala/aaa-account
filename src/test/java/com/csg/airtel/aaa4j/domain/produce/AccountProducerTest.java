@@ -215,14 +215,13 @@ class AccountProducerTest {
 
     private AccountingResponseEvent createAccountingResponseEvent() {
         return new AccountingResponseEvent(
-                "event-123",
-                "session-123",
-                "test-user",
                 AccountingResponseEvent.EventType.COA,
+                java.time.LocalDateTime.now(),
+                "session-123",
                 AccountingResponseEvent.ResponseAction.DISCONNECT,
                 "Test message",
                 null,
-                Instant.now()
+                null
         );
     }
 

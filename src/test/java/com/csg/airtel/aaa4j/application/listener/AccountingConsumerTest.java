@@ -1,7 +1,6 @@
 package com.csg.airtel.aaa4j.application.listener;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
-import com.csg.airtel.aaa4j.domain.model.ProcessType;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
 import io.smallrye.mutiny.Uni;
@@ -44,7 +43,7 @@ class AccountingConsumerTest {
 
     @Test
     void testConsumeAccountingEventSuccess() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START);
         CompletionStage<Void> ackStage = CompletableFuture.completedFuture(null);
 
         when(message.getPayload()).thenReturn(request);
@@ -66,7 +65,7 @@ class AccountingConsumerTest {
 
     @Test
     void testConsumeAccountingEventWithStartAction() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START);
         CompletionStage<Void> ackStage = CompletableFuture.completedFuture(null);
 
         when(message.getPayload()).thenReturn(request);
@@ -86,7 +85,7 @@ class AccountingConsumerTest {
 
     @Test
     void testConsumeAccountingEventWithInterimAction() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.INTERIM_UPDATE);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.INTERIM_UPDATE);
         CompletionStage<Void> ackStage = CompletableFuture.completedFuture(null);
 
         when(message.getPayload()).thenReturn(request);
@@ -106,7 +105,7 @@ class AccountingConsumerTest {
 
     @Test
     void testConsumeAccountingEventWithStopAction() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.STOP);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.STOP);
         CompletionStage<Void> ackStage = CompletableFuture.completedFuture(null);
 
         when(message.getPayload()).thenReturn(request);
@@ -126,7 +125,7 @@ class AccountingConsumerTest {
 
     @Test
     void testConsumeAccountingEventWithFailure() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START);
         RuntimeException exception = new RuntimeException("Processing failed");
         CompletionStage<Void> nackStage = CompletableFuture.completedFuture(null);
 
@@ -148,7 +147,7 @@ class AccountingConsumerTest {
 
     @Test
     void testConsumeAccountingEventWithKafkaMetadata() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START);
         CompletionStage<Void> ackStage = CompletableFuture.completedFuture(null);
         IncomingKafkaRecordMetadata<String> kafkaMetadata = mock(IncomingKafkaRecordMetadata.class);
 
@@ -171,8 +170,8 @@ class AccountingConsumerTest {
 
     @Test
     void testConsumeAccountingEventMultipleTimes() {
-        AccountingRequestDto request1 = createAccountingRequest(ProcessType.START);
-        AccountingRequestDto request2 = createAccountingRequest(ProcessType.INTERIM_UPDATE);
+        AccountingRequestDto request1 = createAccountingRequest(AccountingRequestDto.ActionType.START);
+        AccountingRequestDto request2 = createAccountingRequest(AccountingRequestDto.ActionType.INTERIM_UPDATE);
         CompletionStage<Void> ackStage = CompletableFuture.completedFuture(null);
 
         Message<AccountingRequestDto> message1 = mock(Message.class);
@@ -205,22 +204,23 @@ class AccountingConsumerTest {
         verify(message2, times(1)).ack();
     }
 
-    private AccountingRequestDto createAccountingRequest(ProcessType actionType) {
+    private AccountingRequestDto createAccountingRequest(AccountingRequestDto.ActionType actionType) {
         return new AccountingRequestDto(
                 "event-id-123",
                 "session-id-123",
-                "test-user",
-                "192.168.1.1",
                 "10.0.0.1",
-                "NAS-1",
-                "NAS-PORT-1",
+                "test-user",
                 actionType,
-                Instant.now(),
-                100,
                 1000,
                 2000,
+                100,
+                Instant.now(),
+                "NAS-PORT-1",
+                "192.168.1.1",
+                0,
                 1,
-                2
+                2,
+                "NAS-1"
         );
     }
 }

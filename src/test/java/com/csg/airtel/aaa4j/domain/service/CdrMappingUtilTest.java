@@ -1,7 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
-import com.csg.airtel.aaa4j.domain.model.ProcessType;
 import com.csg.airtel.aaa4j.domain.model.cdr.*;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
@@ -39,7 +38,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testAccountingMetricsForInterim() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.INTERIM_UPDATE, 100, 1000, 2000, 1, 2);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.INTERIM_UPDATE, 100, 1000, 2000, 1, 2);
         CdrMappingUtil.AccountingMetrics metrics = CdrMappingUtil.AccountingMetrics.forInterim(request);
 
         assertEquals("Interim-Update", metrics.getAcctStatusType());
@@ -53,7 +52,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testAccountingMetricsForStop() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.STOP, 200, 3000, 4000, 3, 4);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.STOP, 200, 3000, 4000, 3, 4);
         CdrMappingUtil.AccountingMetrics metrics = CdrMappingUtil.AccountingMetrics.forStop(request);
 
         assertEquals("Stop", metrics.getAcctStatusType());
@@ -67,7 +66,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildStartCDREvent() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START, 0, 0, 0, 0, 0);
         Session session = createSession();
 
         AccountingCDREvent event = CdrMappingUtil.buildStartCDREvent(request, session);
@@ -84,7 +83,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildInterimCDREvent() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.INTERIM_UPDATE, 100, 1000, 2000, 1, 2);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.INTERIM_UPDATE, 100, 1000, 2000, 1, 2);
         Session session = createSession();
 
         AccountingCDREvent event = CdrMappingUtil.buildInterimCDREvent(request, session);
@@ -103,7 +102,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildStopCDREvent() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.STOP, 200, 3000, 4000, 3, 4);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.STOP, 200, 3000, 4000, 3, 4);
         Session session = createSession();
 
         AccountingCDREvent event = CdrMappingUtil.buildStopCDREvent(request, session);
@@ -122,7 +121,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildSessionCdrWithStartEvent() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START, 0, 0, 0, 0, 0);
         SessionCdr sessionCdr = CdrMappingUtil.buildSessionCdr(request, 0, EventTypes.ACCOUNTING_START.name());
 
         assertNotNull(sessionCdr);
@@ -136,7 +135,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildSessionCdrWithStopEvent() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.STOP, 200, 3000, 4000, 3, 4);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.STOP, 200, 3000, 4000, 3, 4);
         SessionCdr sessionCdr = CdrMappingUtil.buildSessionCdr(request, 200, "Stop");
 
         assertNotNull(sessionCdr);
@@ -148,7 +147,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildUserCdr() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START, 0, 0, 0, 0, 0);
         User user = CdrMappingUtil.buildUserCdr(request);
 
         assertNotNull(user);
@@ -157,7 +156,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildNetworkCdr() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START, 0, 0, 0, 0, 0);
         Network network = CdrMappingUtil.buildNetworkCdr(request);
 
         assertNotNull(network);
@@ -168,7 +167,7 @@ class CdrMappingUtilTest {
     @Test
     void testBuildAccountingCdr() {
         CdrMappingUtil.AccountingMetrics metrics = CdrMappingUtil.AccountingMetrics.forInterim(
-                createAccountingRequest(ProcessType.INTERIM_UPDATE, 100, 1000, 2000, 1, 2)
+                createAccountingRequest(AccountingRequestDto.ActionType.INTERIM_UPDATE, 100, 1000, 2000, 1, 2)
         );
         Accounting accounting = CdrMappingUtil.buildAccountingCdr(metrics);
 
@@ -186,7 +185,7 @@ class CdrMappingUtilTest {
     @Test
     void testBuildAccountingCdrWithNullValues() {
         // Create a minimal request for testing null value handling
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START, 0, 0, 0, 0, 0);
         CdrMappingUtil.AccountingMetrics metrics = CdrMappingUtil.AccountingMetrics.forStart();
         Accounting accounting = CdrMappingUtil.buildAccountingCdr(metrics);
 
@@ -198,7 +197,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testGenerateAndSendCDRSuccess() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START, 0, 0, 0, 0, 0);
         Session session = createSession();
 
         when(accountProducer.produceAccountingCDREvent(any(AccountingCDREvent.class)))
@@ -211,7 +210,7 @@ class CdrMappingUtilTest {
 
     @Test
     void testGenerateAndSendCDRWithProducerFailure() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START, 0, 0, 0, 0, 0);
         Session session = createSession();
 
         when(accountProducer.produceAccountingCDREvent(any(AccountingCDREvent.class)))
@@ -224,24 +223,25 @@ class CdrMappingUtilTest {
         verify(accountProducer, times(1)).produceAccountingCDREvent(any(AccountingCDREvent.class));
     }
 
-    private AccountingRequestDto createAccountingRequest(ProcessType actionType, int sessionTime,
+    private AccountingRequestDto createAccountingRequest(AccountingRequestDto.ActionType actionType, int sessionTime,
                                                           int inputOctets, int outputOctets,
                                                           int inputGigawords, int outputGigawords) {
         return new AccountingRequestDto(
                 "event-id-123",
                 "session-id-123",
-                "test-user",
-                "192.168.1.1",
                 "10.0.0.1",
-                "NAS-1",
-                "NAS-PORT-1",
+                "test-user",
                 actionType,
-                Instant.now(),
-                sessionTime,
                 inputOctets,
                 outputOctets,
+                sessionTime,
+                Instant.now(),
+                "NAS-PORT-1",
+                "192.168.1.1",
+                0,
                 inputGigawords,
-                outputGigawords
+                outputGigawords,
+                "NAS-1"
         );
     }
 

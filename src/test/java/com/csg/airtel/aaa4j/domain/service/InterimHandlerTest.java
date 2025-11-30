@@ -2,7 +2,6 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
-import com.csg.airtel.aaa4j.domain.model.ProcessType;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import com.csg.airtel.aaa4j.domain.model.UpdateResult;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
@@ -57,7 +56,7 @@ class InterimHandlerTest {
 
         when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), isNull()))
-                .thenReturn(Uni.createFrom().item(new UpdateResult(true, createBalance())));
+                .thenReturn(Uni.createFrom().item(UpdateResult.success(5000L, "BUCKET-1", createBalance(), null)));
         when(accountProducer.produceAccountingCDREvent(any()))
                 .thenReturn(Uni.createFrom().voidItem());
 
@@ -80,7 +79,7 @@ class InterimHandlerTest {
         when(userRepository.getServiceBucketsByUserName(request.username()))
                 .thenReturn(Uni.createFrom().item(buckets));
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), isNull()))
-                .thenReturn(Uni.createFrom().item(new UpdateResult(true, createBalance())));
+                .thenReturn(Uni.createFrom().item(UpdateResult.success(5000L, "BUCKET-1", createBalance(), null)));
         when(accountProducer.produceAccountingCDREvent(any()))
                 .thenReturn(Uni.createFrom().voidItem());
 
@@ -110,7 +109,7 @@ class InterimHandlerTest {
                 .assertCompleted();
 
         verify(accountProducer, times(1)).produceAccountingResponseEvent(
-                argThat(event -> event.responseAction() == AccountingResponseEvent.ResponseAction.DISCONNECT)
+                argThat(event -> event.action() == AccountingResponseEvent.ResponseAction.DISCONNECT)
         );
     }
 
@@ -132,7 +131,7 @@ class InterimHandlerTest {
                 .assertCompleted();
 
         verify(accountProducer, times(1)).produceAccountingResponseEvent(
-                argThat(event -> event.responseAction() == AccountingResponseEvent.ResponseAction.DISCONNECT)
+                argThat(event -> event.action() == AccountingResponseEvent.ResponseAction.DISCONNECT)
         );
     }
 
@@ -176,7 +175,7 @@ class InterimHandlerTest {
 
         when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), isNull()))
-                .thenReturn(Uni.createFrom().item(new UpdateResult(false, createBalance())));
+                .thenReturn(Uni.createFrom().item(UpdateResult.failure("Update failed")));
         when(accountProducer.produceAccountingCDREvent(any()))
                 .thenReturn(Uni.createFrom().voidItem());
 
@@ -192,18 +191,19 @@ class InterimHandlerTest {
         return new AccountingRequestDto(
                 "event-id-123",
                 "session-id-123",
-                "test-user",
-                "192.168.1.1",
                 "10.0.0.1",
-                "NAS-1",
-                "NAS-PORT-1",
-                ProcessType.INTERIM_UPDATE,
-                Instant.now(),
-                sessionTime,
+                "test-user",
+                AccountingRequestDto.ActionType.INTERIM_UPDATE,
                 1000,
                 2000,
+                sessionTime,
+                Instant.now(),
+                "NAS-PORT-1",
+                "192.168.1.1",
+                0,
                 1,
-                2
+                2,
+                "NAS-1"
         );
     }
 
