@@ -185,9 +185,9 @@ class CdrMappingUtilTest {
 
     @Test
     void testBuildAccountingCdrWithNullValues() {
-        CdrMappingUtil.AccountingMetrics metrics = new CdrMappingUtil.AccountingMetrics(
-                "Test", "TEST_EVENT", null, 100L, 200L, null, null
-        );
+        // Create a minimal request for testing null value handling
+        AccountingRequestDto request = createAccountingRequest(ProcessType.START, 0, 0, 0, 0, 0);
+        CdrMappingUtil.AccountingMetrics metrics = CdrMappingUtil.AccountingMetrics.forStart();
         Accounting accounting = CdrMappingUtil.buildAccountingCdr(metrics);
 
         assertNotNull(accounting);
