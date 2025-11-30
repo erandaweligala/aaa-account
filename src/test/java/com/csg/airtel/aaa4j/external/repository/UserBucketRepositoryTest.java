@@ -73,7 +73,7 @@ class UserBucketRepositoryTest {
         when(row.getLocalDateTime("EXPIRATION")).thenReturn(now.plusMonths(6));
 
         when(rowSet.size()).thenReturn(1);
-        when(rowSet.iterator()).thenReturn(Arrays.asList(row).iterator());
+        doReturn(Arrays.asList(row).iterator()).when(rowSet).iterator();
 
         when(preparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(rowSet));
         when(client.preparedQuery(anyString())).thenReturn(preparedQuery);
@@ -103,7 +103,7 @@ class UserBucketRepositoryTest {
     @Test
     void testGetServiceBucketsByUserNameEmptyResult() {
         when(rowSet.size()).thenReturn(0);
-        when(rowSet.iterator()).thenReturn(Arrays.<Row>asList().iterator());
+        doReturn(Arrays.<Row>asList().iterator()).when(rowSet).iterator();
 
         when(preparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(rowSet));
         when(client.preparedQuery(anyString())).thenReturn(preparedQuery);
@@ -160,7 +160,7 @@ class UserBucketRepositoryTest {
         when(row2.getLocalDateTime("EXPIRATION")).thenReturn(now);
 
         when(rowSet.size()).thenReturn(2);
-        when(rowSet.iterator()).thenReturn(Arrays.asList(row, row2).iterator());
+        doReturn(Arrays.asList(row, row2).iterator()).when(rowSet).iterator();
 
         when(preparedQuery.execute(any(Tuple.class))).thenReturn(Uni.createFrom().item(rowSet));
         when(client.preparedQuery(anyString())).thenReturn(preparedQuery);
