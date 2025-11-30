@@ -2,7 +2,6 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
-import com.csg.airtel.aaa4j.domain.model.ProcessType;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
@@ -124,7 +123,7 @@ class StartHandlerTest {
                 .assertCompleted();
 
         verify(accountProducer, times(1)).produceAccountingResponseEvent(
-                argThat(event -> event.responseAction() == AccountingResponseEvent.ResponseAction.DISCONNECT)
+                argThat(event -> event.action() == AccountingResponseEvent.ResponseAction.DISCONNECT)
         );
     }
 
@@ -146,7 +145,7 @@ class StartHandlerTest {
                 .assertCompleted();
 
         verify(accountProducer, times(1)).produceAccountingResponseEvent(
-                argThat(event -> event.responseAction() == AccountingResponseEvent.ResponseAction.DISCONNECT)
+                argThat(event -> event.action() == AccountingResponseEvent.ResponseAction.DISCONNECT)
         );
     }
 
@@ -166,7 +165,7 @@ class StartHandlerTest {
                 .assertCompleted();
 
         verify(accountProducer, times(1)).produceAccountingResponseEvent(
-                argThat(event -> event.responseAction() == AccountingResponseEvent.ResponseAction.DISCONNECT)
+                argThat(event -> event.action() == AccountingResponseEvent.ResponseAction.DISCONNECT)
         );
     }
 
@@ -216,18 +215,19 @@ class StartHandlerTest {
         return new AccountingRequestDto(
                 "event-id-123",
                 "session-id-123",
-                "test-user",
-                "192.168.1.1",
                 "10.0.0.1",
-                "NAS-1",
-                "NAS-PORT-1",
-                ProcessType.START,
+                "test-user",
+                AccountingRequestDto.ActionType.START,
+                0,
+                0,
+                0,
                 Instant.now(),
+                "NAS-PORT-1",
+                "192.168.1.1",
                 0,
                 0,
                 0,
-                0,
-                0
+                "NAS-1"
         );
     }
 

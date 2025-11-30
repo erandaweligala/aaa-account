@@ -2,7 +2,6 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
-import com.csg.airtel.aaa4j.domain.model.ProcessType;
 import com.csg.airtel.aaa4j.domain.model.UpdateResult;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
@@ -218,18 +217,19 @@ class StopHandlerTest {
         return new AccountingRequestDto(
                 "event-id-123",
                 "session-id-123",
-                "test-user",
-                "192.168.1.1",
                 "10.0.0.1",
-                "NAS-1",
-                "NAS-PORT-1",
-                ProcessType.STOP,
-                Instant.now(),
-                200,
+                "test-user",
+                AccountingRequestDto.ActionType.STOP,
                 3000,
                 4000,
+                200,
+                Instant.now(),
+                "NAS-PORT-1",
+                "192.168.1.1",
+                0,
                 3,
-                4
+                4,
+                "NAS-1"
         );
     }
 

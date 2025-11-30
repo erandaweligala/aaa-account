@@ -1,7 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
-import com.csg.airtel.aaa4j.domain.model.ProcessType;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,7 +36,7 @@ class AccountingHandlerFactoryTest {
 
     @Test
     void testGetHandlerForStartAction() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.START);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START);
         String traceId = "test-trace-id";
 
         when(startHandler.processAccountingStart(eq(request), eq(traceId)))
@@ -55,7 +54,7 @@ class AccountingHandlerFactoryTest {
 
     @Test
     void testGetHandlerForInterimUpdateAction() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.INTERIM_UPDATE);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.INTERIM_UPDATE);
         String traceId = "test-trace-id";
 
         when(interimHandler.handleInterim(eq(request), eq(traceId)))
@@ -73,7 +72,7 @@ class AccountingHandlerFactoryTest {
 
     @Test
     void testGetHandlerForStopAction() {
-        AccountingRequestDto request = createAccountingRequest(ProcessType.STOP);
+        AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.STOP);
         String traceId = "test-trace-id";
 
         when(stopHandler.stopProcessing(eq(request), isNull(), eq(traceId)))
@@ -89,22 +88,23 @@ class AccountingHandlerFactoryTest {
         verify(interimHandler, never()).handleInterim(any(), any());
     }
 
-    private AccountingRequestDto createAccountingRequest(ProcessType actionType) {
+    private AccountingRequestDto createAccountingRequest(AccountingRequestDto.ActionType actionType) {
         return new AccountingRequestDto(
                 "event-id-123",
                 "session-id-123",
-                "test-user",
-                "192.168.1.1",
                 "10.0.0.1",
-                "NAS-1",
-                "NAS-PORT-1",
+                "test-user",
                 actionType,
-                Instant.now(),
-                100,
                 1000,
                 2000,
+                100,
+                Instant.now(),
+                "NAS-PORT-1",
+                "192.168.1.1",
+                0,
                 1,
-                2
+                2,
+                "NAS-1"
         );
     }
 }
