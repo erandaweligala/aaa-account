@@ -42,41 +42,33 @@ public class AccountingUtil {
     private static final int COA_RETRY_MAX_ATTEMPTS = 2;
     private static final long COA_TIMEOUT_SECONDS = 45;
 
-    private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
-    private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
-
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
+    private final TimeUtil timeUtil;
+    private final MappingUtil mappingUtil;
 
 
-    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache) {
+    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, TimeUtil timeUtil, MappingUtil mappingUtil) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;
+        this.timeUtil = timeUtil;
+        this.mappingUtil = mappingUtil;
     }
 
     /**
      * Get cached current time for the current request thread.
-     * Reduces overhead of multiple LocalDateTime.now() calls.
+     * Uses centralized TimeUtil for timezone-aware, consistent time handling.
      */
     private LocalDateTime getNow() {
-        LocalDateTime now = CACHED_NOW.get();
-        if (now == null) {
-            now = LocalDateTime.now();
-            CACHED_NOW.set(now);
-        }
-        return now;
+        return timeUtil.getCurrentTimeLocal();
     }
 
     /**
      * Get cached today's date for the current request thread.
+     * Uses centralized TimeUtil for timezone-aware, consistent date handling.
      */
     private LocalDate getToday() {
-        LocalDate today = CACHED_TODAY.get();
-        if (today == null) {
-            today = LocalDate.now();
-            CACHED_TODAY.set(today);
-        }
-        return today;
+        return timeUtil.getCurrentDate();
     }
 
     /**
@@ -85,16 +77,7 @@ public class AccountingUtil {
      * and ensure fresh temporal values for subsequent requests.
      */
     public void clearTemporalCache() {
-        if (log.isTraceEnabled()) {
-            LocalDateTime cachedNow = CACHED_NOW.get();
-            LocalDate cachedToday = CACHED_TODAY.get();
-            if (cachedNow != null || cachedToday != null) {
-                log.tracef("Clearing temporal cache - cached now: %s, cached today: %s",
-                    cachedNow, cachedToday);
-            }
-        }
-        CACHED_NOW.remove();
-        CACHED_TODAY.remove();
+        timeUtil.clearCache();
     }
 
     /**
@@ -864,7 +847,7 @@ public class AccountingUtil {
         return Multi.createFrom().iterable(sessions)
                 .onItem().transformToUni(session ->
                         accountProducer.produceAccountingResponseEvent(
-                                        MappingUtil.createResponse(
+                                        mappingUtil.createResponse(
                                                 session.getSessionId(),
                                                 DISCONNECT_ACTION,
                                                 session.getNasIp(),

@@ -31,12 +31,16 @@ public class InterimHandler {
     private final UserBucketRepository userRepository;
     private final AccountingUtil accountingUtil;
     private final AccountProducer accountProducer;
+    private final TimeUtil timeUtil;
+    private final MappingUtil mappingUtil;
     @Inject
-    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer) {
+    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, TimeUtil timeUtil, MappingUtil mappingUtil) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
         this.accountingUtil = accountingUtil;
         this.accountProducer = accountProducer;
+        this.timeUtil = timeUtil;
+        this.mappingUtil = mappingUtil;
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
@@ -70,7 +74,7 @@ public class InterimHandler {
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
                         log.warnf("No service buckets found for user: %s", request.username());
-                       return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
+                       return accountProducer.produceAccountingResponseEvent(mappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));
                     }
                     int bucketCount = serviceBuckets.size();
@@ -80,12 +84,12 @@ public class InterimHandler {
                     for (ServiceBucketInfo bucket : serviceBuckets) {
                         double currentBalance = bucket.getCurrentBalance();
                         totalQuota += currentBalance;
-                        balanceList.add(MappingUtil.createBalance(bucket));
+                        balanceList.add(mappingUtil.createBalance(bucket));
                     }
 
                     if (totalQuota <= 0) {
                         log.warnf("User: %s has zero total data quota", request.username());
-                        return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
+                        return accountProducer.produceAccountingResponseEvent(mappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));
                     }
 
@@ -146,7 +150,7 @@ public class InterimHandler {
     private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
-                LocalDateTime.now(),
+                timeUtil.getCurrentTimeLocal(),
                 null,
                 request.sessionTime() - 1,
                 0L,
@@ -157,7 +161,7 @@ public class InterimHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
+        CdrmappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
     }
 
 
