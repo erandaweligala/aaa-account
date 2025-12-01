@@ -224,6 +224,8 @@ public class AccountingUtil {
             Session sessionData,
             AccountingRequestDto request,
             String bucketId) {
+
+        //todo need implement to used best practise and improve poermance and optimize and scalble code
         long totalUsage = calculateTotalUsage(request);
 
         return getGroupBucketData(userData.getGroupId())
@@ -685,7 +687,7 @@ public class AccountingUtil {
             return handleSessionDisconnect(userData, request, balance, result);
         }
 
-        return updateCacheForNormalOperation(userData, request, balance, result);
+        return updateCacheForNormalOperation(userData, request, balance, result,sessionData);
     }
 
     /**
@@ -870,8 +872,8 @@ public class AccountingUtil {
             UserSessionData userData,
             AccountingRequestDto request,
             Balance foundBalance,
-            UpdateResult result) {
-        return getUpdateResultUni(userData, request, foundBalance, result);
+            UpdateResult result,Session currentSession) {
+        return getUpdateResultUni(userData, request, foundBalance, result,currentSession);
     }
 
 
@@ -895,16 +897,15 @@ public class AccountingUtil {
         return null;
     }
 
-    private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success) {
+    private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
         if(!foundBalance.getBucketUsername().equals(request.username())) {
             userData.getBalance().remove(foundBalance);
-
+            userData.getSessions().remove(currentSession);
             // Fetch current group data to update sessions as well
             return cacheClient.getUserData(foundBalance.getBucketUsername())
                     .onFailure().recoverWithNull()
                     .onItem().transformToUni(existingGroupData -> {
                         // Find and update the session in the user's session list
-                        Session currentSession = findSessionByUsernameInList(userData.getSessions(), request.username());
 
                         // Prepare group data with updated balance and sessions
                         UserSessionData userSessionGroupData = prepareGroupDataWithSession(

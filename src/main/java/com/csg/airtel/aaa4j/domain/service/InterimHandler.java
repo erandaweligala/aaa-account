@@ -17,6 +17,7 @@ import org.jboss.logging.Logger;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @ApplicationScoped
 public class InterimHandler {
@@ -74,11 +75,16 @@ public class InterimHandler {
                     int bucketCount = serviceBuckets.size();
                     List<Balance> balanceList = new ArrayList<>(bucketCount);
                     double totalQuota = 0.0;
+                    String groupId = null;
 
                     for (ServiceBucketInfo bucket : serviceBuckets) {
+                        if(!Objects.equals(bucket.getBucketUser(), request.username())){
+                            groupId = bucket.getBucketUser();
+                        }
                         double currentBalance = bucket.getCurrentBalance();
                         totalQuota += currentBalance;
                         balanceList.add(MappingUtil.createBalance(bucket));
+
                     }
 
                     if (totalQuota <= 0) {
@@ -88,6 +94,7 @@ public class InterimHandler {
                     }
 
                      UserSessionData newUserSessionData =  UserSessionData.builder()
+                             .groupId(groupId).userName(request.username())
                     .balance(balanceList).sessions(new ArrayList<>(List.of(createSession(request)))).build();
 
                      return processAccountingRequest(newUserSessionData, request,traceId);
