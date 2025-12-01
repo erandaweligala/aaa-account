@@ -37,17 +37,16 @@ public class StartHandler {
         this.accountingUtil = accountingUtil;
     }
 
-    public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
+    public Uni<Void> processAccountingStart(AccountingRequestDto request, String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
-//todo need improve performance and used best practise and optimize this code and fixed sonar issues
-    return utilCache.getUserData(request.username())
+        return utilCache.getUserData(request.username())
             .onItem().invoke(userData ->
-                    log.infof("[traceId: %s]User data retrieved for user: %s",traceId, request.username()))
+                    log.infof("[traceId: %s] User data retrieved for user: %s", traceId, request.username()))
             .onItem().transformToUni(userSessionData -> {
                 if (userSessionData == null) {
-                    log.infof("[traceId: %s] No cache entry found for user: %s", traceId,request.username());
+                    log.infof("[traceId: %s] No cache entry found for user: %s", traceId, request.username());
                     Uni<Void> accountingResponseEventUni = handleNewUserSession(request);
 
                     long duration = System.currentTimeMillis() - startTime;
@@ -55,7 +54,7 @@ public class StartHandler {
                             traceId, request.username(), duration);
                     return accountingResponseEventUni;
                 } else {
-                    log.infof("[traceId: %s] Existing session found for user: %s",traceId, request.username());
+                    log.infof("[traceId: %s] Existing session found for user: %s", traceId, request.username());
                     Uni<Void> accountingResponseEventUni = handleExistingUserSession(request, userSessionData);
                     long duration = System.currentTimeMillis() - startTime;
                     log.infof("[traceId: %s] Completed processing accounting start for user: %s in %d ms",
@@ -107,12 +106,20 @@ public class StartHandler {
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));
             }
 
-            boolean sessionExists = userSessionData.getSessions()
-                    .stream()
-                    .anyMatch(session -> session.getSessionId().equals(request.sessionId()));
+            // Optimized: avoid stream overhead for simple check
+            boolean sessionExists = false;
+            List<Session> sessions = userSessionData.getSessions();
+            if (sessions != null) {
+                for (Session session : sessions) {
+                    if (session.getSessionId().equals(request.sessionId())) {
+                        sessionExists = true;
+                        break;
+                    }
+                }
+            }
 
             if (sessionExists) {
-                log.infof("[traceId: %s] Session already exists for user: %s, sessionId: %s",
+                log.infof("Session already exists for user: %s, sessionId: %s",
                         request.username(), request.sessionId());
                 return Uni.createFrom().voidItem();
             }
@@ -173,7 +180,7 @@ public class StartHandler {
                             // Normal balance, only update user data
                             updateUni = utilCache.updateUserAndRelatedCaches(request.username(), userSessionData)
                                     .onItem().invoke(unused ->
-                                        log.infof("[traceId: %s] New session added for user: %s, sessionId: %s",
+                                        log.infof("New session added for user: %s, sessionId: %s",
                                                 request.username(), request.sessionId()))
                                     .replaceWithVoid();
                         }
@@ -344,9 +351,15 @@ public class StartHandler {
     }
 
     private double calculateAvailableBalance(List<Balance> balanceList) {
-        return balanceList.stream()
-                .mapToDouble(Balance::getQuota)
-                .sum();
+        // Optimized: avoid stream overhead for simple sum
+        if (balanceList == null || balanceList.isEmpty()) {
+            return 0.0;
+        }
+        double sum = 0.0;
+        for (Balance balance : balanceList) {
+            sum += balance.getQuota();
+        }
+        return sum;
     }
 
     private Session createSession(AccountingRequestDto request) {
