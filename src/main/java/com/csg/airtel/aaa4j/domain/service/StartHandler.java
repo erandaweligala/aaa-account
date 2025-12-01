@@ -133,11 +133,13 @@ public class StartHandler {
                         // Add new session and update cache
                         Session newSession = createSession(request);
                         newSession.setPreviousUsageBucketId(highestPriorityBalance.getBucketId());
-                        userSessionData.getSessions().add(newSession);
+                        if(!isGroupBalance(highestPriorityBalance,request.username())) {
+                            userSessionData.getSessions().add(newSession);
+                        }
 
                         // Check if highest priority balance is a group balance
                         boolean isHighestPriorityGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
-                        String groupId = userSessionData.getGroupId();
+                        //String groupId = userSessionData.getGroupId();
 
                         Uni<Void> updateUni;
 
@@ -256,7 +258,9 @@ public class StartHandler {
                                 newUserSessionData.setUserName(request.username());
                                 Session session = createSession(request);
                                 session.setPreviousUsageBucketId(highestPriorityBalance.getBucketId());
-                                newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
+                                if(!isGroupBalance(highestPriorityBalance,request.username())) {
+                                    newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
+                                }
                                 newUserSessionData.setBalance(balanceList);
 
                                 Uni<Void> userStorageUni = utilCache.storeUserData(request.username(), newUserSessionData)
