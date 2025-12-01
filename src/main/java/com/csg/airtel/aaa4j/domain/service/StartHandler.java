@@ -36,7 +36,6 @@ public class StartHandler {
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
-   // todo implement get highest priority bucket and check  availabe balances if have balances highest balance is group , need add session for groupSessionData level
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
@@ -120,12 +119,32 @@ public class StartHandler {
             Session newSession = createSession(request);
             userSessionData.getSessions().add(newSession);
 
-            return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData)
+            // Check if the highest priority balance is a group balance
+            // If so, also add the session to group session data
+            Balance highestPriorityBalance = findHighestPriorityBalance(combinedBalances);
+
+            Uni<Void> updateUni = utilCache.updateUserAndRelatedCaches(request.username(), userSessionData)
                     .onItem().transformToUni(unused -> {
                         log.infof("[traceId: %s] New session added for user: %s, sessionId: %s",
                                 request.username(), request.sessionId());
+
+                        // If highest priority is a group balance, also add session to group data
+                        if (highestPriorityBalance != null && isGroupBalance(highestPriorityBalance, request.username())) {
+                            log.infof("Highest priority balance is a group balance. Adding session to group session data for groupId: %s", groupId);
+                            return utilCache.getUserData(groupId)
+                                    .onItem().transformToUni(groupSessionData -> {
+                                        if (groupSessionData != null && groupSessionData.getSessions() != null) {
+                                            groupSessionData.getSessions().add(newSession);
+                                            return utilCache.updateUserAndRelatedCaches(groupId, groupSessionData)
+                                                    .onItem().invoke(unused2 -> log.infof("Session added to group session data for groupId: %s", groupId));
+                                        }
+                                        return Uni.createFrom().voidItem();
+                                    });
+                        }
                         return Uni.createFrom().voidItem();
-                    })
+                    });
+
+            return updateUni
                     .invoke(() -> {
                         log.infof("cdr write event started for user: %s", request.username());
                         // Send CDR event asynchronously
@@ -200,6 +219,16 @@ public class StartHandler {
 
                        final String finalGroupId = groupId;
 
+                        // Check if the highest priority balance is a group balance
+                        // If so, add the session to group session data as well
+                        List<Balance> combinedBalances = new ArrayList<>(balanceList);
+                        combinedBalances.addAll(balanceGroupList);
+                        Balance highestPriorityBalance = findHighestPriorityBalance(combinedBalances);
+
+                        if (highestPriorityBalance != null && isGroupBalance(highestPriorityBalance, request.username())) {
+                            log.infof("Highest priority balance is a group balance. Adding session to group session data for groupId: %s", finalGroupId);
+                            groupSessionData.setSessions(new ArrayList<>(List.of(session)));
+                        }
 
                         Uni<Void> groupStorageUni = utilCache.getUserData(groupId)
                                 .chain(existingData -> {
@@ -209,7 +238,13 @@ public class StartHandler {
                                                 .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", finalGroupId));
                                     } else {
                                         log.infof("Group session data already exists for groupId: %s", finalGroupId);
-                                        return Uni.createFrom().voidItem();
+                                        // If highest priority is a group balance, add session to existing group data too
+                                        if (highestPriorityBalance != null && isGroupBalance(highestPriorityBalance, request.username())) {
+                                            existingData.getSessions().add(session);
+                                            log.infof("Session added to existing group session data for groupId: %s", finalGroupId);
+                                        }
+                                        return utilCache.updateUserAndRelatedCaches(finalGroupId, existingData)
+                                                .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", finalGroupId));
                                     }
                                 });
 
@@ -239,6 +274,52 @@ public class StartHandler {
             balanceList.add(balance);
         }
         return groupId;
+    }
+
+    /**
+     * Find the highest priority balance from the combined balance list.
+     * Priority rules: lower priority number = higher priority
+     * On tie, earliest expiry date wins
+     */
+    private Balance findHighestPriorityBalance(List<Balance> balances) {
+        if (balances == null || balances.isEmpty()) {
+            return null;
+        }
+
+        Balance highest = null;
+        long highestPriority = Long.MAX_VALUE;
+        LocalDateTime highestExpiry = null;
+
+        for (Balance balance : balances) {
+            // Skip balances with no quota
+            if (balance.getQuota() <= 0) {
+                continue;
+            }
+
+            long priority = balance.getPriority();
+            LocalDateTime expiry = balance.getBucketExpiryDate();
+
+            // Select if: no current highest, lower priority number (higher priority),
+            // or same priority but earlier expiry
+            if (highest == null || priority < highestPriority ||
+                    (priority == highestPriority && expiry != null &&
+                            (highestExpiry == null || expiry.isBefore(highestExpiry)))) {
+                highest = balance;
+                highestPriority = priority;
+                highestExpiry = expiry;
+            }
+        }
+
+        return highest;
+    }
+
+    /**
+     * Check if a balance belongs to a group (not owned by the current user).
+     */
+    private boolean isGroupBalance(Balance balance, String username) {
+        return balance.isGroup() ||
+               (balance.getBucketUsername() != null &&
+                !balance.getBucketUsername().equals(username));
     }
 
     private double calculateAvailableBalance(List<Balance> balanceList) {
