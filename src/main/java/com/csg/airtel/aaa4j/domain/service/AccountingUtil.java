@@ -44,6 +44,11 @@ public class AccountingUtil {
 
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
     private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
+    public static final String CURRENT_BALANCE = "CURRENT_BALANCE";
+    public static final String USAGE = "USAGE";
+    public static final String UPDATED_AT = "UPDATED_AT";
+    public static final String ID = "ID";
+    public static final String SERVICE_ID = "SERVICE_ID";
 
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
@@ -213,12 +218,6 @@ public class AccountingUtil {
 
 
     /**
-     * Updates session and balance with optimized reactive chain.
-     * Improvements:
-     * - Flattened reactive chain for better readability
-     * - Early exit for default group to avoid unnecessary cache calls
-     * - Synchronized balance finding to reduce overhead
-     * - Centralized cache cleanup with eventually()
      *
      * @param userData get user session data
      * @param sessionData get individual session Data
@@ -984,24 +983,6 @@ public class AccountingUtil {
         return groupData;
     }
 
-    /**
-     * Find a session by username in the user's session list.
-     * This is used to get the current session that should be added to the group's sessions.
-     *
-     * @param sessions list of sessions
-     * @param username the username to find
-     * @return the session if found, null otherwise
-     */
-    private Session findSessionByUsernameInList(List<Session> sessions, String username) {
-        if (sessions == null || sessions.isEmpty()) {
-            return null;
-        }
-
-        // Since Session doesn't have username field, we return the first session
-        // as the current user's session (in accounting context, there's typically one active session per user)
-        return sessions.isEmpty() ? null : sessions.get(0);
-    }
-
     private long getNewQuota(Session sessionData, Balance foundBalance, long totalUsage) {
         Long previousUsageObj = sessionData.getPreviousTotalUsageQuotaValue();
         long previousUsage = previousUsageObj == null ? 0L : previousUsageObj;
@@ -1075,7 +1056,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Update balance in database (optimized with pre-sized maps).
+     * Update balance in database.
      *
      * @param balance balance to update
      * @param newQuota new quota value
@@ -1117,7 +1098,6 @@ public class AccountingUtil {
      * Update group balance bucket in cache (optimized string comparison).
      */
     private Uni<Void> updateGroupBalanceBucket(Balance balance, String bucketUsername, String username) {
-        // Fast path: same user
         if (username.equals(bucketUsername)) {
             return Uni.createFrom().voidItem();
         }
@@ -1193,17 +1173,7 @@ public class AccountingUtil {
         }
     }
 
-    /**
-     * Get group bucket balances.
-     */
-    private Uni<List<Balance>> getGroupBucket(String groupId) {
-        if (groupId == null || DEFAULT_GROUP_ID.equals(groupId)) {
-            return Uni.createFrom().item(Collections.emptyList());
-        }
 
-        return cacheClient.getUserData(groupId)
-                .onItem().transform(UserSessionData::getBalance);
-    }
 
     /**
      * Get complete group bucket data including balances and sessions.
@@ -1234,8 +1204,8 @@ public class AccountingUtil {
      * Populate WHERE conditions for database update.
      */
     private void populateWhereConditions(Map<String, Object> whereConditions, Balance balance) {
-        whereConditions.put("SERVICE_ID", balance.getServiceId());
-        whereConditions.put("ID", balance.getBucketId());
+        whereConditions.put(SERVICE_ID, balance.getServiceId());
+        whereConditions.put(ID, balance.getBucketId());
     }
 
     /**
@@ -1245,9 +1215,9 @@ public class AccountingUtil {
         Long quota = balance.getQuota();
         Long initialBalance = balance.getInitialBalance();
 
-        columnValues.put("CURRENT_BALANCE", quota);
-        columnValues.put("USAGE", initialBalance - quota);
-        columnValues.put("UPDATED_AT", getNow());
+        columnValues.put(CURRENT_BALANCE, quota);
+        columnValues.put(USAGE, initialBalance - quota);
+        columnValues.put(UPDATED_AT, getNow());
     }
 
     /**

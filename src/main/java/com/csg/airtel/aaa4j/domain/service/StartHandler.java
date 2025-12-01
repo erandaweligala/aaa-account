@@ -41,7 +41,7 @@ public class StartHandler {
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
-
+//todo need improve performance and used best practise and optimize this code and fixed sonar issues
     return utilCache.getUserData(request.username())
             .onItem().invoke(userData ->
                     log.infof("[traceId: %s]User data retrieved for user: %s",traceId, request.username()))
