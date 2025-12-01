@@ -21,6 +21,7 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import io.smallrye.mutiny.Uni;
 import org.mockito.ArgumentCaptor;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -889,7 +890,21 @@ class AccountingUtilTest {
         sessionData.setSessionTime(100);
 
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock cache client
         when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
@@ -932,7 +947,21 @@ class AccountingUtilTest {
         sessionData.setSessionTime(100);
 
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock - return group balance
         UserSessionData groupData = new UserSessionData();
@@ -1019,7 +1048,21 @@ class AccountingUtilTest {
 
         // Request usage > available quota
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock
         when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
@@ -1055,7 +1098,21 @@ class AccountingUtilTest {
         sessionData.setPreviousTotalUsageQuotaValue(0L);
 
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock - no balances
         when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
@@ -1092,7 +1149,21 @@ class AccountingUtilTest {
         sessionData.setSessionTime(100);
 
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock
         when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
@@ -1135,7 +1206,21 @@ class AccountingUtilTest {
         sessionData.setSessionTime(100);
 
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock
         when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
@@ -1172,7 +1257,21 @@ class AccountingUtilTest {
         sessionData.setSessionTime(100);
 
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock
         when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
@@ -1284,7 +1383,21 @@ class AccountingUtilTest {
         sessionData.setSessionTime(50);
 
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 200, 300, 400, "session1", 100);
+            "event-1",
+            "session1",
+            "192.168.1.1",
+            "testuser",
+            AccountingRequestDto.ActionType.INTERIM_UPDATE,
+            100,
+            200,
+            300,
+            Instant.now(),
+            "port1",
+            "10.0.0.1",
+            400,
+            0,
+            0,
+            "nas1");
 
         // Mock
         when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
