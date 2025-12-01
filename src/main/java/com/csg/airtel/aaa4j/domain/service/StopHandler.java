@@ -36,14 +36,14 @@ public class StopHandler {
         this.accountingUtil = accountingUtil;
     }
 
-    public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
+    public Uni<Void> stopProcessing(AccountingRequestDto request, String bucketId, String traceId) {
         log.infof("[traceId: %s] Processing accounting stop for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
                 .onItem().invoke(() -> log.infof("[traceId: %s] User data retrieved for user: %s", traceId, request.username()))
                 .onItem().transformToUni(userSessionData ->
                         userSessionData != null ?
-                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> log.infof("[traceId: %s] Completed processing for eventType=%s, action=%s, bucketId=%s", traceId, bucketId))
+                                 processAccountingStop(userSessionData, request, bucketId).invoke(() -> log.infof("[traceId: %s] Completed processing for bucketId=%s", traceId, bucketId))
                                  : Uni.createFrom().voidItem()
                 )
                 .onFailure().recoverWithUni(throwable -> {
@@ -53,8 +53,7 @@ public class StopHandler {
     }
 
     public Uni<Void> processAccountingStop(
-            UserSessionData userSessionData,AccountingRequestDto request
-            ,String bucketId) {
+            UserSessionData userSessionData, AccountingRequestDto request, String bucketId) {
 
         if (userSessionData.getSessions() == null || userSessionData.getSessions().isEmpty()) {
             log.infof("[traceId: %s] No active sessions found for user: %s", request.username());
@@ -72,7 +71,7 @@ public class StopHandler {
         Map<String, Object> columnValues = HashMap.newHashMap(5);
         Map<String, Object> whereConditions = HashMap.newHashMap(2);
 
-        return cleanSessionAndUpdateBalance(userSessionData, columnValues, whereConditions,bucketId,request,session)
+        return cleanSessionAndUpdateBalance(userSessionData, columnValues, whereConditions, bucketId, request, session)
                 .call(() -> {
 
                     DBWriteRequest dbWriteRequest = buildDBWriteRequest(
@@ -129,7 +128,7 @@ public class StopHandler {
     private Uni<Void> cleanSessionAndUpdateBalance(
             UserSessionData userSessionData,
             Map<String, Object> columnValues,
-            Map<String, Object> whereConditions,String bucketId,AccountingRequestDto request,Session session) {
+            Map<String, Object> whereConditions, String bucketId, AccountingRequestDto request, Session session) {
 
         return accountingUtil.updateSessionAndBalance(userSessionData, session, request, bucketId)
                 .onItem()
@@ -154,7 +153,7 @@ public class StopHandler {
 
     private void populateColumnValues(Map<String, Object> columnValues, Balance balance) {
         columnValues.put("CURRENT_BALANCE", balance.getQuota());
-        columnValues.put("USAGE", balance.getInitialBalance()- balance.getQuota());
+        columnValues.put("USAGE", balance.getInitialBalance() - balance.getQuota());
         columnValues.put("UPDATED_AT", LocalDateTime.now());
     }
 

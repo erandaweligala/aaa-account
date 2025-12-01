@@ -83,7 +83,7 @@ public class CacheClient {
                         throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR,ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
                     }
                 }))
-                .onFailure().invoke(e -> log.error("Failed to get user data for userId: " + "10001", e));
+                .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
     }
 
 
@@ -99,7 +99,7 @@ public class CacheClient {
                                 .set(userKey, serializedData, new SetArgs().ex(Duration.ofHours(1000)))
                 )
                 .onItem().invoke(() -> log.infof("Cache update complete for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime)))
-                .onFailure().invoke(err -> log.error("Failed to update cache for user {}", userId, err))
+                .onFailure().invoke(err -> log.errorf("Failed to update cache for userId: %s", userId, err))
                 .replaceWithVoid();
     }
 
@@ -119,7 +119,7 @@ public class CacheClient {
         try {
             return objectMapper.writeValueAsString(data);
         } catch (Exception e) {
-            throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR,ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
+            throw new BaseException("Failed to serialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR,ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
 
         }
     }
