@@ -38,6 +38,7 @@ public class StartHandler {
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
+        //TODO: Implement highest-priority balance handling. If it is a group balance, update only the createSession() groupSessionData object. If it is a normal balance, update only the createSession()  userSessionData object
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
