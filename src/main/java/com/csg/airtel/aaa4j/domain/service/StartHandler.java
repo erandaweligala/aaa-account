@@ -38,7 +38,6 @@ public class StartHandler {
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
-        //todo highestbucket are if group balance no need to add session userSessionData
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
@@ -137,25 +136,10 @@ public class StartHandler {
                         userSessionData.getSessions().add(newSession);
 
                         Uni<Void> updateUni = utilCache.updateUserAndRelatedCaches(request.username(), userSessionData)
-                                .onItem().transformToUni(unused -> {
+                                .onItem().invoke(unused ->
                                     log.infof("[traceId: %s] New session added for user: %s, sessionId: %s",
-                                            request.username(), request.sessionId());
-
-                                    // If highest priority is a group balance, also add session to group data
-                                    if (isGroupBalance(highestPriorityBalance, request.username())) {
-                                        log.infof("Highest priority balance is a group balance. Adding session to group session data for groupId: %s", groupId);
-                                        return utilCache.getUserData(groupId)
-                                                .onItem().transformToUni(groupSessionData -> {
-                                                    if (groupSessionData != null && groupSessionData.getSessions() != null) {
-                                                        groupSessionData.getSessions().add(newSession);
-                                                        return utilCache.updateUserAndRelatedCaches(groupId, groupSessionData)
-                                                                .onItem().invoke(unused2 -> log.infof("Session added to group session data for groupId: %s", groupId));
-                                                    }
-                                                    return Uni.createFrom().voidItem();
-                                                });
-                                    }
-                                    return Uni.createFrom().voidItem();
-                                });
+                                            request.username(), request.sessionId()))
+                                .replaceWithVoid();
 
                         return updateUni
                                 .invoke(() -> {
@@ -251,11 +235,6 @@ public class StartHandler {
 
                                     final String finalGroupId = finalGroupId1;
 
-                                    if (isGroupBalance(highestPriorityBalance, request.username())) {
-                                        log.infof("Highest priority balance is a group balance. Adding session to group session data for groupId: %s", finalGroupId);
-                                        groupSessionData.setSessions(new ArrayList<>(List.of(session)));
-                                    }
-
                                     Uni<Void> groupStorageUni = utilCache.getUserData(finalGroupId1)
                                             .chain(existingData -> {
                                                 if (existingData == null) {
@@ -264,11 +243,6 @@ public class StartHandler {
                                                             .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", finalGroupId));
                                                 } else {
                                                     log.infof("Group session data already exists for groupId: %s", finalGroupId);
-                                                    // If highest priority is a group balance, add session to existing group data too
-                                                    if (isGroupBalance(highestPriorityBalance, request.username())) {
-                                                        existingData.getSessions().add(session);
-                                                        log.infof("Session added to existing group session data for groupId: %s", finalGroupId);
-                                                    }
                                                     return utilCache.updateUserAndRelatedCaches(finalGroupId, existingData)
                                                             .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", finalGroupId));
                                                 }
