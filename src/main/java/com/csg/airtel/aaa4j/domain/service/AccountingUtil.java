@@ -224,16 +224,19 @@ public class AccountingUtil {
             Session sessionData,
             AccountingRequestDto request,
             String bucketId) {
-    //todo implement need to combined  getGroupBucket related sessions data
         long totalUsage = calculateTotalUsage(request);
 
-        return getCombinedBalances(userData.getGroupId(), userData.getBalance())
-                .onItem().transformToUni(combinedBalances ->
-                        findBalanceWithHighestPriority(combinedBalances, bucketId)
-                                .onItem().transformToUni(foundBalance ->
-                                        processBalanceUpdate(userData, sessionData, request, foundBalance, combinedBalances, totalUsage)
-                                )
-                )
+        return getGroupBucketData(userData.getGroupId())
+                .onItem().transformToUni(groupData -> {
+                    List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
+                    List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
+
+                    return findBalanceWithHighestPriority(combinedBalances, bucketId)
+                            .onItem().transformToUni(foundBalance ->
+                                    processBalanceUpdateWithCombinedData(userData, sessionData, request,
+                                            foundBalance, combinedBalances, combinedSessions, totalUsage)
+                            );
+                })
                 .invoke(result -> clearTemporalCache())
                 .onFailure().invoke(error -> clearTemporalCache());
     }
@@ -393,6 +396,62 @@ public class AccountingUtil {
     }
 
     /**
+     * Synchronously combine balances from user and group data.
+     *
+     * @param userBalances user's balances
+     * @param groupData group bucket data (may be null)
+     * @return combined list of balances
+     */
+    private List<Balance> getCombinedBalancesSync(List<Balance> userBalances, UserSessionData groupData) {
+        int userSize = userBalances != null ? userBalances.size() : 0;
+        List<Balance> groupBalances = groupData != null ? groupData.getBalance() : null;
+        int groupSize = (groupBalances != null && !groupBalances.isEmpty()) ? groupBalances.size() : 0;
+
+        List<Balance> combined = new ArrayList<>(userSize + groupSize);
+
+        if (userBalances != null) {
+            combined.addAll(userBalances);
+        }
+        if (groupBalances != null && !groupBalances.isEmpty()) {
+            combined.addAll(groupBalances);
+        }
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Combined balances: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
+        }
+
+        return combined;
+    }
+
+    /**
+     * Synchronously combine sessions from user and group data.
+     *
+     * @param userSessions user's sessions
+     * @param groupData group bucket data (may be null)
+     * @return combined list of sessions
+     */
+    private List<Session> getCombinedSessionsSync(List<Session> userSessions, UserSessionData groupData) {
+        int userSize = userSessions != null ? userSessions.size() : 0;
+        List<Session> groupSessions = groupData != null ? groupData.getSessions() : null;
+        int groupSize = (groupSessions != null && !groupSessions.isEmpty()) ? groupSessions.size() : 0;
+
+        List<Session> combined = new ArrayList<>(userSize + groupSize);
+
+        if (userSessions != null) {
+            combined.addAll(userSessions);
+        }
+        if (groupSessions != null && !groupSessions.isEmpty()) {
+            combined.addAll(groupSessions);
+        }
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Combined sessions: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
+        }
+
+        return combined;
+    }
+
+    /**
      * Process balance update (refactored for reduced cognitive complexity).
      */
     private Uni<UpdateResult> processBalanceUpdate(
@@ -405,6 +464,56 @@ public class AccountingUtil {
 
         if (foundBalance == null) {
             return handleNoValidBalance(request);
+        }
+
+        BalanceUpdateContext context = prepareBalanceUpdateContext(
+                sessionData, foundBalance, combinedBalances, totalUsage);
+
+        long newQuota = updateQuotaForBucketChange(
+                userData, sessionData, context.effectiveBalance, combinedBalances,
+                context.previousUsageBucketId, context.bucketChanged, totalUsage);
+
+        Uni<UpdateResult> consumptionLimitResult = checkAndHandleConsumptionLimit(
+                userData, request, context.effectiveBalance, context.usageDelta,
+                newQuota, context.previousUsageBucketId);
+
+        if (consumptionLimitResult != null) {
+            return consumptionLimitResult;
+        }
+
+        return finalizeBalanceUpdate(userData, sessionData, request, context.effectiveBalance,
+                newQuota, context.previousUsageBucketId, totalUsage);
+    }
+
+    /**
+     * Process balance update with combined sessions and balances from user and group.
+     * This method extends the regular processBalanceUpdate by considering group bucket sessions.
+     *
+     * @param userData user session data
+     * @param sessionData current session data
+     * @param request accounting request
+     * @param foundBalance balance found with highest priority
+     * @param combinedBalances combined balances from user and group
+     * @param combinedSessions combined sessions from user and group
+     * @param totalUsage total usage for current request
+     * @return Uni of UpdateResult
+     */
+    private Uni<UpdateResult> processBalanceUpdateWithCombinedData(
+            UserSessionData userData,
+            Session sessionData,
+            AccountingRequestDto request,
+            Balance foundBalance,
+            List<Balance> combinedBalances,
+            List<Session> combinedSessions,
+            long totalUsage) {
+
+        if (foundBalance == null) {
+            return handleNoValidBalance(request);
+        }
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
+                    combinedBalances.size(), combinedSessions.size());
         }
 
         BalanceUpdateContext context = prepareBalanceUpdateContext(
@@ -1006,6 +1115,30 @@ public class AccountingUtil {
 
         return cacheClient.getUserData(groupId)
                 .onItem().transform(UserSessionData::getBalance);
+    }
+
+    /**
+     * Get complete group bucket data including balances and sessions.
+     *
+     * @param groupId the group ID to fetch data for
+     * @return Uni of UserSessionData for the group, or null if no group or default group
+     */
+    private Uni<UserSessionData> getGroupBucketData(String groupId) {
+        if (groupId == null || DEFAULT_GROUP_ID.equals(groupId)) {
+            return Uni.createFrom().nullItem();
+        }
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Fetching group bucket data for groupId: %s", groupId);
+        }
+
+        return cacheClient.getUserData(groupId)
+                .onFailure().invoke(throwable -> {
+                    if (log.isDebugEnabled()) {
+                        log.debugf(throwable, "Failed to fetch group bucket data for groupId: %s", groupId);
+                    }
+                })
+                .onFailure().recoverWithNull();
     }
 
 
