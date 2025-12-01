@@ -228,8 +228,8 @@ class InterimHandlerTest {
 
     private Balance createBalance() {
         Balance balance = new Balance();
-        balance.setBucketId("BUCKET-1");
-        balance.setServiceId(1L);
+        balance.setBucketId("1");
+        balance.setServiceId("1");
         balance.setQuota(5000L);
         balance.setInitialBalance(10000L);
         balance.setPriority(1L);
@@ -240,12 +240,12 @@ class InterimHandlerTest {
 
     private List<ServiceBucketInfo> createServiceBuckets() {
         ServiceBucketInfo bucket = new ServiceBucketInfo();
-        bucket.setBucketId("BUCKET-1");
+        bucket.setBucketId(1);
         bucket.setServiceId(1L);
-        bucket.setCurrentBalance(5000.0);
-        bucket.setInitialBalance(10000.0);
+        bucket.setCurrentBalance(5000);
+        bucket.setInitialBalance(10000);
         bucket.setPriority(1L);
-        bucket.setServiceStatus("Active");
+        bucket.setStatus("Active");
         bucket.setTimeWindow("0-24");
         bucket.setBucketUser("test-user");
         return List.of(bucket);
@@ -253,12 +253,12 @@ class InterimHandlerTest {
 
     private List<ServiceBucketInfo> createServiceBucketsWithZeroBalance() {
         ServiceBucketInfo bucket = new ServiceBucketInfo();
-        bucket.setBucketId("BUCKET-1");
+        bucket.setBucketId(1);
         bucket.setServiceId(1L);
-        bucket.setCurrentBalance(0.0);
-        bucket.setInitialBalance(0.0);
+        bucket.setCurrentBalance(0);
+        bucket.setInitialBalance(0);
         bucket.setPriority(1L);
-        bucket.setServiceStatus("Active");
+        bucket.setStatus("Active");
         bucket.setTimeWindow("0-24");
         bucket.setBucketUser("test-user");
         return List.of(bucket);

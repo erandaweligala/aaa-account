@@ -1,7 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
-import com.csg.airtel.aaa4j.domain.model.cdr.EventTypes;
 import com.csg.airtel.aaa4j.domain.model.cdr.*;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;

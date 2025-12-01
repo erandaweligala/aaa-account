@@ -96,17 +96,17 @@ mp:
         batch.size: 16384
         linger.ms: 10
 
-#      accounting-cdr-events:
-#        connector: smallrye-kafka
-#        topic: cdr-event
-#        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
-#        key.serializer: org.apache.kafka.common.serialization.StringSerializer
-#        acks: all
-#        retries: 3
-#        max.in.flight.requests.per.connection: 5
-#        compression.type: snappy
-#        batch.size: 16384
-#        linger.ms: 10
+      accounting-cdr-events:
+        connector: smallrye-kafka
+        topic: cdr-event
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        acks: all
+        retries: 3
+        max.in.flight.requests.per.connection: 5
+        compression.type: snappy
+        batch.size: 16384
+        linger.ms: 10
 
     incoming:
       accounting-events:

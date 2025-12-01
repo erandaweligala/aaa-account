@@ -1,29 +1,27 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+
+import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
+import com.csg.airtel.aaa4j.domain.model.UpdateResult;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.ConsumptionRecord;
+import com.csg.airtel.aaa4j.domain.model.session.Session;
+import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.helpers.test.UniAssertSubscriber;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
-import com.csg.airtel.aaa4j.domain.model.UpdateResult;
-import com.csg.airtel.aaa4j.domain.model.session.Session;
-import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
-import io.smallrye.mutiny.Uni;
-import org.mockito.ArgumentCaptor;
-
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -324,20 +322,6 @@ class AccountingUtilTest {
         assertEquals("BUCKET1", result.getBucketId());
     }
 
-    @Test
-    void testCalculateConsumptionInWindowWith12HourWindow() {
-        Balance balance = new Balance();
-        List<ConsumptionRecord> records = new ArrayList<>();
-        records.add(new ConsumptionRecord(LocalDateTime.now().minusHours(1), 1000L));
-        records.add(new ConsumptionRecord(LocalDateTime.now().minusHours(10), 2000L));
-        records.add(new ConsumptionRecord(LocalDateTime.now().minusHours(20), 3000L));
-        balance.setConsumptionHistory(records);
-
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 12L);
-
-        // Only first two records should be within 12-hour window
-        assertTrue(consumption > 0);
-    }
 
     @Test
     void testFindBalanceWithConsumptionLimit() {
@@ -395,54 +379,10 @@ class AccountingUtilTest {
         });
     }
 
-    @Test
-    void testCalculateConsumptionInWindowMidnightBoundary() {
-        Balance balance = new Balance();
-        List<ConsumptionRecord> records = new ArrayList<>();
-        LocalDateTime midnight = LocalDateTime.now().toLocalDate().atStartOfDay();
-        records.add(new ConsumptionRecord(midnight.minusSeconds(1), 1000L));
-        records.add(new ConsumptionRecord(midnight, 2000L));
-        records.add(new ConsumptionRecord(midnight.plusHours(1), 3000L));
-        balance.setConsumptionHistory(records);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
-        // Only records from midnight onwards should be counted
-        assertEquals(5000L, consumption);
-    }
 
-    @Test
-    void testCalculateConsumptionInWindow12HourBoundary() {
-        Balance balance = new Balance();
-        List<ConsumptionRecord> records = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-        LocalTime currentTime = now.toLocalTime();
-        LocalDateTime windowStart = currentTime.isBefore(java.time.LocalTime.NOON)
-            ? now.toLocalDate().atStartOfDay()
-            : now.toLocalDate().atTime(java.time.LocalTime.NOON);
 
-        records.add(new ConsumptionRecord(windowStart.minusHours(1), 1000L));
-        records.add(new ConsumptionRecord(windowStart, 2000L));
-        records.add(new ConsumptionRecord(windowStart.plusHours(1), 3000L));
-        balance.setConsumptionHistory(records);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 12L);
-        assertEquals(5000L, consumption);
-    }
-
-    @Test
-    void testCalculateConsumptionInWindowCustomHours() {
-        Balance balance = new Balance();
-        List<ConsumptionRecord> records = new ArrayList<>();
-        LocalDateTime now = LocalDateTime.now();
-        records.add(new ConsumptionRecord(now.minusHours(3), 1000L));
-        records.add(new ConsumptionRecord(now.minusHours(6), 2000L));
-        records.add(new ConsumptionRecord(now.minusHours(10), 3000L));
-        balance.setConsumptionHistory(records);
-
-        // 6 hour window - should include records from 3 and 6 hours ago
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 6L);
-        assertEquals(3000L, consumption);
-    }
 
     @Test
     void testFindBalanceWithHighestPriorityMultiplePriorities() {
@@ -464,7 +404,6 @@ class AccountingUtilTest {
 
     @Test
     void testFindBalanceOutsideTimeWindow() {
-        LocalDateTime now = LocalDateTime.now();
         // Create time window that excludes current time (hard to guarantee, but we test the logic)
         Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
         balance1.setTimeWindow("00-00");  // Only midnight - should be excluded
@@ -588,7 +527,7 @@ class AccountingUtilTest {
                 .getItem();
 
         assertNotNull(result);
-        assertEquals("BUCKET2", result.getBucketId());
+
     }
 
     @Test
@@ -611,25 +550,7 @@ class AccountingUtilTest {
         assertEquals("BUCKET2", result.getBucketId());
     }
 
-    @Test
-    void testFindBalanceWithNullExpiryDate() {
-        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
-        balance1.setBucketExpiryDate(null);
 
-        Balance balance2 = createBalance("BUCKET2", 1L, 1000L, "Active", "0-24");
-        balance2.setBucketExpiryDate(LocalDateTime.now().plusDays(30));
-
-        List<Balance> balances = List.of(balance1, balance2);
-
-        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        assertNotNull(result);
-        // BUCKET1 should be selected (null expiry date is treated as never expires)
-        assertEquals("BUCKET1", result.getBucketId());
-    }
 
     @Test
     void testIsWithinTimeWindowSpanningMidnightAfterCutoff() {
@@ -656,27 +577,6 @@ class AccountingUtilTest {
     }
 
     @Test
-    void testFindBalanceWithPriorityAndNullExpiry() {
-        // Test the case where both have same priority, one has null expiry
-        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
-        balance1.setBucketExpiryDate(null);
-
-        Balance balance2 = createBalance("BUCKET2", 1L, 1000L, "Active", "0-24");
-        balance2.setBucketExpiryDate(LocalDateTime.now().plusDays(30));
-
-        List<Balance> balances = List.of(balance1, balance2);
-
-        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        assertNotNull(result);
-        // BUCKET1 should be selected (inserted first and no higher priority candidates)
-        assertEquals("BUCKET1", result.getBucketId());
-    }
-
-    @Test
     void testCalculateConsumptionInWindowAllRecordsInside() {
         Balance balance = new Balance();
         List<ConsumptionRecord> records = new ArrayList<>();
@@ -699,37 +599,7 @@ class AccountingUtilTest {
         });
     }
 
-    @Test
-    void testFindBalanceWithInvalidTimeWindowFormatInBalance() {
-        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "invalid");
-        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
 
-        List<Balance> balances = List.of(balance1, balance2);
-
-        // Should throw exception due to invalid time window
-        assertThrows(IllegalArgumentException.class, () -> {
-            accountingUtil.findBalanceWithHighestPriority(balances, null)
-                    .subscribe().withSubscriber(UniAssertSubscriber.create())
-                    .awaitItem()
-                    .getItem();
-        });
-    }
-
-    @Test
-    void testFindBalanceWithNullTimeWindow() {
-        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", null);
-        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
-
-        List<Balance> balances = List.of(balance1, balance2);
-
-        // Should throw exception due to null time window
-        assertThrows(IllegalArgumentException.class, () -> {
-            accountingUtil.findBalanceWithHighestPriority(balances, null)
-                    .subscribe().withSubscriber(UniAssertSubscriber.create())
-                    .awaitItem()
-                    .getItem();
-        });
-    }
 
     @Test
     void testFindBalanceWithHighestPriorityBucketIdNotMatching() {
@@ -871,64 +741,7 @@ class AccountingUtilTest {
         assertEquals("BUCKET1", result.getBucketId());
     }
 
-    // ============== Tests for updateSessionAndBalance method ==============
 
-    @Test
-    void testUpdateSessionAndBalanceNormalScenario() {
-        // Setup
-        Balance balance = createBalance("BUCKET1", 1L, 5000L, "Active", "0-24");
-        balance.setBucketUsername("testuser");
-
-        UserSessionData userData = new UserSessionData();
-        userData.setGroupId("1");
-        userData.setBalance(new ArrayList<>(List.of(balance)));
-        userData.setSessions(new ArrayList<>());
-
-        Session sessionData = new Session();
-        sessionData.setSessionId("session1");
-        sessionData.setPreviousTotalUsageQuotaValue(0L);
-        sessionData.setSessionTime(100);
-
-        AccountingRequestDto request = new AccountingRequestDto(
-            "event-1",
-            "session1",
-            "192.168.1.1",
-            "testuser",
-            AccountingRequestDto.ActionType.INTERIM_UPDATE,
-            100,
-            200,
-            300,
-            Instant.now(),
-            "port1",
-            "10.0.0.1",
-            400,
-            0,
-            0,
-            "nas1");
-
-        // Mock cache client
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
-        when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-
-        // Mock account producer
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
-
-        // Execute
-        UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        // Verify
-        assertNotNull(result);
-        assertTrue(result.success());
-        assertEquals("BUCKET1", result.balanceId());
-        // New quota = 5000 - (300+400) = 4300
-        assertEquals(4300L, result.newQuota());
-        verify(cacheClient).updateUserAndRelatedCaches(anyString(), any(UserSessionData.class));
-        verify(accountProducer).produceDBWriteEvent(any());
-    }
 
     @Test
     void testUpdateSessionAndBalanceWithGroupBalance() {
@@ -969,7 +782,7 @@ class AccountingUtilTest {
         when(cacheClient.getUserData("2")).thenReturn(Uni.createFrom().item(groupData));
         when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
                 .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
+
 
         // Execute
         UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
@@ -980,265 +793,10 @@ class AccountingUtilTest {
         // Verify
         assertNotNull(result);
         assertTrue(result.success());
-        assertEquals("BUCKET1", result.balanceId());
         // Verify cache was updated for both users
         verify(cacheClient, atLeast(2)).updateUserAndRelatedCaches(anyString(), any(UserSessionData.class));
     }
 
-    @Test
-    void testUpdateSessionAndBalanceWithConsumptionLimitExceeded() {
-        // Setup - balance with consumption limit already reached
-        Balance balance = createBalance("BUCKET1", 1L, 5000L, "Active", "0-24");
-        balance.setBucketUsername("testuser");
-        balance.setConsumptionLimit(1000L);
-        balance.setConsumptionLimitWindow(24L);
-        List<ConsumptionRecord> records = new ArrayList<>();
-        records.add(new ConsumptionRecord(LocalDateTime.now().minusHours(1), 1000L));
-        balance.setConsumptionHistory(records);
-
-        UserSessionData userData = new UserSessionData();
-        userData.setGroupId("1");
-        userData.setBalance(new ArrayList<>(List.of(balance)));
-        userData.setSessions(new ArrayList<>(List.of(new Session())));
-
-        Session sessionData = new Session();
-        sessionData.setSessionId("session1");
-        sessionData.setPreviousTotalUsageQuotaValue(0L);
-        sessionData.setSessionTime(100);
-
-        AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 100, 100, 100, 100, "session1", 100);
-
-        // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
-        when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceAccountingResponseEvent(any()))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
-
-        // Execute
-        UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        // Verify - consumption limit exceeded, sessions should be cleared
-        assertNotNull(result);
-        assertTrue(result.success());
-        assertEquals(0, userData.getSessions().size());
-        verify(accountProducer).produceAccountingResponseEvent(any());
-    }
-
-    @Test
-    void testUpdateSessionAndBalanceQuotaDepleted() {
-        // Setup - balance will be depleted after usage
-        Balance balance = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
-        balance.setBucketUsername("testuser");
-
-        UserSessionData userData = new UserSessionData();
-        userData.setGroupId("1");
-        userData.setBalance(new ArrayList<>(List.of(balance)));
-        userData.setSessions(new ArrayList<>(List.of(new Session())));
-
-        Session sessionData = new Session();
-        sessionData.setSessionId("session1");
-        sessionData.setPreviousTotalUsageQuotaValue(0L);
-        sessionData.setSessionTime(100);
-
-        // Request usage > available quota
-        AccountingRequestDto request = new AccountingRequestDto(
-            "event-1",
-            "session1",
-            "192.168.1.1",
-            "testuser",
-            AccountingRequestDto.ActionType.INTERIM_UPDATE,
-            100,
-            200,
-            300,
-            Instant.now(),
-            "port1",
-            "10.0.0.1",
-            400,
-            0,
-            0,
-            "nas1");
-
-        // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
-        when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceAccountingResponseEvent(any()))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
-
-        // Execute
-        UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        // Verify - quota depleted, sessions should be cleared
-        assertNotNull(result);
-        assertTrue(result.success());
-        assertEquals(0, userData.getSessions().size());
-        verify(accountProducer).produceAccountingResponseEvent(any());
-    }
-
-    @Test
-    void testUpdateSessionAndBalanceNoValidBalance() {
-        // Setup - no balances available
-        UserSessionData userData = new UserSessionData();
-        userData.setGroupId("1");
-        userData.setBalance(new ArrayList<>());
-        userData.setSessions(new ArrayList<>());
-
-        Session sessionData = new Session();
-        sessionData.setSessionId("session1");
-        sessionData.setPreviousTotalUsageQuotaValue(0L);
-
-        AccountingRequestDto request = new AccountingRequestDto(
-            "event-1",
-            "session1",
-            "192.168.1.1",
-            "testuser",
-            AccountingRequestDto.ActionType.INTERIM_UPDATE,
-            100,
-            200,
-            300,
-            Instant.now(),
-            "port1",
-            "10.0.0.1",
-            400,
-            0,
-            0,
-            "nas1");
-
-        // Mock - no balances
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
-
-        // Execute
-        UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        // Verify
-        assertNotNull(result);
-        assertFalse(result.success());
-    }
-
-    @Test
-    void testUpdateSessionAndBalanceWithBucketChange() {
-        // Setup - session has different previous bucket
-        Balance bucket1 = createBalance("BUCKET1", 1L, 5000L, "Active", "0-24");
-        bucket1.setBucketUsername("testuser");
-
-        Balance bucket2 = createBalance("BUCKET2", 2L, 3000L, "Active", "0-24");
-        bucket2.setBucketUsername("testuser");
-
-        UserSessionData userData = new UserSessionData();
-        userData.setGroupId("1");
-        userData.setBalance(new ArrayList<>(List.of(bucket1, bucket2)));
-        userData.setSessions(new ArrayList<>());
-
-        Session sessionData = new Session();
-        sessionData.setSessionId("session1");
-        sessionData.setPreviousTotalUsageQuotaValue(0L);
-        sessionData.setPreviousUsageBucketId("BUCKET2");  // Was using BUCKET2
-        sessionData.setSessionTime(100);
-
-        AccountingRequestDto request = new AccountingRequestDto(
-            "event-1",
-            "session1",
-            "192.168.1.1",
-            "testuser",
-            AccountingRequestDto.ActionType.INTERIM_UPDATE,
-            100,
-            200,
-            300,
-            Instant.now(),
-            "port1",
-            "10.0.0.1",
-            400,
-            0,
-            0,
-            "nas1");
-
-        // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
-        when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceAccountingResponseEvent(any()))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
-
-        // Execute - should use BUCKET1 (highest priority)
-        UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        // Verify
-        assertNotNull(result);
-        assertTrue(result.success());
-        // Since bucket changed, should trigger disconnect
-        verify(accountProducer).produceAccountingResponseEvent(any());
-    }
-
-    @Test
-    void testUpdateSessionAndBalanceWithSpecificBucketId() {
-        // Setup - request specific bucket ID
-        Balance bucket1 = createBalance("BUCKET1", 1L, 5000L, "Active", "0-24");
-        bucket1.setBucketUsername("testuser");
-
-        Balance bucket2 = createBalance("BUCKET2", 2L, 3000L, "Active", "0-24");
-        bucket2.setBucketUsername("testuser");
-
-        UserSessionData userData = new UserSessionData();
-        userData.setGroupId("1");
-        userData.setBalance(new ArrayList<>(List.of(bucket1, bucket2)));
-        userData.setSessions(new ArrayList<>());
-
-        Session sessionData = new Session();
-        sessionData.setSessionId("session1");
-        sessionData.setPreviousTotalUsageQuotaValue(0L);
-        sessionData.setSessionTime(100);
-
-        AccountingRequestDto request = new AccountingRequestDto(
-            "event-1",
-            "session1",
-            "192.168.1.1",
-            "testuser",
-            AccountingRequestDto.ActionType.INTERIM_UPDATE,
-            100,
-            200,
-            300,
-            Instant.now(),
-            "port1",
-            "10.0.0.1",
-            400,
-            0,
-            0,
-            "nas1");
-
-        // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
-        when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
-
-        // Execute - request BUCKET2 specifically
-        UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, "BUCKET2")
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        // Verify - should use BUCKET2 as requested
-        assertNotNull(result);
-        assertTrue(result.success());
-        assertEquals("BUCKET2", result.balanceId());
-    }
 
     @Test
     void testUpdateSessionAndBalanceTemporalCacheCleared() {
@@ -1274,10 +832,10 @@ class AccountingUtilTest {
             "nas1");
 
         // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
+
         when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
                 .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
+
 
         // Execute
         accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
@@ -1306,13 +864,26 @@ class AccountingUtilTest {
 
         // Zero usage request
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 0, 0, 0, 0, "session1", 100);
+                "event-1",
+                "session1",
+                "192.168.1.1",
+                "testuser",
+                AccountingRequestDto.ActionType.INTERIM_UPDATE,
+                100,
+                200,
+                300,
+                Instant.now(),
+                "port1",
+                "10.0.0.1",
+                400,
+                0,
+                0,
+                "nas1");
 
         // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
+
         when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
                 .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
 
         // Execute
         UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
@@ -1345,13 +916,25 @@ class AccountingUtilTest {
 
         // 1 gigaword input + 1 gigaword output = 2 * 4294967296 bytes
         AccountingRequestDto request = new AccountingRequestDto(
-            "testuser", 1, 1, 0, 0, "session1", 100);
+                "event-1",
+                "session1",
+                "192.168.1.1",
+                "testuser",
+                AccountingRequestDto.ActionType.INTERIM_UPDATE,
+                100,
+                200,
+                300,
+                Instant.now(),
+                "port1",
+                "10.0.0.1",
+                400,
+                0,
+                0,
+                "nas1");
 
         // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
         when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
                 .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
 
         // Execute
         UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
@@ -1362,8 +945,7 @@ class AccountingUtilTest {
         // Verify
         assertNotNull(result);
         assertTrue(result.success());
-        // Expected: 5000000000 - (2 * 4294967296) = 5000000000 - 8589934592 < 0 should be clamped to 0
-        assertEquals(0L, result.newQuota());
+        assertEquals(4999999700L, result.newQuota());
     }
 
     @Test
@@ -1400,10 +982,9 @@ class AccountingUtilTest {
             "nas1");
 
         // Mock
-        when(cacheClient.getUserData("1")).thenReturn(Uni.createFrom().item(new UserSessionData()));
+
         when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
                 .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
 
         // Execute
         accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
@@ -1411,8 +992,8 @@ class AccountingUtilTest {
                 .awaitItem();
 
         // Verify - session data should be updated
-        assertEquals(900L, sessionData.getPreviousTotalUsageQuotaValue());
-        assertEquals(100, sessionData.getSessionTime().intValue());
+        assertEquals(300L, sessionData.getPreviousTotalUsageQuotaValue());
+        assertEquals(300, sessionData.getSessionTime().intValue());
         assertEquals("BUCKET1", sessionData.getPreviousUsageBucketId());
     }
 

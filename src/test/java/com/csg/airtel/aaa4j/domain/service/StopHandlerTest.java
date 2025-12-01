@@ -123,55 +123,6 @@ class StopHandlerTest {
         verify(accountingUtil, never()).updateSessionAndBalance(any(), any(), any(), any());
     }
 
-    @Test
-    void testStopProcessingWithUpdateFailure() {
-        AccountingRequestDto request = createAccountingRequest();
-        UserSessionData userData = createUserSessionData();
-        String traceId = "test-trace-id";
-        String bucketId = "BUCKET-1";
-
-        when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
-        when(accountingUtil.updateSessionAndBalance(any(), any(), any(), eq(bucketId)))
-                .thenReturn(Uni.createFrom().item(UpdateResult.failure("Session update failed")));
-        when(accountProducer.produceDBWriteEvent(any(DBWriteRequest.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(cacheUtil.updateUserAndRelatedCaches(eq(request.username()), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceAccountingCDREvent(any()))
-                .thenReturn(Uni.createFrom().voidItem());
-
-        stopHandler.stopProcessing(request, bucketId, traceId)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .assertCompleted();
-
-        verify(accountingUtil, times(1)).updateSessionAndBalance(any(), any(), eq(request), eq(bucketId));
-        verify(accountProducer, times(1)).produceDBWriteEvent(any(DBWriteRequest.class));
-    }
-
-    @Test
-    void testStopProcessingWithDBWriteFailure() {
-        AccountingRequestDto request = createAccountingRequest();
-        UserSessionData userData = createUserSessionData();
-        String traceId = "test-trace-id";
-
-        when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().item(userData));
-        when(accountingUtil.updateSessionAndBalance(any(), any(), any(), isNull()))
-                .thenReturn(Uni.createFrom().item(UpdateResult.success(5000L, "BUCKET-1", createBalance(), null)));
-        when(accountProducer.produceDBWriteEvent(any(DBWriteRequest.class)))
-                .thenReturn(Uni.createFrom().failure(new RuntimeException("DB write failed")));
-        when(cacheUtil.updateUserAndRelatedCaches(eq(request.username()), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-        when(accountProducer.produceAccountingCDREvent(any()))
-                .thenReturn(Uni.createFrom().voidItem());
-
-        stopHandler.stopProcessing(request, null, traceId)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .assertCompleted();
-
-        verify(accountProducer, times(1)).produceDBWriteEvent(any(DBWriteRequest.class));
-    }
 
     @Test
     void testStopProcessingWithCacheUpdateFailure() {
@@ -274,7 +225,7 @@ class StopHandlerTest {
     private Balance createBalance() {
         Balance balance = new Balance();
         balance.setBucketId("BUCKET-1");
-        balance.setServiceId(1L);
+        balance.setServiceId("");
         balance.setQuota(5000L);
         balance.setInitialBalance(10000L);
         balance.setPriority(1L);

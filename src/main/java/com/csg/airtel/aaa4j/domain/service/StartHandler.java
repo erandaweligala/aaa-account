@@ -4,15 +4,12 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
-
-import com.csg.airtel.aaa4j.domain.model.cdr.*;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
-
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -30,16 +27,12 @@ public class StartHandler {
     private final CacheClient utilCache;
     private final UserBucketRepository userRepository;
     private final AccountProducer  accountProducer;
-    private final TimeUtil timeUtil;
-    private final MappingUtil mappingUtil;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, TimeUtil timeUtil, MappingUtil mappingUtil) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
-        this.timeUtil = timeUtil;
-        this.mappingUtil = mappingUtil;
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
@@ -108,7 +101,7 @@ public class StartHandler {
                 log.warnf("User: %s has exhausted their data balance. Cannot start new session.",
                         request.username());
                 return accountProducer.produceAccountingResponseEvent(
-                        mappingUtil.createResponse(request, "Data balance exhausted",
+                        MappingUtil.createResponse(request, "Data balance exhausted",
                                 AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));
             }
@@ -157,7 +150,7 @@ public class StartHandler {
                         log.warnf("No service buckets found for user: %s. Cannot create session data.",
                                 request.username());
                         return accountProducer.produceAccountingResponseEvent(
-                                        mappingUtil.createResponse(request, "No service buckets found",
+                                        MappingUtil.createResponse(request, "No service buckets found",
                                                 AccountingResponseEvent.EventType.COA,
                                                 AccountingResponseEvent.ResponseAction.DISCONNECT))
                                 .replaceWithVoid();
@@ -169,7 +162,7 @@ public class StartHandler {
                     String groupId = null;
 
                     for (ServiceBucketInfo bucket : serviceBuckets) {
-                        Balance balance = mappingUtil.createBalance(bucket);
+                        Balance balance = MappingUtil.createBalance(bucket);
 
                         groupId = getGroupId(request, bucket, balanceGroupList, balance, groupId, balanceList);
                         totalQuota += bucket.getCurrentBalance();
@@ -180,7 +173,7 @@ public class StartHandler {
                         log.warnf("User: %s has zero total data quota. Cannot create session data.",
                                 request.username());
                         return accountProducer.produceAccountingResponseEvent(
-                                        mappingUtil.createResponse(request, "Data quota is zero",
+                                        MappingUtil.createResponse(request, "Data quota is zero",
                                                 AccountingResponseEvent.EventType.COA,
                                                 AccountingResponseEvent.ResponseAction.DISCONNECT))
                                 .replaceWithVoid();
@@ -259,7 +252,7 @@ public class StartHandler {
     private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
-                timeUtil.getCurrentTimeLocal(),
+                LocalDateTime.now(),
                 null,
                 0,
                 0L,
@@ -269,7 +262,7 @@ public class StartHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrmappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
     }
 
 

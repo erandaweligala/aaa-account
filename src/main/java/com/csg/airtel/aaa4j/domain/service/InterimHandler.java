@@ -3,11 +3,9 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
-import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
-
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
@@ -16,9 +14,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @ApplicationScoped
 public class InterimHandler {
@@ -31,16 +29,12 @@ public class InterimHandler {
     private final UserBucketRepository userRepository;
     private final AccountingUtil accountingUtil;
     private final AccountProducer accountProducer;
-    private final TimeUtil timeUtil;
-    private final MappingUtil mappingUtil;
     @Inject
-    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, TimeUtil timeUtil, MappingUtil mappingUtil) {
+    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
         this.accountingUtil = accountingUtil;
         this.accountProducer = accountProducer;
-        this.timeUtil = timeUtil;
-        this.mappingUtil = mappingUtil;
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
@@ -74,7 +68,7 @@ public class InterimHandler {
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
                         log.warnf("No service buckets found for user: %s", request.username());
-                       return accountProducer.produceAccountingResponseEvent(mappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
+                       return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));
                     }
                     int bucketCount = serviceBuckets.size();
@@ -84,12 +78,12 @@ public class InterimHandler {
                     for (ServiceBucketInfo bucket : serviceBuckets) {
                         double currentBalance = bucket.getCurrentBalance();
                         totalQuota += currentBalance;
-                        balanceList.add(mappingUtil.createBalance(bucket));
+                        balanceList.add(MappingUtil.createBalance(bucket));
                     }
 
                     if (totalQuota <= 0) {
                         log.warnf("User: %s has zero total data quota", request.username());
-                        return accountProducer.produceAccountingResponseEvent(mappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
+                        return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));
                     }
 
@@ -150,7 +144,7 @@ public class InterimHandler {
     private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
-                timeUtil.getCurrentTimeLocal(),
+                LocalDateTime.now(),
                 null,
                 request.sessionTime() - 1,
                 0L,
@@ -161,7 +155,7 @@ public class InterimHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrmappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
     }
 
 

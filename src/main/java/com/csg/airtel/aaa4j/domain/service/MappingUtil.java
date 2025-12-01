@@ -4,21 +4,16 @@ import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
-import jakarta.enterprise.context.ApplicationScoped;
 
 import java.time.LocalDateTime;
 import java.util.Map;
 
-@ApplicationScoped
 public class MappingUtil {
 
-    private final TimeUtil timeUtil;
-
-    public MappingUtil(TimeUtil timeUtil) {
-        this.timeUtil = timeUtil;
+    private MappingUtil() {
     }
 
-    public AccountingResponseEvent createResponse(
+    public static AccountingResponseEvent createResponse(
             AccountingRequestDto request,
             String message,
             AccountingResponseEvent.EventType eventType,
@@ -35,7 +30,7 @@ public class MappingUtil {
 
         return new AccountingResponseEvent(
                 eventType,
-                timeUtil.getCurrentTimeLocal(),
+                LocalDateTime.now(),
                 request.sessionId(),
                 responseAction,
                 message,
@@ -43,7 +38,7 @@ public class MappingUtil {
                 attributes);
     }
 
-    public AccountingResponseEvent createResponse(
+    public static AccountingResponseEvent createResponse(
             String sessionId,
             String message,
             String nasIP,
@@ -60,7 +55,7 @@ public class MappingUtil {
 
         return new AccountingResponseEvent(
                 AccountingResponseEvent.EventType.COA,
-                timeUtil.getCurrentTimeLocal(),
+                LocalDateTime.now(),
                 sessionId,
                 AccountingResponseEvent.ResponseAction.DISCONNECT,
                 message,
@@ -69,7 +64,7 @@ public class MappingUtil {
     }
 
 
-    public Balance createBalance(ServiceBucketInfo bucket) {
+    public static Balance createBalance(ServiceBucketInfo bucket) {
         Balance balance = new Balance();
         balance.setBucketId(String.valueOf(bucket.getBucketId()));
         balance.setServiceExpiry(bucket.getExpiryDate());

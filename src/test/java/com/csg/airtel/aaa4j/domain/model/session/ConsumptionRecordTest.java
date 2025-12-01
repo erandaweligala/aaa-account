@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ConsumptionRecordTest {
 
-    private ConsumptionRecord record;
+    private ConsumptionRecord consumptionRecord;
     private LocalDateTime testDateTime;
 
     @BeforeEach
@@ -19,57 +19,57 @@ class ConsumptionRecordTest {
 
     @Test
     void testNoArgsConstructor() {
-        record = new ConsumptionRecord();
-        assertNotNull(record);
+        consumptionRecord = new ConsumptionRecord();
+        assertNotNull(consumptionRecord);
     }
 
     @Test
     void testAllArgsConstructor() {
         Long bytesConsumed = 1024L;
-        record = new ConsumptionRecord(testDateTime, bytesConsumed);
+        consumptionRecord = new ConsumptionRecord(testDateTime, bytesConsumed);
 
-        assertEquals(testDateTime, record.getTimestamp());
-        assertEquals(bytesConsumed, record.getBytesConsumed());
+        assertEquals(testDateTime, consumptionRecord.getTimestamp());
+        assertEquals(bytesConsumed, consumptionRecord.getBytesConsumed());
     }
 
     @Test
     void testSetAndGetTimestamp() {
-        record = new ConsumptionRecord();
-        record.setTimestamp(testDateTime);
-        assertEquals(testDateTime, record.getTimestamp());
+        consumptionRecord = new ConsumptionRecord();
+        consumptionRecord.setTimestamp(testDateTime);
+        assertEquals(testDateTime, consumptionRecord.getTimestamp());
     }
 
     @Test
     void testSetAndGetBytesConsumed() {
-        record = new ConsumptionRecord();
+        consumptionRecord = new ConsumptionRecord();
         Long bytes = 2048L;
-        record.setBytesConsumed(bytes);
-        assertEquals(bytes, record.getBytesConsumed());
+        consumptionRecord.setBytesConsumed(bytes);
+        assertEquals(bytes, consumptionRecord.getBytesConsumed());
     }
 
     @Test
     void testNullValues() {
-        record = new ConsumptionRecord();
-        record.setTimestamp(null);
-        record.setBytesConsumed(null);
+        consumptionRecord = new ConsumptionRecord();
+        consumptionRecord.setTimestamp(null);
+        consumptionRecord.setBytesConsumed(null);
 
-        assertNull(record.getTimestamp());
-        assertNull(record.getBytesConsumed());
+        assertNull(consumptionRecord.getTimestamp());
+        assertNull(consumptionRecord.getBytesConsumed());
     }
 
     @Test
     void testLargeByteValues() {
-        record = new ConsumptionRecord();
+        consumptionRecord = new ConsumptionRecord();
         Long largeValue = Long.MAX_VALUE;
-        record.setBytesConsumed(largeValue);
-        assertEquals(largeValue, record.getBytesConsumed());
+        consumptionRecord.setBytesConsumed(largeValue);
+        assertEquals(largeValue, consumptionRecord.getBytesConsumed());
     }
 
     @Test
     void testZeroByteValues() {
-        record = new ConsumptionRecord();
+        consumptionRecord = new ConsumptionRecord();
         Long zero = 0L;
-        record.setBytesConsumed(zero);
-        assertEquals(zero, record.getBytesConsumed());
+        consumptionRecord.setBytesConsumed(zero);
+        assertEquals(zero, consumptionRecord.getBytesConsumed());
     }
 }

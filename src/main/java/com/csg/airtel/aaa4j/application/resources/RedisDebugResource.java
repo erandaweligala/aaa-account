@@ -36,12 +36,12 @@ public class RedisDebugResource {
     }
 
     @GET
-    @Path("/redis-ping/buckets")
+    @Path("/redis-ping")
     @Timed(name = "process_time", description = "Time to process request")
-    @Produces(MediaType.APPLICATION_JSON)
-    public Uni<Map<String, Object>> testConnection(@QueryParam("username") String username) {
-        String user = (username != null && !username.isBlank()) ? username : "100001";
-        return userRepository.getServiceBucketsByUserName(user)
+    @Produces(MediaType.TEXT_PLAIN)
+    public Uni<Map<String, Object>> testConnection() {
+
+        return userRepository.getServiceBucketsByUserName("100001")
                 .onItem().transform(buckets -> {
                     Map<String, Object> results = new HashMap<>();
                     results.put("buckets", buckets);
@@ -51,9 +51,9 @@ public class RedisDebugResource {
 
 
     @POST
-    @Path("/redis-ping/process")
+    @Path("/redis-ping")
     @Timed(name = "process_time", description = "Time to process request")
-    @Produces(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Map<String, Object>> interimUpdate(AccountingRequestDto request) {
 
@@ -68,9 +68,9 @@ public class RedisDebugResource {
 
 
     @DELETE
-    @Path("/redis-ping/cache")
+    @Path("/redis-ping")
     @Timed(name = "process_time", description = "Time to process request")
-    @Produces(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.TEXT_PLAIN)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Map<String, Object>> deleteKeyCache(@QueryParam("username") String key) {
 
@@ -84,11 +84,11 @@ public class RedisDebugResource {
     }
 
     @GET
-    @Path("/redis-ping/user-data")
+    @Path("/redis-ping")
     @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    public Uni<UserSessionData> getKeyCache(@QueryParam("username") String key) {
+    public Uni <UserSessionData> getKeyCache(@QueryParam("username") String key) {
 
         return cacheClient
                 .getUserData(key)

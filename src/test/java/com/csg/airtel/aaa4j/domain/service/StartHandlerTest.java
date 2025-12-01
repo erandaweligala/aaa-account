@@ -170,6 +170,7 @@ class StartHandlerTest {
     }
 
     @Test
+    @SuppressWarnings("java:S6068")
     void testProcessAccountingStartWithGroupBuckets() {
         AccountingRequestDto request = createAccountingRequest();
         String traceId = "test-trace-id";
@@ -267,7 +268,7 @@ class StartHandlerTest {
     private Balance createBalance() {
         Balance balance = new Balance();
         balance.setBucketId("BUCKET-1");
-        balance.setServiceId(1L);
+        balance.setServiceId("1");
         balance.setQuota(5000L);
         balance.setInitialBalance(10000L);
         balance.setPriority(1L);
@@ -278,12 +279,12 @@ class StartHandlerTest {
 
     private List<ServiceBucketInfo> createServiceBuckets() {
         ServiceBucketInfo bucket = new ServiceBucketInfo();
-        bucket.setBucketId("BUCKET-1");
+        bucket.setBucketId(1);
         bucket.setServiceId(1L);
-        bucket.setCurrentBalance(5000.0);
-        bucket.setInitialBalance(10000.0);
+        bucket.setCurrentBalance(5000);
+        bucket.setInitialBalance(10000);
         bucket.setPriority(1L);
-        bucket.setServiceStatus("Active");
+        bucket.setStatus("Active");
         bucket.setTimeWindow("0-24");
         bucket.setBucketUser("test-user");
         return List.of(bucket);
@@ -291,12 +292,12 @@ class StartHandlerTest {
 
     private List<ServiceBucketInfo> createServiceBucketsWithZeroBalance() {
         ServiceBucketInfo bucket = new ServiceBucketInfo();
-        bucket.setBucketId("BUCKET-1");
+        bucket.setBucketId(1);
         bucket.setServiceId(1L);
-        bucket.setCurrentBalance(0.0);
-        bucket.setInitialBalance(0.0);
+        bucket.setCurrentBalance(0);
+        bucket.setInitialBalance(0);
         bucket.setPriority(1L);
-        bucket.setServiceStatus("Active");
+        bucket.setStatus("Active");
         bucket.setTimeWindow("0-24");
         bucket.setBucketUser("test-user");
         return List.of(bucket);
@@ -306,23 +307,23 @@ class StartHandlerTest {
         List<ServiceBucketInfo> buckets = new ArrayList<>();
 
         ServiceBucketInfo userBucket = new ServiceBucketInfo();
-        userBucket.setBucketId("BUCKET-1");
+        userBucket.setBucketId(1);
         userBucket.setServiceId(1L);
-        userBucket.setCurrentBalance(5000.0);
-        userBucket.setInitialBalance(10000.0);
+        userBucket.setCurrentBalance(5000);
+        userBucket.setInitialBalance(10000);
         userBucket.setPriority(1L);
-        userBucket.setServiceStatus("Active");
+        userBucket.setStatus("Active");
         userBucket.setTimeWindow("0-24");
         userBucket.setBucketUser("test-user");
         buckets.add(userBucket);
 
         ServiceBucketInfo groupBucket = new ServiceBucketInfo();
-        groupBucket.setBucketId("BUCKET-2");
+        groupBucket.setBucketId(2);
         groupBucket.setServiceId(2L);
-        groupBucket.setCurrentBalance(3000.0);
-        groupBucket.setInitialBalance(5000.0);
+        groupBucket.setCurrentBalance(3000);
+        groupBucket.setInitialBalance(5000);
         groupBucket.setPriority(2L);
-        groupBucket.setServiceStatus("Active");
+        groupBucket.setStatus("Active");
         groupBucket.setTimeWindow("0-24");
         groupBucket.setBucketUser("group-user");
         buckets.add(groupBucket);

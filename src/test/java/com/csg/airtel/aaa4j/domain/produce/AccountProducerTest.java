@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -216,7 +216,7 @@ class AccountProducerTest {
     private AccountingResponseEvent createAccountingResponseEvent() {
         return new AccountingResponseEvent(
                 AccountingResponseEvent.EventType.COA,
-                java.time.LocalDateTime.now(),
+                LocalDateTime.now(),
                 "session-123",
                 AccountingResponseEvent.ResponseAction.DISCONNECT,
                 "Test message",

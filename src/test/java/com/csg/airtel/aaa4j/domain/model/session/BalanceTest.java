@@ -118,8 +118,8 @@ class BalanceTest {
     @Test
     void testSetAndGetConsumptionHistory() {
         List<ConsumptionRecord> records = new ArrayList<>();
-        ConsumptionRecord record = new ConsumptionRecord();
-        records.add(record);
+        ConsumptionRecord consumptionRecord = new ConsumptionRecord();
+        records.add(consumptionRecord);
         balance.setConsumptionHistory(records);
         assertEquals(records, balance.getConsumptionHistory());
         assertEquals(1, balance.getConsumptionHistory().size());

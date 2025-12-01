@@ -24,32 +24,51 @@ public class BucketService {
     }
 
     public Uni<ApiResponse<Balance>> addBucketBalance(String userName, Balance balance) {
-        Uni<ApiResponse<Balance>> validationResult = validateBalanceInput(userName, balance, null);
-        if (validationResult != null) {
-            return validationResult;
+        // Input validation
+        if (userName == null || userName.isBlank()) {
+            return Uni.createFrom().item(createErrorResponse("Username is required"));
+        }
+        if (balance == null) {
+            return Uni.createFrom().item(createErrorResponse("Balance is required"));
         }
 
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
+                    // Create defensive copy with null-safe handling
                     List<Balance> newBalances = new ArrayList<>(
                             Objects.requireNonNullElse(userData.getBalance(), List.of())
                     );
                     newBalances.add(balance);
 
+                    // Use immutable builder/wither pattern
                     UserSessionData updatedUserData = userData.toBuilder()
                             .balance(Collections.unmodifiableList(newBalances))
                             .build();
 
-                    return updateCacheAndCreateResponse(userName, updatedUserData, balance, "add balance");
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
+                            .onItem().transform(result -> createSuccessResponse(balance));
+                })
+                .onFailure().recoverWithItem(throwable -> {
+                    log.errorf("Failed to add balance for user {}: {}",
+                            userName, throwable.getMessage(), throwable);
+                    return createErrorResponse(
+                            "Failed to add balance: " + throwable.getMessage()
+                    );
                 });
     }
 
 
     public Uni<ApiResponse<Balance>> updateBucketBalance(String userName, Balance balance, String serviceId) {
         log.infof("Updating bucket Balance for user %s", userName);
-        Uni<ApiResponse<Balance>> validationResult = validateBalanceInput(userName, balance, serviceId);
-        if (validationResult != null) {
-            return validationResult;
+        // Input validation
+        if (userName == null || userName.isBlank()) {
+            return Uni.createFrom().item(createErrorResponse("Username is required"));
+        }
+        if (balance == null) {
+            return Uni.createFrom().item(createErrorResponse("Balance is required"));
+        }
+        if (serviceId == null || serviceId.isBlank()) {
+            return Uni.createFrom().item(createErrorResponse("Service Id is required"));
         }
 
         if (balance.getServiceId() == null || !balance.getServiceId().equals(serviceId)) {
@@ -67,43 +86,26 @@ public class BucketService {
                             : new ArrayList<>();
 
                     balanceList.removeIf(b -> b.getServiceId().equals(serviceId));
+
                     balanceList.add(balance);
 
                     UserSessionData updatedUserData = userData.toBuilder()
                             .balance(Collections.unmodifiableList(balanceList))
                             .build();
 
-                    return updateCacheAndCreateResponse(userName, updatedUserData, balance, "update balance");
-                });
-    }
-
-    private Uni<ApiResponse<Balance>> validateBalanceInput(String userName, Balance balance, String serviceId) {
-        if (userName == null || userName.isBlank()) {
-            return Uni.createFrom().item(createErrorResponse("Username is required"));
-        }
-        if (balance == null) {
-            return Uni.createFrom().item(createErrorResponse("Balance is required"));
-        }
-        if (serviceId != null && (serviceId.isBlank())) {
-            return Uni.createFrom().item(createErrorResponse("Service Id is required"));
-        }
-        return null;
-    }
-
-    private Uni<ApiResponse<Balance>> updateCacheAndCreateResponse(
-            String userName,
-            UserSessionData updatedUserData,
-            Balance balance,
-            String operation) {
-        return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
-                .onItem().transform(result -> {
-                    log.infof("Successfully performed %s for user %s", operation, userName);
-                    return createSuccessResponse(balance);
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
+                            .onItem().transform(result -> {
+                                log.infof("Successfully updated balance for user %s, serviceId %s",
+                                        userName, serviceId);
+                                return createSuccessResponse(balance);
+                            });
                 })
                 .onFailure().recoverWithItem(throwable -> {
-                    log.errorf("Failed to %s for user %s: %s",
-                            operation, userName, throwable.getMessage(), throwable);
-                    return createErrorResponse("Failed to " + operation + ": " + throwable.getMessage());
+                    log.errorf("Failed to update balance for user %s: %s",
+                            userName, throwable.getMessage(), throwable);
+                    return createErrorResponse(
+                            "Failed to update balance: " + throwable.getMessage()
+                    );
                 });
     }
 

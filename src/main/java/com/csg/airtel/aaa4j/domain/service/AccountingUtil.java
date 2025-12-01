@@ -42,33 +42,34 @@ public class AccountingUtil {
     private static final int COA_RETRY_MAX_ATTEMPTS = 2;
     private static final long COA_TIMEOUT_SECONDS = 45;
 
+    private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
+    private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
+
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
-    private final TimeUtil timeUtil;
-    private final MappingUtil mappingUtil;
 
 
-    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, TimeUtil timeUtil, MappingUtil mappingUtil) {
+    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;
-        this.timeUtil = timeUtil;
-        this.mappingUtil = mappingUtil;
     }
 
-    /**
-     * Get cached current time for the current request thread.
-     * Uses centralized TimeUtil for timezone-aware, consistent time handling.
-     */
     private LocalDateTime getNow() {
-        return timeUtil.getCurrentTimeLocal();
+        LocalDateTime now = CACHED_NOW.get();
+        if (now == null) {
+            now = LocalDateTime.now();
+            CACHED_NOW.set(now);
+        }
+        return now;
     }
 
-    /**
-     * Get cached today's date for the current request thread.
-     * Uses centralized TimeUtil for timezone-aware, consistent date handling.
-     */
     private LocalDate getToday() {
-        return timeUtil.getCurrentDate();
+        LocalDate today = CACHED_TODAY.get();
+        if (today == null) {
+            today = LocalDate.now();
+            CACHED_TODAY.set(today);
+        }
+        return today;
     }
 
     /**
@@ -77,11 +78,20 @@ public class AccountingUtil {
      * and ensure fresh temporal values for subsequent requests.
      */
     public void clearTemporalCache() {
-        timeUtil.clearCache();
+        if (log.isTraceEnabled()) {
+            LocalDateTime cachedNow = CACHED_NOW.get();
+            LocalDate cachedToday = CACHED_TODAY.get();
+            if (cachedNow != null || cachedToday != null) {
+                log.tracef("Clearing temporal cache - cached now: %s, cached today: %s",
+                        cachedNow, cachedToday);
+            }
+        }
+        CACHED_NOW.remove();
+        CACHED_TODAY.remove();
     }
 
     /**
-     * Find balance with highest priority (optimized for minimal allocations).
+     * Find balance with highest priority.
      *
      * @param balances user related buckets balances
      * @param bucketId specific bucket id to prioritize
@@ -97,7 +107,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Compute highest priority balance (optimized path with early exits).
+     * Compute highest priority balance.
      */
     private Balance computeHighestPriority(List<Balance> balances, String bucketId) {
         // Early exit for null/empty
@@ -118,7 +128,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Check if a balance is eligible for selection (optimized with early exits).
+     * Check if a balance is eligible for selection .
      *
      * @param balance the balance to check
      * @param timeWindow the time window string
@@ -126,7 +136,7 @@ public class AccountingUtil {
      * @return true if balance is eligible, false otherwise
      */
     private boolean isBalanceEligible(Balance balance, String timeWindow, LocalDateTime now) {
-        // Fast rejection checks first (cheapest operations)
+
         if (balance.getQuota() <= 0) {
             return false;
         }
@@ -161,21 +171,19 @@ public class AccountingUtil {
     }
 
     /**
-     * Get balance with highest priority (optimized iteration with cached time).
+     * Get balance with highest priority .
      */
     private Balance getBalance(List<Balance> balances) {
         Balance highest = null;
         long highestPriority = Long.MIN_VALUE;
         LocalDateTime highestExpiry = null;
 
-        // Cache current time to avoid multiple LocalDateTime.now() calls
         LocalDateTime now = getNow();
         String activeStatus = "Active";
 
         for (Balance balance : balances) {
             String timeWindow = balance.getTimeWindow();
 
-            // Skip balance if it doesn't meet all criteria (optimized with cached now)
             if (!isBalanceEligible(balance, timeWindow, now)) {
                 continue;
             }
@@ -669,7 +677,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Handle session disconnect (optimized flow with minimal logging).
+     * Handle session disconnect.
      */
     private Uni<UpdateResult> handleSessionDisconnect(
             UserSessionData userData,
@@ -704,7 +712,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Handle consumption limit exceeded scenario (optimized flow).
+     * Handle consumption limit exceeded scenario.
      *
      * @param userData user session data
      * @param request accounting request
@@ -760,7 +768,7 @@ public class AccountingUtil {
 
 
     /**
-     * Find a balance by bucket ID (optimized direct loop, no stream overhead).
+     * Find a balance by bucket ID
      *
      * @param balances list of balances to search
      * @param bucketId the bucket ID to find
@@ -771,7 +779,6 @@ public class AccountingUtil {
             return null;
         }
 
-        // Direct iteration is faster than stream for small lists
         for (Balance balance : balances) {
             if (bucketId.equals(balance.getBucketId())) {
                 return balance;
@@ -813,10 +820,9 @@ public class AccountingUtil {
     }
 
     /**
-     * Replace element in collection (optimized for list structures).
+     * Replace element in collection .
      */
     private <T> void replaceInCollection(Collection<T> collection, T element) {
-        // For List types, optimize by using indexOf
         if (collection instanceof List) {
             List<T> list = (List<T>) collection;
             int index = list.indexOf(element);
@@ -831,7 +837,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Clear all sessions and send COA disconnect (optimized with merge for parallelism).
+     * Clear all sessions and send COA disconnect.
      *
      * @param userSessionData user session data containing all sessions
      * @param username username
@@ -847,7 +853,7 @@ public class AccountingUtil {
         return Multi.createFrom().iterable(sessions)
                 .onItem().transformToUni(session ->
                         accountProducer.produceAccountingResponseEvent(
-                                        mappingUtil.createResponse(
+                                        MappingUtil.createResponse(
                                                 session.getSessionId(),
                                                 DISCONNECT_ACTION,
                                                 session.getNasIp(),
@@ -992,7 +998,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Get group bucket balances (optimized with constant comparison).
+     * Get group bucket balances.
      */
     private Uni<List<Balance>> getGroupBucket(String groupId) {
         // Fast path: default group or null

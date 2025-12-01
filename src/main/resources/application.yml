@@ -3,6 +3,9 @@ quarkus:
   http:
     root-path: /api/v1
     port: 9905
+  java:
+    locale:
+      timezone: "Asia/Colombo"
 
 
   datasource:
@@ -13,6 +16,7 @@ quarkus:
       url: oracle:thin:@localhost:1522/ORCL
       max-size: 20
       idle-timeout: PT10M
+
   vertx:
     event-loops-pool-size: 32
     warning-exception-time: 10s
@@ -56,10 +60,6 @@ log:
       level: DEBUG
     "io.smallrye.config":
       level: DEBUG
-
-
-
-
 
   redis:
     hosts: http://redis.redis.svc.cluster.local:6379
@@ -123,4 +123,5 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         failure-strategy: ignore
+
 

@@ -35,6 +35,7 @@ class AccountingHandlerFactoryTest {
     }
 
     @Test
+    @SuppressWarnings("java:S6068")
     void testGetHandlerForStartAction() {
         AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.START);
         String traceId = "test-trace-id";
@@ -53,6 +54,7 @@ class AccountingHandlerFactoryTest {
     }
 
     @Test
+    @SuppressWarnings("java:S6068")
     void testGetHandlerForInterimUpdateAction() {
         AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.INTERIM_UPDATE);
         String traceId = "test-trace-id";
@@ -71,6 +73,7 @@ class AccountingHandlerFactoryTest {
     }
 
     @Test
+    @SuppressWarnings("java:S6068")
     void testGetHandlerForStopAction() {
         AccountingRequestDto request = createAccountingRequest(AccountingRequestDto.ActionType.STOP);
         String traceId = "test-trace-id";

@@ -1,7 +1,8 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.domain.model.*;
-import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
+import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
+import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
+import com.csg.airtel.aaa4j.domain.model.EventType;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -27,14 +28,12 @@ public class StopHandler {
     private final CacheClient cacheUtil;
     private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
-    private final TimeUtil timeUtil;
 
     @Inject
-    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, TimeUtil timeUtil) {
+    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil) {
         this.cacheUtil = cacheUtil;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
-        this.timeUtil = timeUtil;
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
@@ -156,7 +155,7 @@ public class StopHandler {
     private void populateColumnValues(Map<String, Object> columnValues, Balance balance) {
         columnValues.put("CURRENT_BALANCE", balance.getQuota());
         columnValues.put("USAGE", balance.getInitialBalance()- balance.getQuota());
-        columnValues.put("UPDATED_AT", timeUtil.getCurrentTimeLocal());
+        columnValues.put("UPDATED_AT", LocalDateTime.now());
     }
 
     // Extract to builder method for clarity and reusability
@@ -174,7 +173,7 @@ public class StopHandler {
         dbWriteRequest.setColumnValues(columnValues);
         dbWriteRequest.setTableName("BUCKET_INSTANCE");
         dbWriteRequest.setEventId(UUID.randomUUID().toString());
-        dbWriteRequest.setTimestamp(timeUtil.getCurrentTimeLocal());
+        dbWriteRequest.setTimestamp(LocalDateTime.now());
 
         return dbWriteRequest;
     }
