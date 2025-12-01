@@ -882,8 +882,8 @@ public class AccountingUtil {
             UserSessionData userData,
             AccountingRequestDto request,
             Balance foundBalance,
-            UpdateResult result, Session currentSession) {
-        return getUpdateResultUni(userData, request, foundBalance, result, currentSession);
+            UpdateResult result,Session currentSession) {
+        return getUpdateResultUni(userData, request, foundBalance, result,currentSession);
     }
 
 
@@ -956,12 +956,10 @@ public class AccountingUtil {
 
             // If existing group data has sessions, add them first
             if (existingGroupData != null && existingGroupData.getSessions() != null) {
-                // Optimized: Filter out the session with the same sessionId to avoid duplicates
-                for (Session s : existingGroupData.getSessions()) {
-                    if (!s.getSessionId().equals(session.getSessionId())) {
-                        groupSessions.add(s);
-                    }
-                }
+                // Filter out the session with the same sessionId to avoid duplicates
+                groupSessions.addAll(existingGroupData.getSessions().stream()
+                        .filter(s -> !s.getSessionId().equals(session.getSessionId()))
+                        .toList());
             }
 
             // Add the current session

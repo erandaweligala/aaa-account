@@ -38,9 +38,9 @@ public class InterimHandler {
         this.accountProducer = accountProducer;
     }
 
-    public Uni<Void> handleInterim(AccountingRequestDto request, String traceId) {
+    public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
-        log.infof("[traceId: %s] Processing interim accounting request Start for user: %s, sessionId: %s", traceId,
+        log.infof("[traceId: %s] Processing interim accounting request Start for user: %s, sessionId: %s",traceId,
                 request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
                 .onItem().invoke(() -> {
@@ -50,8 +50,8 @@ public class InterimHandler {
                 })
                 .onItem().transformToUni(userSessionData ->
                         userSessionData == null
-                                ? handleNewSessionUsage(request, traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for new session for %d ms", traceId, System.currentTimeMillis() - startTime))
-                                : processAccountingRequest(userSessionData, request, traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for existing session for %d ms", traceId, System.currentTimeMillis() - startTime))
+                                ? handleNewSessionUsage(request,traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for new session for  %s ms",traceId,System.currentTimeMillis()-startTime))
+                                : processAccountingRequest(userSessionData, request,traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for existing session for  %s ms",traceId, System.currentTimeMillis()-startTime))
 
                 )
                 .onFailure().recoverWithUni(throwable -> {
@@ -60,7 +60,7 @@ public class InterimHandler {
                 });
     }
 
-    private Uni<Void> handleNewSessionUsage(AccountingRequestDto request, String traceId) {
+    private Uni<Void> handleNewSessionUsage(AccountingRequestDto request,String traceId) {
 
         if (log.isDebugEnabled()) {
             log.debugf("No cache entry found for user: %s", request.username());
@@ -78,7 +78,7 @@ public class InterimHandler {
                     String groupId = null;
 
                     for (ServiceBucketInfo bucket : serviceBuckets) {
-                        if (!Objects.equals(bucket.getBucketUser(), request.username())) {
+                        if(!Objects.equals(bucket.getBucketUser(), request.username())){
                             groupId = bucket.getBucketUser();
                         }
                         double currentBalance = bucket.getCurrentBalance();
@@ -97,16 +97,16 @@ public class InterimHandler {
                              .groupId(groupId).userName(request.username())
                     .balance(balanceList).sessions(new ArrayList<>(List.of(createSession(request)))).build();
 
-                     return processAccountingRequest(newUserSessionData, request, traceId);
+                     return processAccountingRequest(newUserSessionData, request,traceId);
 
                 });
     }
 
     private Uni<Void> processAccountingRequest(
-            UserSessionData userData, AccountingRequestDto request, String traceId) {
+            UserSessionData userData, AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("TraceId: %s Processing interim accounting request for user: %s, sessionId: %s",
-                traceId, request.username(), request.sessionId());
+                traceId,request.username(), request.sessionId());
         Session session = findSession(userData, request.sessionId());
         if (session == null) {
             session = createSession(request);
@@ -119,7 +119,7 @@ public class InterimHandler {
 
         } else {
             Session finalSession = session;
-            return accountingUtil.updateSessionAndBalance(userData, session, request, null)
+            return accountingUtil.updateSessionAndBalance(userData, session, request,null)
                     .onItem().transformToUni(updateResult -> {  // Changed from transform to transformToUni
                         if (!updateResult.success()) {
                             log.warnf("update failed for sessionId: %s", request.sessionId());
