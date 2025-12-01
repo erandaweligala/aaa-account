@@ -213,6 +213,13 @@ public class AccountingUtil {
 
 
     /**
+     * Updates session and balance with optimized reactive chain.
+     * Improvements:
+     * - Flattened reactive chain for better readability
+     * - Early exit for default group to avoid unnecessary cache calls
+     * - Synchronized balance finding to reduce overhead
+     * - Centralized cache cleanup with eventually()
+     *
      * @param userData get user session data
      * @param sessionData get individual session Data
      * @param request packet request
@@ -225,22 +232,81 @@ public class AccountingUtil {
             AccountingRequestDto request,
             String bucketId) {
 
-        //todo need implement to used best practise and improve poermance and optimize and scalble code
         long totalUsage = calculateTotalUsage(request);
+        String groupId = userData.getGroupId();
 
-        return getGroupBucketData(userData.getGroupId())
-                .onItem().transformToUni(groupData -> {
-                    List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
-                    List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
+        // Early exit optimization: Skip group data fetch for default group
+        if (groupId == null || DEFAULT_GROUP_ID.equals(groupId)) {
+            return processWithoutGroupData(userData, sessionData, request, bucketId, totalUsage)
+                    .eventually(this::cleanupTemporalCacheAsync);
+        }
 
-                    return findBalanceWithHighestPriority(combinedBalances, bucketId)
-                            .onItem().transformToUni(foundBalance ->
-                                    processBalanceUpdateWithCombinedData(userData, sessionData, request,
-                                            foundBalance, combinedBalances, combinedSessions, totalUsage)
-                            );
-                })
-                .invoke(result -> clearTemporalCache())
-                .onFailure().invoke(error -> clearTemporalCache());
+        // Optimized reactive chain: flattened with chain() instead of nested transformToUni()
+        return getGroupBucketData(groupId)
+                .chain(groupData -> processWithGroupData(
+                        userData, sessionData, request, bucketId, totalUsage, groupData))
+                .eventually(this::cleanupTemporalCacheAsync);
+    }
+
+    /**
+     * Process balance update without group data (optimized path).
+     */
+    private Uni<UpdateResult> processWithoutGroupData(
+            UserSessionData userData,
+            Session sessionData,
+            AccountingRequestDto request,
+            String bucketId,
+            long totalUsage) {
+
+        List<Balance> balances = userData.getBalance() != null ?
+                userData.getBalance() : Collections.emptyList();
+        List<Session> sessions = userData.getSessions() != null ?
+                userData.getSessions() : Collections.emptyList();
+
+        // Synchronous balance finding - no need for reactive wrapper here
+        Balance foundBalance = computeHighestPriority(balances, bucketId);
+
+        return processBalanceUpdateWithCombinedData(
+                userData, sessionData, request, foundBalance,
+                balances, sessions, totalUsage);
+    }
+
+    /**
+     * Process balance update with group data.
+     */
+    private Uni<UpdateResult> processWithGroupData(
+            UserSessionData userData,
+            Session sessionData,
+            AccountingRequestDto request,
+            String bucketId,
+            long totalUsage,
+            UserSessionData groupData) {
+
+        // Combine user and group data
+        List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
+        List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
+
+        // Synchronous balance finding - already in async context
+        Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Processing with group data: user balances=%d, group balances=%d, combined=%d",
+                    userData.getBalance() != null ? userData.getBalance().size() : 0,
+                    groupData != null && groupData.getBalance() != null ? groupData.getBalance().size() : 0,
+                    combinedBalances.size());
+        }
+
+        return processBalanceUpdateWithCombinedData(
+                userData, sessionData, request, foundBalance,
+                combinedBalances, combinedSessions, totalUsage);
+    }
+
+    /**
+     * Cleanup temporal cache asynchronously for use with eventually().
+     */
+    private Uni<Void> cleanupTemporalCacheAsync() {
+        clearTemporalCache();
+        return Uni.createFrom().voidItem();
     }
 
     private long calculateTotalUsage(AccountingRequestDto request) {
@@ -377,27 +443,6 @@ public class AccountingUtil {
 
 
     /**
-     * Get combined balances (optimized list sizing to reduce allocations).
-     */
-    private Uni<List<Balance>> getCombinedBalances(String groupId, List<Balance> userBalances) {
-        return getGroupBucket(groupId)
-                .onItem().transform(groupBalances -> {
-                    // Pre-size list to avoid resizing
-                    int userSize = userBalances != null ? userBalances.size() : 0;
-                    int groupSize = (groupBalances != null && !groupBalances.isEmpty()) ? groupBalances.size() : 0;
-                    List<Balance> combined = new ArrayList<>(userSize + groupSize);
-
-                    if (userBalances != null) {
-                        combined.addAll(userBalances);
-                    }
-                    if (groupBalances != null && !groupBalances.isEmpty()) {
-                        combined.addAll(groupBalances);
-                    }
-                    return combined;
-                });
-    }
-
-    /**
      * Synchronously combine balances from user and group data.
      *
      * @param userBalances user's balances
@@ -451,40 +496,6 @@ public class AccountingUtil {
         }
 
         return combined;
-    }
-
-    /**
-     * Process balance update (refactored for reduced cognitive complexity).
-     */
-    private Uni<UpdateResult> processBalanceUpdate(
-            UserSessionData userData,
-            Session sessionData,
-            AccountingRequestDto request,
-            Balance foundBalance,
-            List<Balance> combinedBalances,
-            long totalUsage) {
-
-        if (foundBalance == null) {
-            return handleNoValidBalance(request);
-        }
-
-        BalanceUpdateContext context = prepareBalanceUpdateContext(
-                sessionData, foundBalance, combinedBalances, totalUsage);
-
-        long newQuota = updateQuotaForBucketChange(
-                userData, sessionData, context.effectiveBalance, combinedBalances,
-                context.previousUsageBucketId, context.bucketChanged, totalUsage);
-
-        Uni<UpdateResult> consumptionLimitResult = checkAndHandleConsumptionLimit(
-                userData, request, context.effectiveBalance, context.usageDelta,
-                newQuota, context.previousUsageBucketId);
-
-        if (consumptionLimitResult != null) {
-            return consumptionLimitResult;
-        }
-
-        return finalizeBalanceUpdate(userData, sessionData, request, context.effectiveBalance,
-                newQuota, context.previousUsageBucketId, totalUsage);
     }
 
     /**
