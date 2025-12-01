@@ -72,125 +72,176 @@ public class StartHandler {
     private Uni<Void> handleExistingUserSession(
             AccountingRequestDto request,
             UserSessionData userSessionData) {
-    // todo fixed sonar Cognitive Complexity of methods should not be too high improve poformance this file
-        // Declare balanceListUni outside the if block
-        Uni<List<Balance>> balanceListUni;
+        return retrieveGroupBalances(userSessionData)
+                .onItem().transformToUni(balanceList ->
+                    processExistingSessionWithBalances(request, userSessionData, balanceList));
+    }
 
+    private Uni<List<Balance>> retrieveGroupBalances(UserSessionData userSessionData) {
         String groupId = userSessionData.getGroupId();
         boolean isGroupUser = groupId != null && !groupId.equals("1");
 
         if (isGroupUser) {
-            balanceListUni = utilCache.getUserData(groupId)
-                    .onItem()
-                    .transform(UserSessionData::getBalance);
-        } else {
-            // Use the user's own balance list if groupId is "1" or null
-            balanceListUni = Uni.createFrom().item(userSessionData.getBalance());
+            return utilCache.getUserData(groupId)
+                    .onItem().transform(UserSessionData::getBalance);
+        }
+        return Uni.createFrom().item(userSessionData.getBalance());
+    }
+
+    private Uni<Void> processExistingSessionWithBalances(
+            AccountingRequestDto request,
+            UserSessionData userSessionData,
+            List<Balance> balanceList) {
+
+        List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
+
+        Uni<Void> validationResult = validateBalanceAndSession(request, userSessionData, combinedBalances);
+        if (validationResult != null) {
+            return validationResult;
         }
 
-        // Chain the balance calculation to handle the asynchronous Uni
-        return balanceListUni.onItem().transformToUni(balanceList -> {
-            // Combine user's balance with the additional balance list
-            List<Balance> combinedBalances = new ArrayList<>(userSessionData.getBalance());
-            if (balanceList != null && !balanceList.isEmpty()) {
-                combinedBalances.addAll(balanceList);
-            }
+        return accountingUtil.findBalanceWithHighestPriority(combinedBalances, null)
+                .onItem().transformToUni(highestPriorityBalance ->
+                    processSessionWithHighestPriority(request, userSessionData, highestPriorityBalance));
+    }
 
-            double availableBalance = calculateAvailableBalance(combinedBalances);
+    private List<Balance> combineBalances(List<Balance> userBalances, List<Balance> additionalBalances) {
+        List<Balance> combined = new ArrayList<>(userBalances);
+        if (additionalBalances != null && !additionalBalances.isEmpty()) {
+            combined.addAll(additionalBalances);
+        }
+        return combined;
+    }
 
-            if (availableBalance <= 0) {
-                log.warnf("User: %s has exhausted their data balance. Cannot start new session.",
-                        request.username());
-                return accountProducer.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "Data balance exhausted",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT));
-            }
+    private Uni<Void> validateBalanceAndSession(
+            AccountingRequestDto request,
+            UserSessionData userSessionData,
+            List<Balance> combinedBalances) {
 
-            boolean sessionExists = userSessionData.getSessions()
-                    .stream()
-                    .anyMatch(session -> session.getSessionId().equals(request.sessionId()));
+        double availableBalance = calculateAvailableBalance(combinedBalances);
+        if (availableBalance <= 0) {
+            log.warnf("User: %s has exhausted their data balance. Cannot start new session.", request.username());
+            return accountProducer.produceAccountingResponseEvent(
+                    MappingUtil.createResponse(request, "Data balance exhausted",
+                            AccountingResponseEvent.EventType.COA,
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+        }
 
-            if (sessionExists) {
-                log.infof("[traceId: %s] Session already exists for user: %s, sessionId: %s",
-                        request.username(), request.sessionId());
-                return Uni.createFrom().voidItem();
-            }
+        if (sessionAlreadyExists(userSessionData, request.sessionId())) {
+            log.infof("Session already exists for user: %s, sessionId: %s",
+                    request.username(), request.sessionId());
+            return Uni.createFrom().voidItem();
+        }
 
-            // Check if the highest priority balance is a group balance
-            // If so, also add the session to group session data
-            return accountingUtil.findBalanceWithHighestPriority(combinedBalances, null)
-                    .onItem().transformToUni(highestPriorityBalance -> {
-                        if (highestPriorityBalance == null) {
-                            log.warnf("No valid balance found for user: %s. Cannot start new session.",
-                                    request.username());
-                            return accountProducer.produceAccountingResponseEvent(
-                                    MappingUtil.createResponse(request, "No valid balance found",
-                                            AccountingResponseEvent.EventType.COA,
-                                            AccountingResponseEvent.ResponseAction.DISCONNECT));
-                        }
+        return null;
+    }
 
-                        // Add new session and update cache
-                        Session newSession = createSession(request);
-                        newSession.setPreviousUsageBucketId(highestPriorityBalance.getBucketId());
-                        if(!isGroupBalance(highestPriorityBalance,request.username())) {
-                            userSessionData.getSessions().add(newSession);
-                        }
+    private boolean sessionAlreadyExists(UserSessionData userSessionData, String sessionId) {
+        return userSessionData.getSessions()
+                .stream()
+                .anyMatch(session -> session.getSessionId().equals(sessionId));
+    }
 
-                        // Check if highest priority balance is a group balance
-                        boolean isHighestPriorityGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
-                        //String groupId = userSessionData.getGroupId();
+    private Uni<Void> processSessionWithHighestPriority(
+            AccountingRequestDto request,
+            UserSessionData userSessionData,
+            Balance highestPriorityBalance) {
 
-                        Uni<Void> updateUni;
+        if (highestPriorityBalance == null) {
+            log.warnf("No valid balance found for user: %s. Cannot start new session.", request.username());
+            return accountProducer.produceAccountingResponseEvent(
+                    MappingUtil.createResponse(request, "No valid balance found",
+                            AccountingResponseEvent.EventType.COA,
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+        }
 
-                        if (isHighestPriorityGroupBalance && groupId != null && !groupId.equals("1")) {
-                            // If highest priority is group balance, also add session to group data
-                            log.infof("Highest priority balance is a group balance. Adding session to group data for groupId: %s", groupId);
+        Session newSession = createSessionWithBalance(request, highestPriorityBalance);
+        boolean isGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
 
-                            updateUni = utilCache.getUserData(groupId)
-                                    .onItem().transformToUni(groupSessionData -> {
-                                        if (groupSessionData != null) {
-                                            if (groupSessionData.getSessions() == null) {
-                                                groupSessionData.setSessions(new ArrayList<>());
-                                            }
-                                            groupSessionData.getSessions().add(newSession);
+        if (!isGroupBalance) {
+            userSessionData.getSessions().add(newSession);
+        }
 
-                                            // Update both user and group caches
-                                            return Uni.combine().all().unis(
-                                                    utilCache.updateUserAndRelatedCaches(request.username(), userSessionData),
-                                                    utilCache.updateUserAndRelatedCaches(groupId, groupSessionData)
-                                            ).discardItems()
-                                                    .onItem().invoke(unused ->
-                                                            log.infof("Session added to both user: %s and group: %s", request.username(), groupId));
-                                        } else {
-                                            // Group data not found, just update user data
-                                            log.warnf("Group data not found for groupId: %s. Only updating user data.", groupId);
-                                            return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData);
-                                        }
-                                    })
-                                    .replaceWithVoid();
-                        } else {
-                            // Normal balance, only update user data
-                            updateUni = utilCache.updateUserAndRelatedCaches(request.username(), userSessionData)
-                                    .onItem().invoke(unused ->
-                                        log.infof("[traceId: %s] New session added for user: %s, sessionId: %s",
-                                                request.username(), request.sessionId()))
-                                    .replaceWithVoid();
-                        }
+        return updateCachesForSession(request, userSessionData, newSession, isGroupBalance)
+                .invoke(() -> {
+                    log.infof("cdr write event started for user: %s", request.username());
+                    generateAndSendCDR(request, newSession);
+                })
+                .onFailure().recoverWithUni(throwable -> {
+                    log.errorf(throwable, "Failed to update cache for user: %s", request.username());
+                    return Uni.createFrom().voidItem();
+                });
+    }
 
-                        return updateUni
-                                .invoke(() -> {
-                                    log.infof("cdr write event started for user: %s", request.username());
-                                    // Send CDR event asynchronously
-                                    generateAndSendCDR(request, newSession);
-                                })
-                                .onFailure().recoverWithUni(throwable -> {
-                                    log.errorf(throwable, "Failed to update cache for user: %s", request.username());
-                                    return Uni.createFrom().voidItem();
-                                });
-                    });
-        });
+    private Session createSessionWithBalance(AccountingRequestDto request, Balance balance) {
+        Session session = createSession(request);
+        session.setPreviousUsageBucketId(balance.getBucketId());
+        return session;
+    }
 
+    private Uni<Void> updateCachesForSession(
+            AccountingRequestDto request,
+            UserSessionData userSessionData,
+            Session newSession,
+            boolean isHighestPriorityGroupBalance) {
+
+        String groupId = userSessionData.getGroupId();
+
+        if (isHighestPriorityGroupBalance && groupId != null && !groupId.equals("1")) {
+            return updateUserAndGroupCaches(request, userSessionData, newSession, groupId);
+        }
+
+        return updateUserCacheOnly(request, userSessionData);
+    }
+
+    private Uni<Void> updateUserAndGroupCaches(
+            AccountingRequestDto request,
+            UserSessionData userSessionData,
+            Session newSession,
+            String groupId) {
+
+        log.infof("Highest priority balance is a group balance. Adding session to group data for groupId: %s", groupId);
+
+        return utilCache.getUserData(groupId)
+                .onItem().transformToUni(groupSessionData -> {
+                    if (groupSessionData != null) {
+                        addSessionToGroupData(groupSessionData, newSession);
+                        return updateBothCaches(request.username(), userSessionData, groupId, groupSessionData);
+                    }
+
+                    log.warnf("Group data not found for groupId: %s. Only updating user data.", groupId);
+                    return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData);
+                })
+                .replaceWithVoid();
+    }
+
+    private void addSessionToGroupData(UserSessionData groupSessionData, Session newSession) {
+        if (groupSessionData.getSessions() == null) {
+            groupSessionData.setSessions(new ArrayList<>());
+        }
+        groupSessionData.getSessions().add(newSession);
+    }
+
+    private Uni<Void> updateBothCaches(
+            String username,
+            UserSessionData userSessionData,
+            String groupId,
+            UserSessionData groupSessionData) {
+
+        return Uni.combine().all().unis(
+                utilCache.updateUserAndRelatedCaches(username, userSessionData),
+                utilCache.updateUserAndRelatedCaches(groupId, groupSessionData)
+        ).discardItems()
+                .onItem().invoke(unused ->
+                        log.infof("Session added to both user: %s and group: %s", username, groupId));
+    }
+
+    private Uni<Void> updateUserCacheOnly(AccountingRequestDto request, UserSessionData userSessionData) {
+        return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData)
+                .onItem().invoke(unused ->
+                        log.infof("New session added for user: %s, sessionId: %s",
+                                request.username(), request.sessionId()))
+                .replaceWithVoid();
     }
 
 
@@ -199,129 +250,217 @@ public class StartHandler {
                 request.username());
 
         return userRepository.getServiceBucketsByUserName(request.username())
-                .onItem().transformToUni(serviceBuckets -> {
-                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                        log.warnf("No service buckets found for user: %s. Cannot create session data.",
-                                request.username());
-                        return accountProducer.produceAccountingResponseEvent(
-                                        MappingUtil.createResponse(request, "No service buckets found",
-                                                AccountingResponseEvent.EventType.COA,
-                                                AccountingResponseEvent.ResponseAction.DISCONNECT))
-                                .replaceWithVoid();
-                    }
-
-                    double totalQuota = 0.0;
-                    List<Balance> balanceList = new ArrayList<>(serviceBuckets.size());
-                    List<Balance> balanceGroupList = new ArrayList<>();
-                    String groupId = null;
-
-                    for (ServiceBucketInfo bucket : serviceBuckets) {
-                        Balance balance = MappingUtil.createBalance(bucket);
-
-                        groupId = getGroupId(request, bucket, balanceGroupList, balance, groupId, balanceList);
-                        totalQuota += bucket.getCurrentBalance();
-                    }
-
-                    // Check quota early to fail fast
-                    if (totalQuota <= 0) {
-                        log.warnf("User: %s has zero total data quota. Cannot create session data.",
-                                request.username());
-                        return accountProducer.produceAccountingResponseEvent(
-                                        MappingUtil.createResponse(request, "Data quota is zero",
-                                                AccountingResponseEvent.EventType.COA,
-                                                AccountingResponseEvent.ResponseAction.DISCONNECT))
-                                .replaceWithVoid();
-                    }
-
-
-                    // Combine balances and find highest priority
-                    List<Balance> combinedBalances = new ArrayList<>(balanceList);
-                    if (!balanceGroupList.isEmpty()) {
-                        combinedBalances.addAll(balanceGroupList);
-                    }
-
-                    String finalGroupId1 = groupId;
-                    return accountingUtil.findBalanceWithHighestPriority(combinedBalances, null)
-                            .onItem().transformToUni(highestPriorityBalance -> {
-                                if (highestPriorityBalance == null) {
-                                    log.warnf("No valid balance found for user: %s. Cannot create session data.",
-                                            request.username());
-                                    return accountProducer.produceAccountingResponseEvent(
-                                                    MappingUtil.createResponse(request, "No valid balance found",
-                                                            AccountingResponseEvent.EventType.COA,
-                                                            AccountingResponseEvent.ResponseAction.DISCONNECT))
-                                            .replaceWithVoid();
-                                }
-
-                                UserSessionData newUserSessionData = new UserSessionData();
-                                newUserSessionData.setGroupId(finalGroupId1);
-                                newUserSessionData.setUserName(request.username());
-                                Session session = createSession(request);
-                                session.setPreviousUsageBucketId(highestPriorityBalance.getBucketId());
-                                if(!isGroupBalance(highestPriorityBalance,request.username())) {
-                                    newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
-                                }
-                                newUserSessionData.setBalance(balanceList);
-
-                                Uni<Void> userStorageUni = utilCache.storeUserData(request.username(), newUserSessionData)
-                                        .onItem().invoke(unused ->
-                                                log.infof("New user session data created and stored for user: %s", request.username()))
-                                        .replaceWithVoid();
-
-                                if (!balanceGroupList.isEmpty()) {
-                                    UserSessionData groupSessionData = new UserSessionData();
-                                    groupSessionData.setBalance(balanceGroupList);
-
-                                    // Check if the highest priority balance is a group balance
-                                    boolean isHighestPriorityGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
-
-                                    final String finalGroupId = finalGroupId1;
-
-                                    Uni<Void> groupStorageUni = utilCache.getUserData(finalGroupId1)
-                                            .chain(existingData -> {
-                                                if (existingData == null) {
-                                                    // If highest priority is group balance, add session to group data
-                                                    if (isHighestPriorityGroupBalance) {
-                                                        groupSessionData.setSessions(new ArrayList<>(List.of(session)));
-                                                        log.infof("Adding session to new group data for groupId: %s (highest priority balance is group balance)", finalGroupId);
-                                                    } else {
-                                                        groupSessionData.setSessions(new ArrayList<>());
-                                                    }
-                                                    return utilCache.storeUserData(finalGroupId, groupSessionData)
-                                                            .onItem().invoke(unused -> log.infof("Group session data stored for groupId: %s", finalGroupId))
-                                                            .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", finalGroupId));
-                                                } else {
-                                                    // If highest priority is group balance, add session to existing group data
-                                                    if (isHighestPriorityGroupBalance) {
-                                                        if (existingData.getSessions() == null) {
-                                                            existingData.setSessions(new ArrayList<>());
-                                                        }
-                                                        existingData.getSessions().add(session);
-                                                        log.infof("Adding session to existing group data for groupId: %s (highest priority balance is group balance)", finalGroupId);
-                                                    }
-                                                    log.infof("Group session data already exists for groupId: %s", finalGroupId);
-                                                    return utilCache.updateUserAndRelatedCaches(finalGroupId, existingData)
-                                                            .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", finalGroupId));
-                                                }
-                                            });
-
-                                    // Execute both storage operations in parallel
-                                    userStorageUni = Uni.combine().all().unis(userStorageUni, groupStorageUni)
-                                            .discardItems();
-                                }
-
-                                // Send CDR event asynchronously (fire and forget) after user storage
-                                return userStorageUni.onItem().invoke(unused -> {
-                                    log.infof("CDR write event started for user: %s", request.username());
-                                    generateAndSendCDR(request, session);
-                                });
-                            });
-                })
+                .onItem().transformToUni(serviceBuckets ->
+                        processServiceBuckets(request, serviceBuckets))
                 .onFailure().recoverWithUni(throwable -> {
                     log.errorf(throwable, "Error creating new user session for user: %s",
                             request.username());
                     return Uni.createFrom().voidItem();
                 });
+    }
+
+    private Uni<Void> processServiceBuckets(
+            AccountingRequestDto request,
+            List<ServiceBucketInfo> serviceBuckets) {
+
+        if (serviceBuckets == null || serviceBuckets.isEmpty()) {
+            return handleNoServiceBuckets(request);
+        }
+
+        BucketProcessingResult result = processBucketsAndCreateBalances(request, serviceBuckets);
+
+        if (result.totalQuota() <= 0) {
+            return handleZeroQuota(request);
+        }
+
+        List<Balance> combinedBalances = combineBalances(result.balanceList(), result.balanceGroupList());
+
+        return accountingUtil.findBalanceWithHighestPriority(combinedBalances, null)
+                .onItem().transformToUni(highestPriorityBalance ->
+                        createAndStoreNewSession(request, result, highestPriorityBalance));
+    }
+
+    private Uni<Void> handleNoServiceBuckets(AccountingRequestDto request) {
+        log.warnf("No service buckets found for user: %s. Cannot create session data.", request.username());
+        return accountProducer.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "No service buckets found",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT))
+                .replaceWithVoid();
+    }
+
+    private Uni<Void> handleZeroQuota(AccountingRequestDto request) {
+        log.warnf("User: %s has zero total data quota. Cannot create session data.", request.username());
+        return accountProducer.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "Data quota is zero",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT))
+                .replaceWithVoid();
+    }
+
+    private BucketProcessingResult processBucketsAndCreateBalances(
+            AccountingRequestDto request,
+            List<ServiceBucketInfo> serviceBuckets) {
+
+        double totalQuota = 0.0;
+        List<Balance> balanceList = new ArrayList<>(serviceBuckets.size());
+        List<Balance> balanceGroupList = new ArrayList<>();
+        String groupId = null;
+
+        for (ServiceBucketInfo bucket : serviceBuckets) {
+            Balance balance = MappingUtil.createBalance(bucket);
+            groupId = getGroupId(request, bucket, balanceGroupList, balance, groupId, balanceList);
+            totalQuota += bucket.getCurrentBalance();
+        }
+
+        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota);
+    }
+
+    private List<Balance> combineBalances(List<Balance> balanceList, List<Balance> balanceGroupList) {
+        List<Balance> combined = new ArrayList<>(balanceList);
+        if (!balanceGroupList.isEmpty()) {
+            combined.addAll(balanceGroupList);
+        }
+        return combined;
+    }
+
+    private Uni<Void> createAndStoreNewSession(
+            AccountingRequestDto request,
+            BucketProcessingResult result,
+            Balance highestPriorityBalance) {
+
+        if (highestPriorityBalance == null) {
+            return handleNoValidBalance(request);
+        }
+
+        Session session = createSessionWithBalance(request, highestPriorityBalance);
+        UserSessionData newUserSessionData = buildUserSessionData(
+                request, result.balanceList(), result.groupId(), session, highestPriorityBalance);
+
+        Uni<Void> userStorageUni = storeUserSessionData(request.username(), newUserSessionData);
+
+        if (!result.balanceGroupList().isEmpty()) {
+            userStorageUni = storeUserAndGroupData(
+                    request, result, session, highestPriorityBalance, userStorageUni);
+        }
+
+        return userStorageUni.onItem().invoke(unused -> {
+            log.infof("CDR write event started for user: %s", request.username());
+            generateAndSendCDR(request, session);
+        });
+    }
+
+    private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {
+        log.warnf("No valid balance found for user: %s. Cannot create session data.", request.username());
+        return accountProducer.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "No valid balance found",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT))
+                .replaceWithVoid();
+    }
+
+    private UserSessionData buildUserSessionData(
+            AccountingRequestDto request,
+            List<Balance> balanceList,
+            String groupId,
+            Session session,
+            Balance highestPriorityBalance) {
+
+        UserSessionData newUserSessionData = new UserSessionData();
+        newUserSessionData.setGroupId(groupId);
+        newUserSessionData.setUserName(request.username());
+        newUserSessionData.setBalance(balanceList);
+
+        if (!isGroupBalance(highestPriorityBalance, request.username())) {
+            newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
+        }
+
+        return newUserSessionData;
+    }
+
+    private Uni<Void> storeUserSessionData(String username, UserSessionData sessionData) {
+        return utilCache.storeUserData(username, sessionData)
+                .onItem().invoke(unused ->
+                        log.infof("New user session data created and stored for user: %s", username))
+                .replaceWithVoid();
+    }
+
+    private Uni<Void> storeUserAndGroupData(
+            AccountingRequestDto request,
+            BucketProcessingResult result,
+            Session session,
+            Balance highestPriorityBalance,
+            Uni<Void> userStorageUni) {
+
+        UserSessionData groupSessionData = new UserSessionData();
+        groupSessionData.setBalance(result.balanceGroupList());
+
+        boolean isHighestPriorityGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
+        String groupId = result.groupId();
+
+        Uni<Void> groupStorageUni = utilCache.getUserData(groupId)
+                .chain(existingData -> processGroupData(
+                        existingData, groupSessionData, session, isHighestPriorityGroupBalance, groupId));
+
+        return Uni.combine().all().unis(userStorageUni, groupStorageUni).discardItems();
+    }
+
+    private Uni<Void> processGroupData(
+            UserSessionData existingData,
+            UserSessionData groupSessionData,
+            Session session,
+            boolean isHighestPriorityGroupBalance,
+            String groupId) {
+
+        if (existingData == null) {
+            return storeNewGroupData(groupSessionData, session, isHighestPriorityGroupBalance, groupId);
+        }
+
+        return updateExistingGroupData(existingData, session, isHighestPriorityGroupBalance, groupId);
+    }
+
+    private Uni<Void> storeNewGroupData(
+            UserSessionData groupSessionData,
+            Session session,
+            boolean isHighestPriorityGroupBalance,
+            String groupId) {
+
+        if (isHighestPriorityGroupBalance) {
+            groupSessionData.setSessions(new ArrayList<>(List.of(session)));
+            log.infof("Adding session to new group data for groupId: %s (highest priority balance is group balance)", groupId);
+        } else {
+            groupSessionData.setSessions(new ArrayList<>());
+        }
+
+        return utilCache.storeUserData(groupId, groupSessionData)
+                .onItem().invoke(unused -> log.infof("Group session data stored for groupId: %s", groupId))
+                .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", groupId));
+    }
+
+    private Uni<Void> updateExistingGroupData(
+            UserSessionData existingData,
+            Session session,
+            boolean isHighestPriorityGroupBalance,
+            String groupId) {
+
+        if (isHighestPriorityGroupBalance) {
+            if (existingData.getSessions() == null) {
+                existingData.setSessions(new ArrayList<>());
+            }
+            existingData.getSessions().add(session);
+            log.infof("Adding session to existing group data for groupId: %s (highest priority balance is group balance)", groupId);
+        }
+
+        log.infof("Group session data already exists for groupId: %s", groupId);
+        return utilCache.updateUserAndRelatedCaches(groupId, existingData)
+                .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", groupId));
+    }
+
+    private record BucketProcessingResult(
+            List<Balance> balanceList,
+            List<Balance> balanceGroupList,
+            String groupId,
+            double totalQuota) {
     }
 
     private static String getGroupId(AccountingRequestDto request, ServiceBucketInfo bucket, List<Balance> balanceGroupList, Balance balance, String groupId, List<Balance> balanceList) {
