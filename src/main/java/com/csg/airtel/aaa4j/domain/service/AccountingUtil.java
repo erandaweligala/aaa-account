@@ -224,7 +224,6 @@ public class AccountingUtil {
             Session sessionData,
             AccountingRequestDto request,
             String bucketId) {
-       //todo highest priority bucket is group bucket need update cache GroupBucket related sessions
         long totalUsage = calculateTotalUsage(request);
 
         return getGroupBucketData(userData.getGroupId())
@@ -899,21 +898,96 @@ public class AccountingUtil {
     private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success) {
         if(!foundBalance.getBucketUsername().equals(request.username())) {
             userData.getBalance().remove(foundBalance);
-            UserSessionData userSessionGroupData = new UserSessionData();
-            userSessionGroupData.setBalance(List.of(foundBalance));
-            return cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
-                    .onFailure().invoke(err ->
-                            log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername()))
-                    .chain(() -> cacheClient.updateUserAndRelatedCaches(request.username(), userData)
-                            .onFailure().invoke(err ->
-                                    log.errorf(err, "Error updating cache for user: %s", request.username())))
-                    .replaceWith(success);
+
+            // Fetch current group data to update sessions as well
+            return cacheClient.getUserData(foundBalance.getBucketUsername())
+                    .onFailure().recoverWithNull()
+                    .onItem().transformToUni(existingGroupData -> {
+                        // Find and update the session in the user's session list
+                        Session currentSession = findSessionByUsernameInList(userData.getSessions(), request.username());
+
+                        // Prepare group data with updated balance and sessions
+                        UserSessionData userSessionGroupData = prepareGroupDataWithSession(
+                                existingGroupData, foundBalance, currentSession);
+
+                        // Update both group and user caches
+                        return cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
+                                .onFailure().invoke(err ->
+                                        log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername()))
+                                .chain(() -> cacheClient.updateUserAndRelatedCaches(request.username(), userData)
+                                        .onFailure().invoke(err ->
+                                                log.errorf(err, "Error updating cache for user: %s", request.username())))
+                                .replaceWith(success);
+                    });
         }else {
             return cacheClient.updateUserAndRelatedCaches(request.username(), userData)
                     .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))
                     .replaceWith(success);
         }
+    }
+
+    /**
+     * Prepare group data with updated balance and session.
+     * If session is not null, it will be added/updated in the group's sessions list.
+     *
+     * @param existingGroupData existing group data from cache (may be null)
+     * @param balance the balance to update
+     * @param session the session to add/update (may be null)
+     * @return UserSessionData with updated balance and sessions
+     */
+    private UserSessionData prepareGroupDataWithSession(UserSessionData existingGroupData, Balance balance, Session session) {
+        UserSessionData groupData = new UserSessionData();
+        groupData.setBalance(List.of(balance));
+
+        if (session != null) {
+            List<Session> groupSessions = new ArrayList<>();
+
+            // If existing group data has sessions, add them first
+            if (existingGroupData != null && existingGroupData.getSessions() != null) {
+                // Filter out the session with the same sessionId to avoid duplicates
+                groupSessions.addAll(existingGroupData.getSessions().stream()
+                        .filter(s -> !s.getSessionId().equals(session.getSessionId()))
+                        .toList());
+            }
+
+            // Add the current session
+            groupSessions.add(session);
+            groupData.setSessions(groupSessions);
+
+            if (log.isDebugEnabled()) {
+                log.debugf("Updated group bucket sessions: total=%d, added/updated sessionId=%s",
+                        groupSessions.size(), session.getSessionId());
+            }
+        } else if (existingGroupData != null && existingGroupData.getSessions() != null) {
+            // Preserve existing sessions if no session to add/update
+            groupData.setSessions(existingGroupData.getSessions());
+        }
+
+        // Preserve groupId if it exists in the existing data
+        if (existingGroupData != null && existingGroupData.getGroupId() != null) {
+            groupData.setGroupId(existingGroupData.getGroupId());
+        }
+
+        return groupData;
+    }
+
+    /**
+     * Find a session by username in the user's session list.
+     * This is used to get the current session that should be added to the group's sessions.
+     *
+     * @param sessions list of sessions
+     * @param username the username to find
+     * @return the session if found, null otherwise
+     */
+    private Session findSessionByUsernameInList(List<Session> sessions, String username) {
+        if (sessions == null || sessions.isEmpty()) {
+            return null;
+        }
+
+        // Since Session doesn't have username field, we return the first session
+        // as the current user's session (in accounting context, there's typically one active session per user)
+        return sessions.isEmpty() ? null : sessions.get(0);
     }
 
     private long getNewQuota(Session sessionData, Balance foundBalance, long totalUsage) {
