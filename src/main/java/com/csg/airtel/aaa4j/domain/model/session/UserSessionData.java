@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.domain.model.session;
 
 import lombok.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
@@ -14,7 +15,7 @@ public class UserSessionData {
     private String userName;
     private String groupId;
     private List<Balance> balance;
-    private List<Session> sessions;
+    private List<Session> sessions = new ArrayList<>();
     private QosParam qosParam;
 
 }

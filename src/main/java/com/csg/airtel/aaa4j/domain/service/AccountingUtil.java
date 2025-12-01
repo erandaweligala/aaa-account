@@ -224,6 +224,7 @@ public class AccountingUtil {
             Session sessionData,
             AccountingRequestDto request,
             String bucketId) {
+       //todo highest priority bucket is group bucket need update cache GroupBucket related sessions
         long totalUsage = calculateTotalUsage(request);
 
         return getGroupBucketData(userData.getGroupId())
@@ -931,6 +932,7 @@ public class AccountingUtil {
      * Replace element in collection .
      */
     private <T> void replaceInCollection(Collection<T> collection, T element) {
+
         if (collection instanceof List) {
             List<T> list = (List<T>) collection;
             int index = list.indexOf(element);
