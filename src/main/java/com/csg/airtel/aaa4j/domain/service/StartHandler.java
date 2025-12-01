@@ -41,7 +41,7 @@ public class StartHandler {
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
-//todo need improve performance and used best practise and optimize this code and fixed sonar issues
+
     return utilCache.getUserData(request.username())
             .onItem().invoke(userData ->
                     log.infof("[traceId: %s]User data retrieved for user: %s",traceId, request.username()))
@@ -72,7 +72,7 @@ public class StartHandler {
     private Uni<Void> handleExistingUserSession(
             AccountingRequestDto request,
             UserSessionData userSessionData) {
-
+    // todo fixed sonar Cognitive Complexity of methods should not be too high improve poformance this file
         // Declare balanceListUni outside the if block
         Uni<List<Balance>> balanceListUni;
 
