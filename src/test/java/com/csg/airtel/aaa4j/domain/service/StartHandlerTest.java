@@ -37,11 +37,14 @@ class StartHandlerTest {
     @Mock
     private AccountProducer accountProducer;
 
+    @Mock
+    private  AccountingUtil accountingUtil;
+
     private StartHandler startHandler;
 
     @BeforeEach
     void setUp() {
-        startHandler = new StartHandler(utilCache, userRepository, accountProducer);
+        startHandler = new StartHandler(utilCache, userRepository, accountProducer,accountingUtil);
     }
 
     @Test

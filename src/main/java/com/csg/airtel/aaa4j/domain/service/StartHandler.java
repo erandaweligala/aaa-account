@@ -38,6 +38,7 @@ public class StartHandler {
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
+        //todo highestbucket are if group balance no need to add session userSessionData
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
@@ -218,6 +219,7 @@ public class StartHandler {
                         combinedBalances.addAll(balanceGroupList);
                     }
 
+                    String finalGroupId1 = groupId;
                     return accountingUtil.findBalanceWithHighestPriority(combinedBalances, null)
                             .onItem().transformToUni(highestPriorityBalance -> {
                                 if (highestPriorityBalance == null) {
@@ -231,7 +233,7 @@ public class StartHandler {
                                 }
 
                                 UserSessionData newUserSessionData = new UserSessionData();
-                                newUserSessionData.setGroupId(groupId);
+                                newUserSessionData.setGroupId(finalGroupId1);
                                 newUserSessionData.setUserName(request.username());
                                 Session session = createSession(request);
                                 session.setPreviousUsageBucketId(highestPriorityBalance.getBucketId());
@@ -247,16 +249,14 @@ public class StartHandler {
                                     UserSessionData groupSessionData = new UserSessionData();
                                     groupSessionData.setBalance(balanceGroupList);
 
-                                    final String finalGroupId = groupId;
+                                    final String finalGroupId = finalGroupId1;
 
-                                    // Check if the highest priority balance is a group balance
-                                    // If so, add the session to group session data as well
                                     if (isGroupBalance(highestPriorityBalance, request.username())) {
                                         log.infof("Highest priority balance is a group balance. Adding session to group session data for groupId: %s", finalGroupId);
                                         groupSessionData.setSessions(new ArrayList<>(List.of(session)));
                                     }
 
-                                    Uni<Void> groupStorageUni = utilCache.getUserData(groupId)
+                                    Uni<Void> groupStorageUni = utilCache.getUserData(finalGroupId1)
                                             .chain(existingData -> {
                                                 if (existingData == null) {
                                                     return utilCache.storeUserData(finalGroupId, groupSessionData)

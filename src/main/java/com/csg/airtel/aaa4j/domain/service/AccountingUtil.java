@@ -139,9 +139,10 @@ public class AccountingUtil {
             return false;
         }
 
-        if (balance.getServiceExpiry().isBefore(now)) {
+        if (balance.getServiceExpiry().isBefore(now) || balance.getBucketExpiryDate().isBefore(now)) {
             return false;
         }
+
 
         if (!isWithinTimeWindow(timeWindow)) {
             return false;
