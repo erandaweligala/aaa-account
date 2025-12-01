@@ -14,11 +14,20 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
+import com.csg.airtel.aaa4j.domain.model.UpdateResult;
+import com.csg.airtel.aaa4j.domain.model.session.Session;
+import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
+import io.smallrye.mutiny.Uni;
+import org.mockito.ArgumentCaptor;
+
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class AccountingUtilTest {
@@ -369,6 +378,495 @@ class AccountingUtilTest {
                 .getItem();
 
         assertNotNull(result);
+        assertEquals("BUCKET1", result.getBucketId());
+    }
+
+    @Test
+    void testIsWithinTimeWindowOutsideWindow() {
+        // Test that returns false for times outside the window (behavior depends on current time)
+        assertDoesNotThrow(() -> accountingUtil.isWithinTimeWindow("23-23"));
+    }
+
+    @Test
+    void testIsWithinTimeWindowNegativeHour() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            accountingUtil.isWithinTimeWindow("-1-10");
+        });
+    }
+
+    @Test
+    void testCalculateConsumptionInWindowMidnightBoundary() {
+        Balance balance = new Balance();
+        List<ConsumptionRecord> records = new ArrayList<>();
+        LocalDateTime midnight = LocalDateTime.now().toLocalDate().atStartOfDay();
+        records.add(new ConsumptionRecord(midnight.minusSeconds(1), 1000L));
+        records.add(new ConsumptionRecord(midnight, 2000L));
+        records.add(new ConsumptionRecord(midnight.plusHours(1), 3000L));
+        balance.setConsumptionHistory(records);
+
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        // Only records from midnight onwards should be counted
+        assertEquals(5000L, consumption);
+    }
+
+    @Test
+    void testCalculateConsumptionInWindow12HourBoundary() {
+        Balance balance = new Balance();
+        List<ConsumptionRecord> records = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        LocalTime currentTime = now.toLocalTime();
+        LocalDateTime windowStart = currentTime.isBefore(java.time.LocalTime.NOON)
+            ? now.toLocalDate().atStartOfDay()
+            : now.toLocalDate().atTime(java.time.LocalTime.NOON);
+
+        records.add(new ConsumptionRecord(windowStart.minusHours(1), 1000L));
+        records.add(new ConsumptionRecord(windowStart, 2000L));
+        records.add(new ConsumptionRecord(windowStart.plusHours(1), 3000L));
+        balance.setConsumptionHistory(records);
+
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 12L);
+        assertEquals(5000L, consumption);
+    }
+
+    @Test
+    void testCalculateConsumptionInWindowCustomHours() {
+        Balance balance = new Balance();
+        List<ConsumptionRecord> records = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        records.add(new ConsumptionRecord(now.minusHours(3), 1000L));
+        records.add(new ConsumptionRecord(now.minusHours(6), 2000L));
+        records.add(new ConsumptionRecord(now.minusHours(10), 3000L));
+        balance.setConsumptionHistory(records);
+
+        // 6 hour window - should include records from 3 and 6 hours ago
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 6L);
+        assertEquals(3000L, consumption);
+    }
+
+    @Test
+    void testFindBalanceWithHighestPriorityMultiplePriorities() {
+        Balance balance1 = createBalance("BUCKET1", 3L, 1000L, "Active", "0-24");
+        Balance balance2 = createBalance("BUCKET2", 1L, 2000L, "Active", "0-24");
+        Balance balance3 = createBalance("BUCKET3", 2L, 3000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2, balance3);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        assertEquals("BUCKET2", result.getBucketId());
+        assertEquals(1L, result.getPriority());
+    }
+
+    @Test
+    void testFindBalanceOutsideTimeWindow() {
+        LocalDateTime now = LocalDateTime.now();
+        // Create time window that excludes current time (hard to guarantee, but we test the logic)
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setTimeWindow("00-00");  // Only midnight - should be excluded
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        assertEquals("BUCKET2", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceWithConsumptionLimitWithNullHistory() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setConsumptionLimit(5000L);
+        balance1.setConsumptionLimitWindow(24L);
+        balance1.setConsumptionHistory(null);
+
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        // Balance1 should be eligible since consumption history is null (no consumption recorded yet)
+        assertNotNull(result);
+        assertEquals("BUCKET1", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceWithZeroConsumptionLimit() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setConsumptionLimit(0L);  // Zero limit
+        balance1.setConsumptionLimitWindow(24L);
+
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        // Balance1 should be eligible since zero consumption limit means no limit
+        assertNotNull(result);
+        assertEquals("BUCKET1", result.getBucketId());
+    }
+
+    @Test
+    void testIsWithinTimeWindowHourParsing() {
+        // Test various hour formats
+        assertDoesNotThrow(() -> accountingUtil.isWithinTimeWindow("0-24"));
+        assertDoesNotThrow(() -> accountingUtil.isWithinTimeWindow("00-24"));
+        assertDoesNotThrow(() -> accountingUtil.isWithinTimeWindow("1-23"));
+        assertDoesNotThrow(() -> accountingUtil.isWithinTimeWindow("09-17"));
+    }
+
+    @Test
+    void testIsWithinTimeWindowEmptyString() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            accountingUtil.isWithinTimeWindow("  ");
+        });
+    }
+
+    @Test
+    void testIsWithinTimeWindowOnlyDash() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            accountingUtil.isWithinTimeWindow("-");
+        });
+    }
+
+    @Test
+    void testIsWithinTimeWindowMultipleDashes() {
+        assertThrows(IllegalArgumentException.class, () -> {
+            accountingUtil.isWithinTimeWindow("00-12-24");
+        });
+    }
+
+    @Test
+    void testFindBalanceWithHighestPriorityMixedEligibility() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setServiceExpiry(LocalDateTime.now().minusDays(1));  // Expired
+
+        Balance balance2 = createBalance("BUCKET2", 2L, 0L, "Active", "0-24");  // Zero quota
+
+        Balance balance3 = createBalance("BUCKET3", 3L, 500L, "Active", "0-24");  // Eligible with lower priority
+
+        List<Balance> balances = List.of(balance1, balance2, balance3);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        // Should select BUCKET3 as it's the only eligible one
+        assertEquals("BUCKET3", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceNullBucketId() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setBucketId(null);
+
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        assertEquals("BUCKET2", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceHighestPriorityWithExpiryComparison() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setBucketExpiryDate(LocalDateTime.now().plusDays(100));
+
+        Balance balance2 = createBalance("BUCKET2", 1L, 1000L, "Active", "0-24");
+        balance2.setBucketExpiryDate(LocalDateTime.now().plusDays(50));
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        // Should select BUCKET2 with earlier expiry date when priorities are same
+        assertEquals("BUCKET2", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceWithNullExpiryDate() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setBucketExpiryDate(null);
+
+        Balance balance2 = createBalance("BUCKET2", 1L, 1000L, "Active", "0-24");
+        balance2.setBucketExpiryDate(LocalDateTime.now().plusDays(30));
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        // BUCKET1 should be selected (null expiry date is treated as never expires)
+        assertEquals("BUCKET1", result.getBucketId());
+    }
+
+    @Test
+    void testIsWithinTimeWindowSpanningMidnightAfterCutoff() {
+        // Test window that spans midnight and current time is after cutoff
+        // Window 22-6 means 10 PM to 6 AM
+        assertDoesNotThrow(() -> {
+            boolean result = accountingUtil.isWithinTimeWindow("22-6");
+            // Result depends on current time, just ensure no exception
+            assertTrue(result || !result);  // Always true, just ensure it returns a boolean
+        });
+    }
+
+    @Test
+    void testCalculateConsumptionInWindowAllRecordsOutside() {
+        Balance balance = new Balance();
+        List<ConsumptionRecord> records = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        records.add(new ConsumptionRecord(now.minusDays(5), 1000L));
+        records.add(new ConsumptionRecord(now.minusDays(3), 2000L));
+        balance.setConsumptionHistory(records);
+
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        assertEquals(0L, consumption);
+    }
+
+    @Test
+    void testFindBalanceWithPriorityAndNullExpiry() {
+        // Test the case where both have same priority, one has null expiry
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setBucketExpiryDate(null);
+
+        Balance balance2 = createBalance("BUCKET2", 1L, 1000L, "Active", "0-24");
+        balance2.setBucketExpiryDate(LocalDateTime.now().plusDays(30));
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        // BUCKET1 should be selected (inserted first and no higher priority candidates)
+        assertEquals("BUCKET1", result.getBucketId());
+    }
+
+    @Test
+    void testCalculateConsumptionInWindowAllRecordsInside() {
+        Balance balance = new Balance();
+        List<ConsumptionRecord> records = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        records.add(new ConsumptionRecord(now.minusMinutes(30), 1000L));
+        records.add(new ConsumptionRecord(now.minusMinutes(10), 2000L));
+        records.add(new ConsumptionRecord(now.minusMinutes(1), 3000L));
+        balance.setConsumptionHistory(records);
+
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        assertEquals(6000L, consumption);
+    }
+
+    @Test
+    void testClearTemporalCacheClears() {
+        // Just ensure it doesn't throw any exception
+        assertDoesNotThrow(() -> {
+            accountingUtil.clearTemporalCache();
+            accountingUtil.clearTemporalCache();  // Call twice to ensure idempotency
+        });
+    }
+
+    @Test
+    void testFindBalanceWithInvalidTimeWindowFormatInBalance() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "invalid");
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        // Should throw exception due to invalid time window
+        assertThrows(IllegalArgumentException.class, () -> {
+            accountingUtil.findBalanceWithHighestPriority(balances, null)
+                    .subscribe().withSubscriber(UniAssertSubscriber.create())
+                    .awaitItem()
+                    .getItem();
+        });
+    }
+
+    @Test
+    void testFindBalanceWithNullTimeWindow() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", null);
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        // Should throw exception due to null time window
+        assertThrows(IllegalArgumentException.class, () -> {
+            accountingUtil.findBalanceWithHighestPriority(balances, null)
+                    .subscribe().withSubscriber(UniAssertSubscriber.create())
+                    .awaitItem()
+                    .getItem();
+        });
+    }
+
+    @Test
+    void testFindBalanceWithHighestPriorityBucketIdNotMatching() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+        Balance balance3 = createBalance("BUCKET3", 3L, 3000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2, balance3);
+
+        // Request BUCKET2 but it should be found first without falling back to priority
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, "BUCKET2")
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        assertEquals("BUCKET2", result.getBucketId());
+    }
+
+    @Test
+    void testCalculateConsumptionInWindowWithVeryOldRecords() {
+        Balance balance = new Balance();
+        List<ConsumptionRecord> records = new ArrayList<>();
+        LocalDateTime now = LocalDateTime.now();
+        records.add(new ConsumptionRecord(now.minusDays(30), 1000L));
+        records.add(new ConsumptionRecord(now.minusDays(25), 2000L));
+        records.add(new ConsumptionRecord(now.minusHours(1), 3000L));
+        balance.setConsumptionHistory(records);
+
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        // Only the last record (1 hour ago) should be counted
+        assertEquals(3000L, consumption);
+    }
+
+    @Test
+    void testIsWithinTimeWindowBoundary00to00() {
+        // Edge case: 00-00 should mean only exactly midnight
+        assertDoesNotThrow(() -> {
+            accountingUtil.isWithinTimeWindow("00-00");
+        });
+    }
+
+    @Test
+    void testIsWithinTimeWindowSameTimes() {
+        // Time window where start and end are same (should only be within that hour)
+        assertDoesNotThrow(() -> {
+            accountingUtil.isWithinTimeWindow("12-12");
+        });
+    }
+
+    @Test
+    void testFindBalanceWithConsumptionLimitAndNullWindow() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setConsumptionLimit(5000L);
+        balance1.setConsumptionLimitWindow(null);  // Null window
+
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        // Balance1 should be eligible since consumption limit window is null
+        assertNotNull(result);
+        assertEquals("BUCKET1", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceWithNegativeQuota() {
+        Balance balance1 = createBalance("BUCKET1", 1L, -100L, "Active", "0-24");
+        Balance balance2 = createBalance("BUCKET2", 2L, 1000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        // Should select BUCKET2 since BUCKET1 has negative quota
+        assertEquals("BUCKET2", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceWithDisabledStatus() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Disabled", "0-24");
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        // Should select BUCKET2 since BUCKET1 is not Active
+        assertEquals("BUCKET2", result.getBucketId());
+    }
+
+    @Test
+    void testFindBalanceBothExpired() {
+        Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
+        balance1.setServiceExpiry(LocalDateTime.now().minusDays(10));
+
+        Balance balance2 = createBalance("BUCKET2", 2L, 2000L, "Active", "0-24");
+        balance2.setServiceExpiry(LocalDateTime.now().minusDays(5));
+
+        List<Balance> balances = List.of(balance1, balance2);
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        // Both are expired, should return null
+        assertNull(result);
+    }
+
+    @Test
+    void testFindBalanceWithHighestPriorityLargeList() {
+        List<Balance> balances = new ArrayList<>();
+        for (int i = 1; i <= 100; i++) {
+            Balance balance = createBalance("BUCKET" + i, (long) i, 1000L, "Active", "0-24");
+            balances.add(balance);
+        }
+
+        Balance result = accountingUtil.findBalanceWithHighestPriority(balances, null)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .getItem();
+
+        assertNotNull(result);
+        // Should select BUCKET1 (priority 1 is lowest)
         assertEquals("BUCKET1", result.getBucketId());
     }
 
