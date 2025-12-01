@@ -36,6 +36,8 @@ public class StartHandler {
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
+
+        //todo findBalanceWithHighestPriority can get AccountingUtil.findBalanceWithHighestPriority and set sessions value previousUsageBucketId = Balance.BacketId if dont ahve any balnaces produce disconnect
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
