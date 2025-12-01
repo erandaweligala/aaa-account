@@ -27,12 +27,14 @@ public class StopHandler {
     private final CacheClient cacheUtil;
     private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
+    private final TimeUtil timeUtil;
 
     @Inject
-    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil) {
+    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, TimeUtil timeUtil) {
         this.cacheUtil = cacheUtil;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
+        this.timeUtil = timeUtil;
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
@@ -154,7 +156,7 @@ public class StopHandler {
     private void populateColumnValues(Map<String, Object> columnValues, Balance balance) {
         columnValues.put("CURRENT_BALANCE", balance.getQuota());
         columnValues.put("USAGE", balance.getInitialBalance()- balance.getQuota());
-        columnValues.put("UPDATED_AT", LocalDateTime.now());
+        columnValues.put("UPDATED_AT", timeUtil.getCurrentTimeLocal());
     }
 
     // Extract to builder method for clarity and reusability
@@ -172,7 +174,7 @@ public class StopHandler {
         dbWriteRequest.setColumnValues(columnValues);
         dbWriteRequest.setTableName("BUCKET_INSTANCE");
         dbWriteRequest.setEventId(UUID.randomUUID().toString());
-        dbWriteRequest.setTimestamp(LocalDateTime.now());
+        dbWriteRequest.setTimestamp(timeUtil.getCurrentTimeLocal());
 
         return dbWriteRequest;
     }
