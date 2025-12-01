@@ -36,7 +36,7 @@ public class StartHandler {
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
-
+   // todo implement get highest priority bucket and check  availabe balances if have balances highest balance is group , need add session for groupSessionData level
         long startTime = System.currentTimeMillis();
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
@@ -179,7 +179,7 @@ public class StartHandler {
                                 .replaceWithVoid();
                     }
 
-                    // Create regular user session
+
                     UserSessionData newUserSessionData = new UserSessionData();
                     newUserSessionData.setGroupId(groupId);
                     newUserSessionData.setUserName(request.username());
@@ -187,29 +187,27 @@ public class StartHandler {
                     newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
                     newUserSessionData.setBalance(balanceList);
 
-                    // Prepare storage operations
+
                     Uni<Void> userStorageUni = utilCache.storeUserData(request.username(), newUserSessionData)
                             .onItem().invoke(unused ->
                                     log.infof("New user session data created and stored for user: %s", request.username()))
                             .replaceWithVoid();
 
 
-                    // Handle group storage in parallel if needed
                     if (!balanceGroupList.isEmpty()) {
                         UserSessionData groupSessionData = new UserSessionData();
                         groupSessionData.setBalance(balanceGroupList);
+
                        final String finalGroupId = groupId;
 
 
                         Uni<Void> groupStorageUni = utilCache.getUserData(groupId)
                                 .chain(existingData -> {
                                     if (existingData == null) {
-                                        // Store new data if null
                                         return utilCache.storeUserData(finalGroupId, groupSessionData)
                                                 .onItem().invoke(unused -> log.infof("Group session data stored for groupId: %s", finalGroupId))
                                                 .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", finalGroupId));
                                     } else {
-                                        // Data already exists, skip storage
                                         log.infof("Group session data already exists for groupId: %s", finalGroupId);
                                         return Uni.createFrom().voidItem();
                                     }

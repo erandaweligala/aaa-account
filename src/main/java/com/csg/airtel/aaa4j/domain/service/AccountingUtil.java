@@ -98,11 +98,10 @@ public class AccountingUtil {
      * @return balance with the highest priority
      */
     public Uni<Balance> findBalanceWithHighestPriority(List<Balance> balances, String bucketId) {
-        // Avoid unnecessary logging in high-throughput scenarios - use trace level
+
         if (log.isTraceEnabled()) {
             log.tracef("Finding balance with highest priority from %d balances", balances.size());
         }
-        // Direct computation without worker pool for CPU-bound operation (reduces context switching)
         return Uni.createFrom().item(() -> computeHighestPriority(balances, bucketId));
     }
 
@@ -110,7 +109,6 @@ public class AccountingUtil {
      * Compute highest priority balance.
      */
     private Balance computeHighestPriority(List<Balance> balances, String bucketId) {
-        // Early exit for null/empty
         if (balances == null || balances.isEmpty()) {
             return null;
         }
@@ -1001,7 +999,6 @@ public class AccountingUtil {
      * Get group bucket balances.
      */
     private Uni<List<Balance>> getGroupBucket(String groupId) {
-        // Fast path: default group or null
         if (groupId == null || DEFAULT_GROUP_ID.equals(groupId)) {
             return Uni.createFrom().item(Collections.emptyList());
         }
