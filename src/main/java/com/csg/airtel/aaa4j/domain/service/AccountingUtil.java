@@ -1,62 +1,45 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
-import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
-import com.csg.airtel.aaa4j.domain.model.EventType;
-import com.csg.airtel.aaa4j.domain.model.UpdateResult;
+import com.csg.airtel.aaa4j.domain.constant.AppConstant;
+import com.csg.airtel.aaa4j.domain.model.*;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.ConsumptionRecord;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
-import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 
 @ApplicationScoped
 public class AccountingUtil {
 
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
-    private static final long GIGAWORD_MULTIPLIER = 4294967296L;
-    private static final String DEFAULT_GROUP_ID = "1";
-    private static final String DISCONNECT_ACTION = "Disconnect";
-    private static final String BUCKET_INSTANCE_TABLE = "BUCKET_INSTANCE";
-
-    private static final long WINDOW_24_HOURS = 24;
-    private static final long WINDOW_12_HOURS = 12;
-
-    private static final int CONSUMPTION_HISTORY_INITIAL_CAPACITY = 24;
-
-    // Retry configuration for COA events
-    private static final long COA_RETRY_INITIAL_BACKOFF_MS = 100;
-    private static final long COA_RETRY_MAX_BACKOFF_SECONDS = 2;
-    private static final int COA_RETRY_MAX_ATTEMPTS = 2;
-    private static final long COA_TIMEOUT_SECONDS = 45;
 
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
     private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
-    public static final String CURRENT_BALANCE = "CURRENT_BALANCE";
-    public static final String USAGE = "USAGE";
-    public static final String UPDATED_AT = "UPDATED_AT";
-    public static final String ID = "ID";
-    public static final String SERVICE_ID = "SERVICE_ID";
-
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
+    private final COAService coaService;
 
 
-    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache) {
+    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;
+        this.coaService = coaService;
     }
 
     private LocalDateTime getNow() {
@@ -235,7 +218,7 @@ public class AccountingUtil {
         String groupId = userData.getGroupId();
 
         // Early exit optimization: Skip group data fetch for default group
-        if (groupId == null || DEFAULT_GROUP_ID.equals(groupId)) {
+        if (groupId == null || AppConstant.DEFAULT_GROUP_ID.equals(groupId)) {
             return processWithoutGroupData(userData, sessionData, request, bucketId, totalUsage)
                     .eventually(this::cleanupTemporalCacheAsync);
         }
@@ -243,7 +226,7 @@ public class AccountingUtil {
         // Optimized reactive chain: flattened with chain() instead of nested transformToUni()
         return getGroupBucketData(groupId)
                 .chain(groupData -> processWithGroupData(
-                        userData, sessionData, request, bucketId, totalUsage, groupData))
+                        userData, request, bucketId, totalUsage, groupData))
                 .eventually(this::cleanupTemporalCacheAsync);
     }
 
@@ -275,18 +258,17 @@ public class AccountingUtil {
      */
     private Uni<UpdateResult> processWithGroupData(
             UserSessionData userData,
-            Session sessionData,
             AccountingRequestDto request,
             String bucketId,
             long totalUsage,
             UserSessionData groupData) {
 
-        // Combine user and group data
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
         List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
 
-        // Synchronous balance finding - already in async context
+
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
+
 
         if (log.isTraceEnabled()) {
             log.tracef("Processing with group data: user balances=%d, group balances=%d, combined=%d",
@@ -294,11 +276,16 @@ public class AccountingUtil {
                     groupData != null && groupData.getBalance() != null ? groupData.getBalance().size() : 0,
                     combinedBalances.size());
         }
+        Session sessionData = combinedSessions.stream()
+                .filter(rs -> rs.getSessionId().equals(request.sessionId()))
+                .findFirst().orElse(null);
 
         return processBalanceUpdateWithCombinedData(
                 userData, sessionData, request, foundBalance,
                 combinedBalances, combinedSessions, totalUsage);
     }
+
+
 
     /**
      * Cleanup temporal cache asynchronously for use with eventually().
@@ -323,9 +310,9 @@ public class AccountingUtil {
      * @return LocalDateTime representing the start of the consumption window
      */
     private LocalDateTime calculateWindowStartTime(long windowHours, LocalDateTime now, LocalDate today) {
-        if (windowHours == WINDOW_24_HOURS) {
+        if (windowHours == AppConstant.WINDOW_24_HOURS) {
             return today.atTime(LocalTime.MIDNIGHT);
-        } else if (windowHours == WINDOW_12_HOURS) {
+        } else if (windowHours == AppConstant.WINDOW_12_HOURS) {
             LocalTime currentTime = now.toLocalTime();
             if (currentTime.isBefore(LocalTime.NOON)) {
                 return today.atTime(LocalTime.MIDNIGHT);
@@ -426,7 +413,7 @@ public class AccountingUtil {
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null) {
 
-            history = new ArrayList<>(CONSUMPTION_HISTORY_INITIAL_CAPACITY);
+            history = new ArrayList<>(AppConstant.CONSUMPTION_HISTORY_INITIAL_CAPACITY);
             balance.setConsumptionHistory(history);
         }
 
@@ -528,23 +515,25 @@ public class AccountingUtil {
                     combinedBalances.size(), combinedSessions.size());
         }
 
+
+
         BalanceUpdateContext context = prepareBalanceUpdateContext(
                 sessionData, foundBalance, combinedBalances, totalUsage);
 
         long newQuota = updateQuotaForBucketChange(
-                userData, sessionData, context.effectiveBalance, combinedBalances,
-                context.previousUsageBucketId, context.bucketChanged, totalUsage);
+                userData, sessionData, context.getEffectiveBalance(), combinedBalances,
+                context.getPreviousUsageBucketId(), context.isBucketChanged(), totalUsage);
 
         Uni<UpdateResult> consumptionLimitResult = checkAndHandleConsumptionLimit(
-                userData, request, context.effectiveBalance, context.usageDelta,
-                newQuota, context.previousUsageBucketId);
+                userData, request, context.getEffectiveBalance(), context.getUsageDelta(),
+                newQuota, context.getPreviousUsageBucketId());
 
         if (consumptionLimitResult != null) {
             return consumptionLimitResult;
         }
 
-        return finalizeBalanceUpdate(userData, sessionData, request, context.effectiveBalance,
-                newQuota, context.previousUsageBucketId, totalUsage);
+        return finalizeBalanceUpdate(userData, sessionData, request, context.getEffectiveBalance(),
+                newQuota, context.getPreviousUsageBucketId(), totalUsage);
     }
 
     /**
@@ -700,23 +689,6 @@ public class AccountingUtil {
         return updateCacheForNormalOperation(userData, request, balance, result,sessionData);
     }
 
-    /**
-     * Context class to hold balance update state.
-     */
-    private static class BalanceUpdateContext {
-        final String previousUsageBucketId;
-        final boolean bucketChanged;
-        final Balance effectiveBalance;
-        final long usageDelta;
-
-        BalanceUpdateContext(String previousUsageBucketId, boolean bucketChanged,
-                             Balance effectiveBalance, long usageDelta) {
-            this.previousUsageBucketId = previousUsageBucketId;
-            this.bucketChanged = bucketChanged;
-            this.effectiveBalance = effectiveBalance;
-            this.usageDelta = usageDelta;
-        }
-    }
 
     private String getPreviousUsageBucketId(Session sessionData, Balance foundBalance) {
         String previousId = sessionData.getPreviousUsageBucketId();
@@ -813,7 +785,7 @@ public class AccountingUtil {
         }
 
         // Clear all sessions and send COA disconnect for all sessions
-        return clearAllSessionsAndSendCOA(userData, username)
+        return coaService.clearAllSessionsAndSendCOA(userData, username)
                 .chain(() -> updateBalanceInDatabase(foundBalance, result.newQuota(),
                         request.sessionId(), bucketUsername, username))
                 .invoke(() -> {
@@ -859,7 +831,7 @@ public class AccountingUtil {
         }
 
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
-        return clearAllSessionsAndSendCOA(userData, username)
+        return coaService.clearAllSessionsAndSendCOA(userData, username)
                 .chain(() -> updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                         request.sessionId(), bucketUsername, username))
                 .invoke(() -> {
@@ -915,11 +887,9 @@ public class AccountingUtil {
             return cacheClient.getUserData(foundBalance.getBucketUsername())
                     .onFailure().recoverWithNull()
                     .onItem().transformToUni(existingGroupData -> {
-                        // Find and update the session in the user's session list
 
-                        // Prepare group data with updated balance and sessions
                         UserSessionData userSessionGroupData = prepareGroupDataWithSession(
-                                existingGroupData, foundBalance, currentSession);
+                                existingGroupData, foundBalance, currentSession,request);
 
                         // Update both group and user caches
                         return cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
@@ -947,7 +917,7 @@ public class AccountingUtil {
      * @param session the session to add/update (may be null)
      * @return UserSessionData with updated balance and sessions
      */
-    private UserSessionData prepareGroupDataWithSession(UserSessionData existingGroupData, Balance balance, Session session) {
+    public UserSessionData prepareGroupDataWithSession(UserSessionData existingGroupData, Balance balance, Session session,AccountingRequestDto request) {
         UserSessionData groupData = new UserSessionData();
         groupData.setBalance(List.of(balance));
 
@@ -963,7 +933,9 @@ public class AccountingUtil {
             }
 
             // Add the current session
-            groupSessions.add(session);
+            if(!AccountingRequestDto.ActionType.STOP.equals(request.actionType())) {
+                groupSessions.add(session);
+            }
             groupData.setSessions(groupSessions);
 
             if (log.isDebugEnabled()) {
@@ -1013,47 +985,6 @@ public class AccountingUtil {
         collection.add(element);
     }
 
-    /**
-     * Clear all sessions and send COA disconnect.
-     *
-     * @param userSessionData user session data containing all sessions
-     * @param username username
-     * @return Uni<Void>
-     */
-    private Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username) {
-        List<Session> sessions = userSessionData.getSessions();
-        if (sessions == null || sessions.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        // Use merge instead of concatenate for parallel execution (better throughput)
-        return Multi.createFrom().iterable(sessions)
-                .onItem().transformToUni(session ->
-                        accountProducer.produceAccountingResponseEvent(
-                                        MappingUtil.createResponse(
-                                                session.getSessionId(),
-                                                DISCONNECT_ACTION,
-                                                session.getNasIp(),
-                                                session.getFramedId(),
-                                                username
-                                        )
-                                )
-                                .onFailure().retry()
-                                .withBackOff(Duration.ofMillis(COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(COA_RETRY_MAX_BACKOFF_SECONDS))
-                                .atMost(COA_RETRY_MAX_ATTEMPTS)
-                                .onFailure().invoke(failure -> {
-                                    if (log.isDebugEnabled()) {
-                                        log.debugf(failure, "Failed to produce disconnect event for session: %s",
-                                                session.getSessionId());
-                                    }
-                                })
-                                .onFailure().recoverWithNull()
-                )
-                .merge() // Parallel execution instead of sequential
-                .collect().asList()
-                .ifNoItem().after(Duration.ofSeconds(COA_TIMEOUT_SECONDS)).fail()
-                .replaceWithVoid();
-    }
 
     /**
      * Update balance in database.
@@ -1091,7 +1022,7 @@ public class AccountingUtil {
     }
 
     private long calculateTotalOctets(long octets, long gigawords) {
-        return (gigawords * GIGAWORD_MULTIPLIER) + octets;
+        return (gigawords * AppConstant.GIGAWORD_MULTIPLIER) + octets;
     }
 
     /**
@@ -1182,7 +1113,7 @@ public class AccountingUtil {
      * @return Uni of UserSessionData for the group, or null if no group or default group
      */
     private Uni<UserSessionData> getGroupBucketData(String groupId) {
-        if (groupId == null || DEFAULT_GROUP_ID.equals(groupId)) {
+        if (groupId == null || AppConstant.DEFAULT_GROUP_ID.equals(groupId)) {
             return Uni.createFrom().nullItem();
         }
 
@@ -1204,8 +1135,8 @@ public class AccountingUtil {
      * Populate WHERE conditions for database update.
      */
     private void populateWhereConditions(Map<String, Object> whereConditions, Balance balance) {
-        whereConditions.put(SERVICE_ID, balance.getServiceId());
-        whereConditions.put(ID, balance.getBucketId());
+        whereConditions.put(AppConstant.SERVICE_ID, balance.getServiceId());
+        whereConditions.put(AppConstant.ID, balance.getBucketId());
     }
 
     /**
@@ -1215,9 +1146,9 @@ public class AccountingUtil {
         Long quota = balance.getQuota();
         Long initialBalance = balance.getInitialBalance();
 
-        columnValues.put(CURRENT_BALANCE, quota);
-        columnValues.put(USAGE, initialBalance - quota);
-        columnValues.put(UPDATED_AT, getNow());
+        columnValues.put(AppConstant.CURRENT_BALANCE, quota);
+        columnValues.put(AppConstant.USAGE, initialBalance - quota);
+        columnValues.put(AppConstant.UPDATED_AT, getNow());
     }
 
     /**
@@ -1235,7 +1166,7 @@ public class AccountingUtil {
         dbWriteRequest.setEventType(EventType.UPDATE_EVENT);
         dbWriteRequest.setWhereConditions(whereConditions);
         dbWriteRequest.setColumnValues(columnValues);
-        dbWriteRequest.setTableName(BUCKET_INSTANCE_TABLE);
+        dbWriteRequest.setTableName(AppConstant.BUCKET_INSTANCE_TABLE);
         dbWriteRequest.setEventId(UUID.randomUUID().toString());
         dbWriteRequest.setTimestamp(getNow());
 

@@ -316,13 +316,7 @@ public class StartHandler {
         return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota);
     }
 
-    private List<Balance> combineBalances(List<Balance> balanceList, List<Balance> balanceGroupList) {
-        List<Balance> combined = new ArrayList<>(balanceList);
-        if (!balanceGroupList.isEmpty()) {
-            combined.addAll(balanceGroupList);
-        }
-        return combined;
-    }
+
 
     private Uni<Void> createAndStoreNewSession(
             AccountingRequestDto request,

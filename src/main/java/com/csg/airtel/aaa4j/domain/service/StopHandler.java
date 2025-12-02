@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.EventType;
@@ -56,22 +57,18 @@ public class StopHandler {
             UserSessionData userSessionData,AccountingRequestDto request
             ,String bucketId) {
 
-        if (userSessionData.getSessions() == null || userSessionData.getSessions().isEmpty()) {
-            log.infof("[traceId: %s] No active sessions found for user: %s", request.username());
-            return Uni.createFrom().voidItem();
-
-        }
 
         Session session = findSessionById(userSessionData.getSessions(), request.sessionId());
 
         if (session == null) {
             log.infof( "[traceId: %s] Session not found for sessionId: %s", request.username(), request.sessionId());
-                return Uni.createFrom().voidItem();
+                session = createSession(request);
         }
 
         Map<String, Object> columnValues = HashMap.newHashMap(5);
         Map<String, Object> whereConditions = HashMap.newHashMap(2);
 
+        Session finalSession = session;
         return cleanSessionAndUpdateBalance(userSessionData, columnValues, whereConditions,bucketId,request,session)
                 .call(() -> {
 
@@ -89,7 +86,7 @@ public class StopHandler {
                             );
 
                 })
-                .invoke(() -> userSessionData.getSessions().remove(session))
+                .invoke(() -> userSessionData.getSessions().remove(finalSession))
                 .call(() -> {
                     log.infof("[traceId: %s] Updating cache for user: %s", request.username());
                     // Update cache
@@ -102,7 +99,7 @@ public class StopHandler {
                 })
                 .invoke(() ->
                     //send CDR event asynchronously
-                    generateAndSendCDR(request, session)
+                    generateAndSendCDR(request, finalSession)
                 )
                 .invoke(() -> {
                     if (log.isDebugEnabled()) {
@@ -140,6 +137,7 @@ public class StopHandler {
                     }
                     populateWhereConditions(whereConditions, updateResult.balance());
                     populateColumnValues(columnValues, updateResult.balance());
+
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -148,14 +146,14 @@ public class StopHandler {
 
     // Separate methods for clarity and potential reuse
     private void populateWhereConditions(Map<String, Object> whereConditions, Balance balance) {
-        whereConditions.put("SERVICE_ID", balance.getServiceId());
-        whereConditions.put("ID", balance.getBucketId());
+        whereConditions.put(AppConstant.SERVICE_ID, balance.getServiceId());
+        whereConditions.put(AppConstant.ID, balance.getBucketId());
     }
 
     private void populateColumnValues(Map<String, Object> columnValues, Balance balance) {
-        columnValues.put("CURRENT_BALANCE", balance.getQuota());
-        columnValues.put("USAGE", balance.getInitialBalance()- balance.getQuota());
-        columnValues.put("UPDATED_AT", LocalDateTime.now());
+        columnValues.put(AppConstant.CURRENT_BALANCE, balance.getQuota());
+        columnValues.put(AppConstant.USAGE, balance.getInitialBalance()- balance.getQuota());
+        columnValues.put(AppConstant.UPDATED_AT, LocalDateTime.now());
     }
 
     // Extract to builder method for clarity and reusability
@@ -171,7 +169,7 @@ public class StopHandler {
         dbWriteRequest.setEventType(EventType.UPDATE_EVENT);
         dbWriteRequest.setWhereConditions(whereConditions);
         dbWriteRequest.setColumnValues(columnValues);
-        dbWriteRequest.setTableName("BUCKET_INSTANCE");
+        dbWriteRequest.setTableName(AppConstant.BUCKET_INSTANCE_TABLE);
         dbWriteRequest.setEventId(UUID.randomUUID().toString());
         dbWriteRequest.setTimestamp(LocalDateTime.now());
 
@@ -180,6 +178,18 @@ public class StopHandler {
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
         CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent);
+    }
+
+    private Session createSession(AccountingRequestDto request) {
+        return new Session(
+                request.sessionId(),
+                LocalDateTime.now(),
+                null,
+                request.sessionTime(),
+                0L,
+                request.framedIPAddress(),
+                request.nasIP()
+        );
     }
 
 }

@@ -113,8 +113,6 @@ public class CacheClient {
                         : "Key not found: " + key);
     }
 
-
-
     private String serialize(UserSessionData data) {
         try {
             return objectMapper.writeValueAsString(data);

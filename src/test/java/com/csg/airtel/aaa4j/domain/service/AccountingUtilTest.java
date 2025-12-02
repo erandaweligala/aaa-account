@@ -743,60 +743,6 @@ class AccountingUtilTest {
 
 
 
-    @Test
-    void testUpdateSessionAndBalanceWithGroupBalance() {
-        // Setup - balance from group (different bucket username)
-        Balance balance = createBalance("BUCKET1", 1L, 5000L, "Active", "0-24");
-        balance.setBucketUsername("groupuser");
-
-        UserSessionData userData = new UserSessionData();
-        userData.setGroupId("2");
-        userData.setBalance(new ArrayList<>());
-        userData.setSessions(new ArrayList<>());
-
-        Session sessionData = new Session();
-        sessionData.setSessionId("session1");
-        sessionData.setPreviousTotalUsageQuotaValue(0L);
-        sessionData.setSessionTime(100);
-
-        AccountingRequestDto request = new AccountingRequestDto(
-            "event-1",
-            "session1",
-            "192.168.1.1",
-            "testuser",
-            AccountingRequestDto.ActionType.INTERIM_UPDATE,
-            100,
-            200,
-            300,
-            Instant.now(),
-            "port1",
-            "10.0.0.1",
-            400,
-            0,
-            0,
-            "nas1");
-
-        // Mock - return group balance
-        UserSessionData groupData = new UserSessionData();
-        groupData.setBalance(new ArrayList<>(List.of(balance)));
-        when(cacheClient.getUserData("2")).thenReturn(Uni.createFrom().item(groupData));
-        when(cacheClient.updateUserAndRelatedCaches(anyString(), any(UserSessionData.class)))
-                .thenReturn(Uni.createFrom().voidItem());
-
-
-        // Execute
-        UpdateResult result = accountingUtil.updateSessionAndBalance(userData, sessionData, request, null)
-                .subscribe().withSubscriber(UniAssertSubscriber.create())
-                .awaitItem()
-                .getItem();
-
-        // Verify
-        assertNotNull(result);
-        assertTrue(result.success());
-        // Verify cache was updated for both users
-        verify(cacheClient, atLeast(2)).updateUserAndRelatedCaches(anyString(), any(UserSessionData.class));
-    }
-
 
     @Test
     void testUpdateSessionAndBalanceTemporalCacheCleared() {

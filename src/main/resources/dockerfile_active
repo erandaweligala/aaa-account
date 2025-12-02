@@ -5,13 +5,16 @@ WORKDIR /tmp
 RUN BUILD_CMD
 
 FROM 10.200.140.150:5000/java-run:LANGUAGE_VERSION
-RUN apk add --no-cache libstdc++ iproute2 procps net-tools util-linux lsof bash tcpdump
+RUN apk add --no-cache libstdc++ iproute2 procps net-tools util-linux lsof bash tcpdump tzdata && cp /usr/share/zoneinfo/UTC /etc/localtime && echo "UTC" > /etc/timezone
 RUN java -version ; mkdir -p /app /var/log/dte/ ; adduser -h /bin/bash -s /bin/bash -u 1100 --disabled-password dteuser
 COPY --from=builder /tmp/MICROSERVICE_JAR_PATH/quarkus-app/ /app/
 RUN mv /app/quarkus-run.jar /app/MICROSERVICE_NAME.jar
 COPY --from=builder /tmp/src/main/resources/* /app/
 RUN chown -R dteuser:dteuser /app /var/log/dte/
 RUN chmod -R 777 /var/log/dte/
+# Force JVM to use UTC
+ENV TZ=Asia/Colombo
+ENV JAVA_TOOL_OPTIONS="-Duser.timezone=Asia/Colombo"
 #USER dteuser
 USER root
 WORKDIR /home/dteuser

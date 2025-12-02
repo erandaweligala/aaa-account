@@ -79,7 +79,6 @@ public class MappingUtil {
         balance.setConsumptionLimitWindow(bucket.getConsumptionTimeWindow());
         balance.setBucketUsername(bucket.getBucketUser());
         balance.setBucketExpiryDate(bucket.getBucketExpiryDate());
-
         return balance;
     }
 

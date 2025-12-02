@@ -5,8 +5,10 @@ import com.csg.airtel.aaa4j.domain.model.session.Balance;
 
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
@@ -18,9 +20,11 @@ import java.util.*;
 public class BucketService {
     private static final Logger log = Logger.getLogger(BucketService.class);
     private final CacheClient cacheClient;
+    private final COAService  coaService;
 
-    public BucketService(CacheClient cacheClient) {
+    public BucketService(CacheClient cacheClient, COAService coaService) {
         this.cacheClient = cacheClient;
+        this.coaService = coaService;
     }
 
     public Uni<ApiResponse<Balance>> addBucketBalance(String userName, Balance balance) {
@@ -46,7 +50,8 @@ public class BucketService {
                             .build();
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
-                            .onItem().transform(result -> createSuccessResponse(balance));
+                            .call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName))
+                            .onItem().transform(result -> createSuccessResponse(balance,"Bucket Added Successfully"));
                 })
                 .onFailure().recoverWithItem(throwable -> {
                     log.errorf("Failed to add balance for user {}: {}",
@@ -97,7 +102,7 @@ public class BucketService {
                             .onItem().transform(result -> {
                                 log.infof("Successfully updated balance for user %s, serviceId %s",
                                         userName, serviceId);
-                                return createSuccessResponse(balance);
+                                return createSuccessResponse(balance,"Updated balance Successfully");
                             });
                 })
                 .onFailure().recoverWithItem(throwable -> {
@@ -110,10 +115,11 @@ public class BucketService {
     }
 
 
-    private ApiResponse<Balance> createSuccessResponse(Balance balance) {
+    private ApiResponse<Balance> createSuccessResponse(Balance balance,String massage) {
         ApiResponse<Balance> response = new ApiResponse<>();
         response.setTimestamp(Instant.now());
-        response.setMessage("Balance added successfully");
+        response.setMessage(massage);
+        response.setStatus(Response.Status.OK);
         response.setData(balance);
         return response;
     }
@@ -123,12 +129,34 @@ public class BucketService {
         response.setTimestamp(Instant.now());
         response.setMessage(message);
         response.setData(null);
+        response.setStatus(Response.Status.BAD_REQUEST);
         return response;
     }
 
 
+    public Uni<ApiResponse<Balance>> terminateSessions(String userName) {
+        return cacheClient.getUserData(userName)
+                .onItem().transformToUni(userData -> {
+                    if (userData == null) {
+                        return Uni.createFrom().item(createErrorResponse("User not found"));
+                    }
+                   return coaService.clearAllSessionsAndSendCOA(userData,userName)
+                           .invoke(() -> userData.getSessions().clear())
+                           .onItem().transform(result -> {
+                               log.infof("Sessions Terminated successfully for user %s",
+                                       userName);
+                               return createSuccessResponse(null,"Terminated successfully");
+                           });
 
-
+                })
+                .onFailure().recoverWithItem(throwable -> {
+                    log.errorf("Failed to send Disconnection COA for user %s: %s",
+                            userName, throwable.getMessage(), throwable);
+                    return createErrorResponse(
+                            "Failed to send Disconnection COA: " + throwable.getMessage()
+                    );
+                });
+    }
 
 
 }

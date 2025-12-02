@@ -146,8 +146,6 @@ public class InterimHandler {
         return null;
     }
 
-
-
     private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
