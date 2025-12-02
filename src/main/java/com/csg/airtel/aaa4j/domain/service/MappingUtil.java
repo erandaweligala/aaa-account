@@ -13,6 +13,12 @@ import java.util.Map;
 import java.util.UUID;
 
 public class MappingUtil {
+
+    public static final String USERNAME = "username";
+    public static final String SESSION_ID = "sessionId";
+    public static final String NAS_IP = "nasIP";
+    public static final String FRAMED_IP = "framedIP";
+
     private MappingUtil() {
     }
 
@@ -24,10 +30,10 @@ public class MappingUtil {
 
         Map<String, String> attributes = eventType == AccountingResponseEvent.EventType.COA
                 ? Map.of(
-                "username", request.username(),
-                "sessionId", request.sessionId(),
-                "nasIP", request.nasIP(),
-                "framedIP", request.framedIPAddress()
+                USERNAME, request.username(),
+                SESSION_ID, request.sessionId(),
+                NAS_IP, request.nasIP(),
+                FRAMED_IP, request.framedIPAddress()
         )
                 : Map.of();
 
@@ -50,10 +56,10 @@ public class MappingUtil {
 
         Map<String, String> attributes =
                  Map.of(
-                "username", userName,
-                "sessionId", sessionId,
-                "nasIP", nasIP,
-                "framedIP", framedIPAddress
+                         USERNAME, userName,
+                         SESSION_ID, sessionId,
+                         NAS_IP, nasIP,
+                         FRAMED_IP, framedIPAddress
         );
 
         return new AccountingResponseEvent(

@@ -48,7 +48,7 @@ public class UserBucketRepository {
     public UserBucketRepository(Pool client) {
         this.client = client;
     }
-
+    // todo need improve performance and optimize this code and check sql QUERY_BALANCE optimized
     /**
      *
      * @param userName the username to fetch buckets for

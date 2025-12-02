@@ -998,17 +998,11 @@ public class AccountingUtil {
      */
     private Uni<Void> updateBalanceInDatabase(Balance balance, long newQuota, String sessionId,
                                               String bucketUser, String userName) {
-        // Pre-size maps to avoid resizing (typical size is 3 for each)
-        Map<String, Object> columnValues = HashMap.newHashMap(4);
-        Map<String, Object> whereConditions = HashMap.newHashMap(3);
 
         // Update balance with new quota
         balance.setQuota(Math.max(newQuota, 0));
 
-        populateColumnValues(columnValues, balance);
-        populateWhereConditions(whereConditions, balance);
-
-        DBWriteRequest dbWriteRequest = buildDBWriteRequest(sessionId, columnValues, whereConditions, userName);
+        DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(balance,userName,sessionId,EventType.UPDATE_EVENT);
 
         return updateGroupBalanceBucket(balance, bucketUser, userName)
                 .chain(() -> accountProducer.produceDBWriteEvent(dbWriteRequest)
@@ -1130,47 +1124,5 @@ public class AccountingUtil {
                 .onFailure().recoverWithNull();
     }
 
-
-    /**
-     * Populate WHERE conditions for database update.
-     */
-    private void populateWhereConditions(Map<String, Object> whereConditions, Balance balance) {
-        whereConditions.put(AppConstant.SERVICE_ID, balance.getServiceId());
-        whereConditions.put(AppConstant.ID, balance.getBucketId());
-    }
-
-    /**
-     * Populate column values for database update (uses cached timestamp).
-     */
-    private void populateColumnValues(Map<String, Object> columnValues, Balance balance) {
-        Long quota = balance.getQuota();
-        Long initialBalance = balance.getInitialBalance();
-
-        columnValues.put(AppConstant.CURRENT_BALANCE, quota);
-        columnValues.put(AppConstant.USAGE, initialBalance - quota);
-        columnValues.put(AppConstant.UPDATED_AT, getNow());
-    }
-
-    /**
-     * Build DB write request (optimized with pre-sized UUID buffer).
-     */
-    private DBWriteRequest buildDBWriteRequest(
-            String sessionId,
-            Map<String, Object> columnValues,
-            Map<String, Object> whereConditions,
-            String userName) {
-
-        DBWriteRequest dbWriteRequest = new DBWriteRequest();
-        dbWriteRequest.setSessionId(sessionId);
-        dbWriteRequest.setUserName(userName);
-        dbWriteRequest.setEventType(EventType.UPDATE_EVENT);
-        dbWriteRequest.setWhereConditions(whereConditions);
-        dbWriteRequest.setColumnValues(columnValues);
-        dbWriteRequest.setTableName(AppConstant.BUCKET_INSTANCE_TABLE);
-        dbWriteRequest.setEventId(UUID.randomUUID().toString());
-        dbWriteRequest.setTimestamp(getNow());
-
-        return dbWriteRequest;
-    }
 
 }

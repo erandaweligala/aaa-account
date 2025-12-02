@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.EventType;
+import com.csg.airtel.aaa4j.domain.model.UpdateResult;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -65,26 +66,17 @@ public class StopHandler {
                 session = createSession(request);
         }
 
-        Map<String, Object> columnValues = HashMap.newHashMap(5);
-        Map<String, Object> whereConditions = HashMap.newHashMap(2);
 
         Session finalSession = session;
-        return cleanSessionAndUpdateBalance(userSessionData, columnValues, whereConditions,bucketId,request,session)
-                .call(() -> {
-
-                    DBWriteRequest dbWriteRequest = buildDBWriteRequest(
-                            request.sessionId(),
-                            columnValues,
-                            whereConditions,
-                            request.username()
-                    );
-
+        return cleanSessionAndUpdateBalance(userSessionData,bucketId,request,session)
+                .onFailure().recoverWithNull()
+                .onItem().transformToUni(updateResult -> {
+                    DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(updateResult.balance(), request.username(), request.sessionId(),EventType.UPDATE_EVENT);
                     return accountProducer.produceDBWriteEvent(dbWriteRequest)
                             .onFailure().invoke(throwable ->
                                     log.errorf(throwable, "Failed to produce DB write event for session: %s",
                                             request.sessionId())
                             );
-
                 })
                 .invoke(() -> userSessionData.getSessions().remove(finalSession))
                 .call(() -> {
@@ -122,58 +114,10 @@ public class StopHandler {
         return null;
     }
 
+    private Uni<UpdateResult> cleanSessionAndUpdateBalance(
+            UserSessionData userSessionData,String bucketId,AccountingRequestDto request,Session session) {
 
-    private Uni<Void> cleanSessionAndUpdateBalance(
-            UserSessionData userSessionData,
-            Map<String, Object> columnValues,
-            Map<String, Object> whereConditions,String bucketId,AccountingRequestDto request,Session session) {
-
-        return accountingUtil.updateSessionAndBalance(userSessionData, session, request, bucketId)
-                .onItem()
-                .transformToUni(updateResult -> {
-
-                    if (!updateResult.success()) {
-                        log.warnf("update failed for sessionId: %s", request.sessionId());
-                    }
-                    populateWhereConditions(whereConditions, updateResult.balance());
-                    populateColumnValues(columnValues, updateResult.balance());
-
-                    return Uni.createFrom().voidItem();
-                });
-    }
-
-
-
-    // Separate methods for clarity and potential reuse
-    private void populateWhereConditions(Map<String, Object> whereConditions, Balance balance) {
-        whereConditions.put(AppConstant.SERVICE_ID, balance.getServiceId());
-        whereConditions.put(AppConstant.ID, balance.getBucketId());
-    }
-
-    private void populateColumnValues(Map<String, Object> columnValues, Balance balance) {
-        columnValues.put(AppConstant.CURRENT_BALANCE, balance.getQuota());
-        columnValues.put(AppConstant.USAGE, balance.getInitialBalance()- balance.getQuota());
-        columnValues.put(AppConstant.UPDATED_AT, LocalDateTime.now());
-    }
-
-    // Extract to builder method for clarity and reusability
-    private DBWriteRequest buildDBWriteRequest(
-            String sessionId,
-            Map<String, Object> columnValues,
-            Map<String, Object> whereConditions,
-            String userName) {
-
-        DBWriteRequest dbWriteRequest = new DBWriteRequest();
-        dbWriteRequest.setSessionId(sessionId);
-        dbWriteRequest.setUserName(userName);
-        dbWriteRequest.setEventType(EventType.UPDATE_EVENT);
-        dbWriteRequest.setWhereConditions(whereConditions);
-        dbWriteRequest.setColumnValues(columnValues);
-        dbWriteRequest.setTableName(AppConstant.BUCKET_INSTANCE_TABLE);
-        dbWriteRequest.setEventId(UUID.randomUUID().toString());
-        dbWriteRequest.setTimestamp(LocalDateTime.now());
-
-        return dbWriteRequest;
+        return accountingUtil.updateSessionAndBalance(userSessionData, session, request, bucketId);
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
