@@ -9,7 +9,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 public class MappingUtil {
-
+    // todo need to a get db write object this mapping util
     private MappingUtil() {
     }
 
