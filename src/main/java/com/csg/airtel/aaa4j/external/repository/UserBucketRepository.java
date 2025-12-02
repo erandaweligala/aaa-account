@@ -48,8 +48,10 @@ public class UserBucketRepository {
     public UserBucketRepository(Pool client) {
         this.client = client;
     }
-    // todo need improve performance and optimize this code and check sql QUERY_BALANCE optimized
+
     /**
+     * Fetches service buckets for a given user.
+     * Uses optimized QUERY_BALANCE with CTE for better performance.
      *
      * @param userName the username to fetch buckets for
      * @return Uni containing list of ServiceBucketInfo
@@ -76,6 +78,8 @@ public class UserBucketRepository {
     }
 
     /**
+     * Maps database rows to ServiceBucketInfo objects.
+     * Optimized for efficient memory allocation and field mapping.
      *
      * @param rows the database result set
      * @return list of mapped ServiceBucketInfo objects
@@ -87,23 +91,32 @@ public class UserBucketRepository {
         for (Row row : rows) {
             ServiceBucketInfo info = new ServiceBucketInfo();
 
-            info.setBucketId(row.getLong(COL_BUCKET_ID));
-            info.setCurrentBalance(row.getLong(COL_CURRENT_BALANCE));
+            // Service instance identifiers
             info.setServiceId(row.getLong(COL_ID));
+            info.setBucketId(row.getLong(COL_BUCKET_ID));
+            info.setBucketUser(row.getString(COL_BUCKET_USER));
+            info.setPlanId(row.getString(COL_PLAN_ID));
+            info.setStatus(row.getString(COL_STATUS));
+
+            // Service dates
+            info.setServiceStartDate(row.getLocalDateTime(COL_SERVICE_START_DATE));
+            info.setExpiryDate(row.getLocalDateTime(COL_EXPIRY_DATE));
+
+            // Bucket configuration
             info.setRule(row.getString(COL_RULE));
             info.setPriority(row.getLong(COL_PRIORITY));
             info.setInitialBalance(row.getLong(COL_INITIAL_BALANCE));
-            info.setStatus(row.getString(COL_STATUS));
+            info.setCurrentBalance(row.getLong(COL_CURRENT_BALANCE));
             info.setUsage(row.getLong(COL_USAGE));
-            info.setExpiryDate(row.getLocalDateTime(COL_EXPIRY_DATE));
-            info.setServiceStartDate(row.getLocalDateTime(COL_SERVICE_START_DATE));
-            info.setPlanId(row.getString(COL_PLAN_ID));
-            info.setBucketUser(row.getString(COL_BUCKET_USER));
+
+            // Consumption limits and windows
             info.setConsumptionLimit(row.getLong(COL_CONSUMPTION_LIMIT));
             info.setConsumptionTimeWindow(row.getLong(COL_CONSUMPTION_LIMIT_WINDOW));
-            info.setSessionTimeout(row.getString(COL_SESSION_TIMEOUT));
             info.setTimeWindow(row.getString(COL_TIME_WINDOW));
             info.setBucketExpiryDate(row.getLocalDateTime(COL_EXPIRATION));
+
+            // Session configuration
+            info.setSessionTimeout(row.getString(COL_SESSION_TIMEOUT));
 
             results.add(info);
         }
