@@ -1,15 +1,18 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
+import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
+import com.csg.airtel.aaa4j.domain.model.EventType;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.UUID;
 
 public class MappingUtil {
-    // todo need to a get db write object this mapping util
     private MappingUtil() {
     }
 
@@ -82,6 +85,45 @@ public class MappingUtil {
         return balance;
     }
 
+    /**
+     * Creates a DBWriteRequest object for updating bucket balance information.
+     *
+     * @param balance the balance object containing the bucket data to write
+     * @param userName the username associated with the request
+     * @param sessionId the session ID for tracking purposes
+     * @param eventType the type of database event (CREATE_EVENT or UPDATE_EVENT)
+     * @return a fully populated DBWriteRequest object ready to be sent to the database writer
+     */
+    public static DBWriteRequest createDBWriteRequest(
+            Balance balance,
+            String userName,
+            String sessionId,
+            EventType eventType) {
 
+        DBWriteRequest dbWriteRequest = new DBWriteRequest();
+        dbWriteRequest.setSessionId(sessionId);
+        dbWriteRequest.setUserName(userName);
+        dbWriteRequest.setEventType(eventType);
+        dbWriteRequest.setTableName(AppConstant.BUCKET_INSTANCE_TABLE);
+        dbWriteRequest.setEventId(UUID.randomUUID().toString());
+        dbWriteRequest.setTimestamp(LocalDateTime.now());
+
+        // Set WHERE conditions for identifying the record
+        Map<String, Object> whereConditions = Map.of(
+                AppConstant.SERVICE_ID, balance.getServiceId(),
+                AppConstant.ID, balance.getBucketId()
+        );
+        dbWriteRequest.setWhereConditions(whereConditions);
+
+        // Set column values to update
+        Map<String, Object> columnValues = Map.of(
+                AppConstant.CURRENT_BALANCE, balance.getQuota(),
+                AppConstant.USAGE, balance.getInitialBalance() - balance.getQuota(),
+                AppConstant.UPDATED_AT, LocalDateTime.now()
+        );
+        dbWriteRequest.setColumnValues(columnValues);
+
+        return dbWriteRequest;
+    }
 
 }
