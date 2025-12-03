@@ -33,10 +33,12 @@ class AccountingUtilTest {
     private COAService coaService;
 
     private AccountingUtil accountingUtil;
+    private ConsumptionLimitCalculator consumptionLimitCalculator;
 
     @BeforeEach
     void setUp() {
-        accountingUtil = new AccountingUtil(accountProducer, cacheClient, coaService);
+        consumptionLimitCalculator = new ConsumptionLimitCalculator();
+        accountingUtil = new AccountingUtil(accountProducer, cacheClient, coaService, consumptionLimitCalculator);
     }
 
     @Nested
