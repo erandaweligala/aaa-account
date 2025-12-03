@@ -51,7 +51,6 @@ public class UserBucketRepository {
 
     /**
      * Fetches service buckets for a given user.
-     * Uses optimized QUERY_BALANCE with CTE for better performance.
      *
      * @param userName the username to fetch buckets for
      * @return Uni containing list of ServiceBucketInfo
@@ -79,7 +78,6 @@ public class UserBucketRepository {
 
     /**
      * Maps database rows to ServiceBucketInfo objects.
-     * Optimized for efficient memory allocation and field mapping.
      *
      * @param rows the database result set
      * @return list of mapped ServiceBucketInfo objects

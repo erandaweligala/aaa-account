@@ -613,7 +613,7 @@ public class AccountingUtil {
             long usageDelta,
             long newQuota,
             String previousUsageBucketId) {
-
+  //todo implemet consumptionLimitWindow calculate using days without hours
         if (!hasConsumptionLimit(balance)) {
             return null;
         }
