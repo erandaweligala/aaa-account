@@ -344,6 +344,9 @@ public class AccountingUtil {
      * @return total bytes consumed within the window
      */
     public long calculateConsumptionInWindow(Balance balance, long windowDays) {
+
+        //todo calculate consumption limit ex-: i have 600GB quota service,  serviceStartDate = ex- '2025-12-01' to bucketExpireDate 90days, consumptionLimitWindow = ex- 30Days i need to implement code consumtionLimit ex-: 200GB for 30Days after reset onother 30 day
+
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null || history.isEmpty()) {
             return 0L;
@@ -416,9 +419,9 @@ public class AccountingUtil {
 
         // Find existing record for today
         ConsumptionRecord todayRecord = null;
-        for (ConsumptionRecord record : history) {
-            if (record.getDate().equals(today)) {
-                todayRecord = record;
+        for (ConsumptionRecord consumptionRecord : history) {
+            if (consumptionRecord.getDate().equals(today)) {
+                todayRecord = consumptionRecord;
                 break;
             }
         }
