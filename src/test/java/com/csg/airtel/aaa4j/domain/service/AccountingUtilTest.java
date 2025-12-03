@@ -139,7 +139,7 @@ class AccountingUtilTest {
         Balance balance = new Balance();
         balance.setConsumptionHistory(new ArrayList<>());
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 1L);
 
         assertEquals(0L, consumption);
     }
@@ -149,7 +149,7 @@ class AccountingUtilTest {
         Balance balance = new Balance();
         balance.setConsumptionHistory(null);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 1L);
 
         assertEquals(0L, consumption);
     }
@@ -162,7 +162,7 @@ class AccountingUtilTest {
         records.add(new ConsumptionRecord(LocalDateTime.now().minusHours(2), 2000L));
         balance.setConsumptionHistory(records);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 1L);
 
         assertEquals(3000L, consumption);
     }
@@ -175,7 +175,7 @@ class AccountingUtilTest {
         records.add(new ConsumptionRecord(LocalDateTime.now().minusDays(2), 2000L));
         balance.setConsumptionHistory(records);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 1L);
 
         assertEquals(1000L, consumption);
     }
@@ -327,7 +327,7 @@ class AccountingUtilTest {
     void testFindBalanceWithConsumptionLimit() {
         Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
         balance1.setConsumptionLimit(5000L);
-        balance1.setConsumptionLimitWindow(24L);
+        balance1.setConsumptionLimitWindow(1L);
         List<ConsumptionRecord> records = new ArrayList<>();
         records.add(new ConsumptionRecord(LocalDateTime.now().minusHours(1), 6000L));
         balance1.setConsumptionHistory(records);
@@ -350,7 +350,7 @@ class AccountingUtilTest {
     void testFindBalanceWithConsumptionLimitNotExceeded() {
         Balance balance1 = createBalance("BUCKET1", 1L, 1000L, "Active", "0-24");
         balance1.setConsumptionLimit(5000L);
-        balance1.setConsumptionLimitWindow(24L);
+        balance1.setConsumptionLimitWindow(1L);
         List<ConsumptionRecord> records = new ArrayList<>();
         records.add(new ConsumptionRecord(LocalDateTime.now().minusHours(1), 3000L));
         balance1.setConsumptionHistory(records);
@@ -572,7 +572,7 @@ class AccountingUtilTest {
         records.add(new ConsumptionRecord(now.minusDays(3), 2000L));
         balance.setConsumptionHistory(records);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 1L);
         assertEquals(0L, consumption);
     }
 
@@ -586,7 +586,7 @@ class AccountingUtilTest {
         records.add(new ConsumptionRecord(now.minusMinutes(1), 3000L));
         balance.setConsumptionHistory(records);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 1L);
         assertEquals(6000L, consumption);
     }
 
@@ -629,7 +629,7 @@ class AccountingUtilTest {
         records.add(new ConsumptionRecord(now.minusHours(1), 3000L));
         balance.setConsumptionHistory(records);
 
-        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 24L);
+        long consumption = accountingUtil.calculateConsumptionInWindow(balance, 1L);
         // Only the last record (1 hour ago) should be counted
         assertEquals(3000L, consumption);
     }
@@ -665,7 +665,7 @@ class AccountingUtilTest {
                 .awaitItem()
                 .getItem();
 
-        // Balance1 should be eligible since consumption limit window is null
+        // Balance1 should be eligible since consumption limit window is null (no limit enforced)
         assertNotNull(result);
         assertEquals("BUCKET1", result.getBucketId());
     }
