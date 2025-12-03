@@ -199,7 +199,6 @@ public class AccountingUtil {
     }
 
 
-
     /**
      *
      * @param userData get user session data
@@ -400,6 +399,7 @@ public class AccountingUtil {
      * @param bytesConsumed bytes consumed in this update
      */
     private void recordConsumption(Balance balance, long bytesConsumed) {
+        //todo per day record consumption  84 ,30 days 2880 the case history records what are onther option you can give
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null) {
 
