@@ -20,9 +20,6 @@ public class AppConstant {
     public static final String DEFAULT_GROUP_ID = "1";
     public static final String BUCKET_INSTANCE_TABLE = "BUCKET_INSTANCE";
 
-    public static final long WINDOW_24_HOURS = 24;
-    public static final long WINDOW_12_HOURS = 12;
-
     public static final int CONSUMPTION_HISTORY_INITIAL_CAPACITY = 24;
 
 

@@ -302,26 +302,16 @@ public class AccountingUtil {
     }
 
     /**
-     * Calculate the cutoff time for the consumption window (optimized with cached dates).
+     * Calculate the cutoff time for the consumption window using days.
      *
-     * @param windowHours number of hours for the consumption limit window (12 or 24)
+     * @param windowDays number of days for the consumption limit window (1, 7, 30, etc.)
      * @param now current time (cached)
      * @param today current date (cached)
      * @return LocalDateTime representing the start of the consumption window
      */
-    private LocalDateTime calculateWindowStartTime(long windowHours, LocalDateTime now, LocalDate today) {
-        if (windowHours == AppConstant.WINDOW_24_HOURS) {
-            return today.atTime(LocalTime.MIDNIGHT);
-        } else if (windowHours == AppConstant.WINDOW_12_HOURS) {
-            LocalTime currentTime = now.toLocalTime();
-            if (currentTime.isBefore(LocalTime.NOON)) {
-                return today.atTime(LocalTime.MIDNIGHT);
-            } else {
-                return today.atTime(LocalTime.NOON);
-            }
-        } else {
-            return now.minusHours(windowHours);
-        }
+    private LocalDateTime calculateWindowStartTime(long windowDays, LocalDateTime now, LocalDate today) {
+        // Calculate based on days, starting from midnight of the day windowDays ago
+        return today.minusDays(windowDays).atTime(LocalTime.MIDNIGHT);
     }
 
     /**
@@ -344,10 +334,10 @@ public class AccountingUtil {
      * Calculate total consumption within the time window (optimized loop, no stream overhead).
      *
      * @param balance balance containing consumption history
-     * @param windowHours number of hours for the consumption limit window
+     * @param windowDays number of days for the consumption limit window
      * @return total bytes consumed within the window
      */
-    public long calculateConsumptionInWindow(Balance balance, long windowHours) {
+    public long calculateConsumptionInWindow(Balance balance, long windowDays) {
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null || history.isEmpty()) {
             return 0L;
@@ -355,7 +345,7 @@ public class AccountingUtil {
 
         LocalDateTime now = getNow();
         LocalDate today = getToday();
-        LocalDateTime windowStartTime = calculateWindowStartTime(windowHours, now, today);
+        LocalDateTime windowStartTime = calculateWindowStartTime(windowDays, now, today);
 
         long total = 0L;
         for (ConsumptionRecord consumptionRecord : history) {
@@ -613,7 +603,6 @@ public class AccountingUtil {
             long usageDelta,
             long newQuota,
             String previousUsageBucketId) {
-  //todo implemet consumptionLimitWindow calculate using days without hours
         if (!hasConsumptionLimit(balance)) {
             return null;
         }
