@@ -18,15 +18,12 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 
 @ApplicationScoped
 public class AccountingUtil {
-
+//todo need to implement if initialBalance = 0 and quota = 0 this bucket can used unlimited  pls write code
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
 
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
@@ -34,15 +31,12 @@ public class AccountingUtil {
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
     private final COAService coaService;
-    private final ConsumptionLimitCalculator consumptionLimitCalculator;
 
 
-    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
-                          ConsumptionLimitCalculator consumptionLimitCalculator) {
+    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;
         this.coaService = coaService;
-        this.consumptionLimitCalculator = consumptionLimitCalculator;
     }
 
     private LocalDateTime getNow() {
@@ -65,7 +59,6 @@ public class AccountingUtil {
 
     /**
      * Clear temporal cache after request processing.
-     * This method should be called at the end of each request to prevent memory leaks
      * and ensure fresh temporal values for subsequent requests.
      */
     public void clearTemporalCache() {
@@ -79,8 +72,6 @@ public class AccountingUtil {
         }
         CACHED_NOW.remove();
         CACHED_TODAY.remove();
-        // Clear helper's temporal cache as well
-        consumptionLimitCalculator.clearTemporalCache();
     }
 
     /**
@@ -148,7 +139,7 @@ public class AccountingUtil {
         if (consumptionLimit != null && consumptionLimit > 0 &&
                 consumptionLimitWindow != null && consumptionLimitWindow > 0) {
 
-            long currentConsumption = consumptionLimitCalculator.calculateConsumptionInWindow(balance, consumptionLimitWindow);
+            long currentConsumption = calculateConsumptionInWindow(balance, consumptionLimitWindow);
 
             if (currentConsumption >= consumptionLimit) {
                 if (log.isDebugEnabled()) {
@@ -270,9 +261,7 @@ public class AccountingUtil {
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
         List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
 
-
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
-
 
         if (log.isTraceEnabled()) {
             log.tracef("Processing with group data: user balances=%d, group balances=%d, combined=%d",
@@ -289,8 +278,6 @@ public class AccountingUtil {
                 combinedBalances, combinedSessions, totalUsage);
     }
 
-
-
     /**
      * Cleanup temporal cache asynchronously for use with eventually().
      */
@@ -303,6 +290,193 @@ public class AccountingUtil {
         long totalGigaWords = (long) request.outputGigaWords() + (long) request.inputGigaWords();
         long totalOctets = (long) request.inputOctets() + (long) request.outputOctets();
         return calculateTotalOctets(totalOctets, totalGigaWords);
+    }
+
+    /**
+     * Calculate which window period we're currently in, based on the service start date.
+     *
+     * @param serviceStartDate when the service started
+     * @param consumptionLimitWindow window duration in days (e.g., 30)
+     * @return the current window period number (1, 2, 3, etc.)
+     */
+    private int getCurrentWindowPeriod(LocalDate serviceStartDate, long consumptionLimitWindow) {
+        LocalDate today = getToday();
+
+        // Calculate days since service start
+        long daysSinceStart = java.time.temporal.ChronoUnit.DAYS.between(serviceStartDate, today);
+
+        // Calculate which window we're in (1-indexed)
+        int windowPeriod = (int) (daysSinceStart / consumptionLimitWindow) + 1;
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Current window period: %d (days since start: %d, window size: %d days)",
+                    windowPeriod, daysSinceStart, consumptionLimitWindow);
+        }
+
+        return windowPeriod;
+    }
+
+    /**
+     * Calculate the start and end dates for a fixed window period.
+     *
+     * @param serviceStartDate when the service started
+     * @param consumptionLimitWindow window duration in days
+     * @return array with [windowStartDate, windowEndDate]
+     */
+    private LocalDate[] calculateFixedWindowBounds(LocalDate serviceStartDate, long consumptionLimitWindow) {
+        int currentPeriod = getCurrentWindowPeriod(serviceStartDate, consumptionLimitWindow);
+
+        // Calculate the start date of the current window
+        LocalDate windowStartDate = serviceStartDate.plusDays((currentPeriod - 1) * consumptionLimitWindow);
+
+        // Calculate the end date of the current window (inclusive)
+        LocalDate windowEndDate = serviceStartDate.plusDays(currentPeriod * consumptionLimitWindow - 1);
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Fixed window bounds: period=%d, start=%s, end=%s",
+                    currentPeriod, windowStartDate, windowEndDate);
+        }
+
+        return new LocalDate[]{windowStartDate, windowEndDate};
+    }
+
+    /**
+     *
+     * @param balance balance containing consumption history
+     * @param windowStartDate start date of the consumption window
+     */
+    private void cleanupOldConsumptionRecords(Balance balance, LocalDate windowStartDate) {
+        List<ConsumptionRecord> history = balance.getConsumptionHistory();
+        if (history == null || history.isEmpty()) {
+            return;
+        }
+
+        // Use removeIf for efficient in-place removal
+        history.removeIf(consumptionRecord -> consumptionRecord.getDate().isBefore(windowStartDate));
+
+        if (log.isTraceEnabled() && !history.isEmpty()) {
+            log.tracef("Cleaned up old consumption records for bucket %s: remaining records=%d",
+                    balance.getBucketId(), history.size());
+        }
+    }
+
+    /**
+     * Calculate total consumption within the time window using daily aggregated records.
+     *
+     * @param balance balance containing consumption history and serviceStartDate
+     * @param windowDays number of days for the consumption limit window (e.g., 30)
+     * @return total bytes consumed within the current fixed window period
+     */
+    public long calculateConsumptionInWindow(Balance balance, long windowDays) {
+        List<ConsumptionRecord> history = balance.getConsumptionHistory();
+        if (history == null || history.isEmpty()) {
+            return 0L;
+        }
+
+        // Get service start date from balance
+        LocalDateTime serviceStartDateTime = balance.getServiceStartDate();
+        if (serviceStartDateTime == null) {
+            if (log.isDebugEnabled()) {
+                log.debugf("Service start date is null for bucket %s, falling back to rolling window",
+                        balance.getBucketId());
+            }
+            // Fallback to rolling window if serviceStartDate is not available
+            return calculateRollingWindowConsumption(history, windowDays);
+        }
+
+        // Convert to LocalDate for date calculations
+        LocalDate serviceStartDate = serviceStartDateTime.toLocalDate();
+
+        // Calculate the fixed window bounds for the current period
+        LocalDate[] windowBounds = calculateFixedWindowBounds(serviceStartDate, windowDays);
+        LocalDate windowStartDate = windowBounds[0];
+        LocalDate windowEndDate = windowBounds[1];
+
+        // Sum consumption only within the current window period
+        long total = 0L;
+        for (ConsumptionRecord consumptionRecord : history) {
+            LocalDate recordDate = consumptionRecord.getDate();
+            // Include records within the current window (inclusive on both ends)
+            if (!recordDate.isBefore(windowStartDate) && !recordDate.isAfter(windowEndDate)) {
+                total += consumptionRecord.getBytesConsumed();
+            }
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debugf("Consumption in current window for bucket %s: %d bytes (window: %s to %s)",
+                    balance.getBucketId(), total, windowStartDate, windowEndDate);
+        }
+
+        return total;
+    }
+
+    /**
+     * Fallback method: Calculate consumption using rolling window (legacy behavior).
+     * Used when serviceStartDate is not available.
+     *
+     * @param history consumption history
+     * @param windowDays number of days to look back
+     * @return total bytes consumed in rolling window
+     */
+    private long calculateRollingWindowConsumption(List<ConsumptionRecord> history, long windowDays) {
+        LocalDate today = getToday();
+        LocalDate windowStartDate = today.minusDays(windowDays);
+
+        long total = 0L;
+        for (ConsumptionRecord consumptionRecord : history) {
+            if (!consumptionRecord.getDate().isBefore(windowStartDate)) {
+                total += consumptionRecord.getBytesConsumed();
+            }
+        }
+        return total;
+    }
+
+
+    /**
+     * Check if consumption limit is exceeded using daily aggregated records with fixed windows.
+     * Cleanup is based on the current fixed window period, not rolling window.
+     *
+     * @param balance balance to check
+     * @param previousConsumption previous consumption value
+     * @param usageDelta delta usage to add
+     * @return true if limit is exceeded, false otherwise
+     */
+    private boolean isConsumptionLimitExceeded(Balance balance, long previousConsumption, long usageDelta) {
+        Long consumptionLimit = balance.getConsumptionLimit();
+        Long consumptionLimitWindow = balance.getConsumptionLimitWindow();
+
+        if (consumptionLimit == null || consumptionLimit <= 0 ||
+                consumptionLimitWindow == null || consumptionLimitWindow <= 0) {
+            return false;
+        }
+
+        // Clean up old records based on fixed window bounds
+        LocalDateTime serviceStartDateTime = balance.getServiceStartDate();
+        if (serviceStartDateTime != null) {
+            LocalDate serviceStartDate = serviceStartDateTime.toLocalDate();
+            LocalDate[] windowBounds = calculateFixedWindowBounds(serviceStartDate, consumptionLimitWindow);
+            LocalDate windowStartDate = windowBounds[0];
+
+            // Remove records before the current window starts
+            cleanupOldConsumptionRecords(balance, windowStartDate);
+        } else {
+            // Fallback to rolling window cleanup
+            LocalDate today = getToday();
+            LocalDate windowStartDate = today.minusDays(consumptionLimitWindow);
+            cleanupOldConsumptionRecords(balance, windowStartDate);
+        }
+
+        long currentConsumption = previousConsumption + usageDelta;
+
+        if (currentConsumption > consumptionLimit) {
+            if (log.isDebugEnabled()) {
+                log.debugf("Consumption limit exceeded for bucket %s: current=%d, limit=%d",
+                        balance.getBucketId(), currentConsumption, consumptionLimit);
+            }
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -537,23 +711,34 @@ public class AccountingUtil {
             long usageDelta,
             long newQuota,
             String previousUsageBucketId) {
-        if (!consumptionLimitCalculator.hasConsumptionLimit(balance)) {
+        if (!hasConsumptionLimit(balance)) {
             return null;
         }
 
         long consumptionLimitWindow = balance.getConsumptionLimitWindow();
-        long previousConsumption = consumptionLimitCalculator.calculateConsumptionInWindow(balance, consumptionLimitWindow);
+        long previousConsumption = calculateConsumptionInWindow(balance, consumptionLimitWindow);
 
         if (previousConsumption < balance.getConsumptionLimit()) {
             recordConsumption(balance, usageDelta);
         }
 
-        if (consumptionLimitCalculator.isConsumptionLimitExceeded(balance, previousConsumption, usageDelta)) {
+        if (isConsumptionLimitExceeded(balance, previousConsumption, usageDelta)) {
             return handleConsumptionLimitExceededScenario(
                     userData, request, balance, newQuota, previousUsageBucketId);
         }
 
         return null;
+    }
+
+    /**
+     * Check if balance has consumption limit configured.
+     */
+    private boolean hasConsumptionLimit(Balance balance) {
+        Long consumptionLimit = balance.getConsumptionLimit();
+        Long consumptionLimitWindow = balance.getConsumptionLimitWindow();
+
+        return consumptionLimit != null && consumptionLimit > 0 &&
+                consumptionLimitWindow != null && consumptionLimitWindow > 0;
     }
 
     /**
