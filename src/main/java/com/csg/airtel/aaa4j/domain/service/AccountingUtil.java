@@ -23,7 +23,6 @@ import java.util.List;
 
 @ApplicationScoped
 public class AccountingUtil {
-//todo need to implement if initialBalance = 0 and quota = 0 this bucket can used unlimited  pls write code
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
 
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
@@ -110,6 +109,18 @@ public class AccountingUtil {
     }
 
     /**
+     * Check if a bucket is unlimited (initialBalance = 0 and quota = 0).
+     * Unlimited buckets can be used without quota restrictions.
+     *
+     * @param balance the balance to check
+     * @return true if bucket is unlimited, false otherwise
+     */
+    private boolean isUnlimitedBucket(Balance balance) {
+        return balance.getInitialBalance() != null && balance.getInitialBalance() == 0 &&
+               balance.getQuota() != null && balance.getQuota() == 0;
+    }
+
+    /**
      * Check if a balance is eligible for selection .
      *
      * @param balance the balance to check
@@ -119,7 +130,15 @@ public class AccountingUtil {
      */
     private boolean isBalanceEligible(Balance balance, String timeWindow, LocalDateTime now) {
 
-        if (balance.getQuota() <= 0) {
+        // Check if this is an unlimited bucket (initialBalance = 0 and quota = 0)
+        boolean isUnlimited = isUnlimitedBucket(balance);
+
+        if (isUnlimited && log.isDebugEnabled()) {
+            log.debugf("Bucket %s is unlimited (initialBalance=0, quota=0)", balance.getBucketId());
+        }
+
+        // For unlimited buckets, skip quota check. For others, require quota > 0
+        if (!isUnlimited && balance.getQuota() <= 0) {
             return false;
         }
 
@@ -1053,6 +1072,14 @@ public class AccountingUtil {
     }
 
     private long getNewQuota(Session sessionData, Balance foundBalance, long totalUsage) {
+        // For unlimited buckets (initialBalance = 0 and quota = 0), keep quota at 0
+        if (isUnlimitedBucket(foundBalance)) {
+            if (log.isDebugEnabled()) {
+                log.debugf("Unlimited bucket %s: quota remains at 0 (no deduction)", foundBalance.getBucketId());
+            }
+            return 0;
+        }
+
         Long previousUsageObj = sessionData.getPreviousTotalUsageQuotaValue();
         long previousUsage = previousUsageObj == null ? 0L : previousUsageObj;
         long usageDelta = totalUsage - previousUsage;

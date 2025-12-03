@@ -256,11 +256,62 @@ class InterimHandlerTest {
         bucket.setBucketId(1);
         bucket.setServiceId(1L);
         bucket.setCurrentBalance(0);
+        bucket.setInitialBalance(10000);
+        bucket.setPriority(1L);
+        bucket.setStatus("Active");
+        bucket.setTimeWindow("0-24");
+        bucket.setBucketUser("test-user");
+        return List.of(bucket);
+    }
+
+    @Test
+    void testHandleInterimWithUnlimitedBucket() {
+        AccountingRequestDto request = createAccountingRequest(100);
+        String traceId = "test-trace-id";
+        List<ServiceBucketInfo> buckets = createUnlimitedBucket();
+
+        when(cacheUtil.getUserData(request.username())).thenReturn(Uni.createFrom().nullItem());
+        when(userRepository.getServiceBucketsByUserName(request.username()))
+                .thenReturn(Uni.createFrom().item(buckets));
+        when(accountingUtil.updateSessionAndBalance(any(), any(), any(), isNull()))
+                .thenReturn(Uni.createFrom().item(UpdateResult.success(0L, "UNLIMITED-1", createUnlimitedBalance(), null)));
+        when(accountProducer.produceAccountingCDREvent(any()))
+                .thenReturn(Uni.createFrom().voidItem());
+
+        interimHandler.handleInterim(request, traceId)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem()
+                .assertCompleted();
+
+        // Verify that the request was processed (not disconnected)
+        verify(accountingUtil, times(1)).updateSessionAndBalance(any(), any(), eq(request), isNull());
+        verify(accountProducer, never()).produceAccountingResponseEvent(
+                argThat(event -> event.action() == AccountingResponseEvent.ResponseAction.DISCONNECT)
+        );
+    }
+
+    private List<ServiceBucketInfo> createUnlimitedBucket() {
+        ServiceBucketInfo bucket = new ServiceBucketInfo();
+        bucket.setBucketId(1);
+        bucket.setServiceId(1L);
+        bucket.setCurrentBalance(0);
         bucket.setInitialBalance(0);
         bucket.setPriority(1L);
         bucket.setStatus("Active");
         bucket.setTimeWindow("0-24");
         bucket.setBucketUser("test-user");
         return List.of(bucket);
+    }
+
+    private Balance createUnlimitedBalance() {
+        Balance balance = new Balance();
+        balance.setBucketId("UNLIMITED-1");
+        balance.setServiceId("1");
+        balance.setQuota(0L);
+        balance.setInitialBalance(0L);
+        balance.setPriority(1L);
+        balance.setServiceStatus("Active");
+        balance.setTimeWindow("0-24");
+        return balance;
     }
 }
