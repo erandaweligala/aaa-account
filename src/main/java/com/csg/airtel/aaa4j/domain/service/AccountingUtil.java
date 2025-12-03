@@ -314,23 +314,30 @@ public class AccountingUtil {
     }
 
     /**
-     * Clean up consumption records outside the time window (optimized with pre-calculated window).
+     * Clean up consumption records outside the time window using daily records.
+     * Removes records older than the consumption window to maintain memory efficiency.
      *
      * @param balance balance containing consumption history
-     * @param windowStartTime pre-calculated window start time
+     * @param windowStartDate start date of the consumption window
      */
-    private void cleanupOldConsumptionRecords(Balance balance, LocalDateTime windowStartTime) {
+    private void cleanupOldConsumptionRecords(Balance balance, LocalDate windowStartDate) {
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null || history.isEmpty()) {
             return;
         }
 
         // Use removeIf for efficient in-place removal
-        history.removeIf(consumptionRecord -> consumptionRecord.getTimestamp().isBefore(windowStartTime));
+        history.removeIf(record -> record.getDate().isBefore(windowStartDate));
+
+        if (log.isTraceEnabled() && !history.isEmpty()) {
+            log.tracef("Cleaned up old consumption records for bucket %s: remaining records=%d",
+                    balance.getBucketId(), history.size());
+        }
     }
 
     /**
-     * Calculate total consumption within the time window (optimized loop, no stream overhead).
+     * Calculate total consumption within the time window using daily aggregated records.
+     * Optimized for daily aggregation - no stream overhead, simple date comparison.
      *
      * @param balance balance containing consumption history
      * @param windowDays number of days for the consumption limit window
@@ -342,14 +349,14 @@ public class AccountingUtil {
             return 0L;
         }
 
-        LocalDateTime now = getNow();
         LocalDate today = getToday();
-        LocalDateTime windowStartTime = calculateWindowStartTime(windowDays, now, today);
+        LocalDate windowStartDate = today.minusDays(windowDays);
 
         long total = 0L;
-        for (ConsumptionRecord consumptionRecord : history) {
-            if (consumptionRecord.getTimestamp().isAfter(windowStartTime)) {
-                total += consumptionRecord.getBytesConsumed();
+        for (ConsumptionRecord record : history) {
+            // Include records from windowStartDate onwards (inclusive)
+            if (!record.getDate().isBefore(windowStartDate)) {
+                total += record.getBytesConsumed();
             }
         }
         return total;
@@ -357,7 +364,7 @@ public class AccountingUtil {
 
 
     /**
-     * Check if consumption limit is exceeded (optimized with pre-calculated window).
+     * Check if consumption limit is exceeded using daily aggregated records.
      *
      * @param balance balance to check
      * @param previousConsumption previous consumption value
@@ -373,11 +380,9 @@ public class AccountingUtil {
             return false;
         }
 
-
-        LocalDateTime now = getNow();
         LocalDate today = getToday();
-        LocalDateTime windowStartTime = calculateWindowStartTime(consumptionLimitWindow, now, today);
-        cleanupOldConsumptionRecords(balance, windowStartTime);
+        LocalDate windowStartDate = today.minusDays(consumptionLimitWindow);
+        cleanupOldConsumptionRecords(balance, windowStartDate);
 
         long currentConsumption = previousConsumption + usageDelta;
 
@@ -393,27 +398,48 @@ public class AccountingUtil {
     }
 
     /**
-     * Record new consumption in balance's consumption history.
+     * Record new consumption in balance's consumption history with daily aggregation.
+     * Instead of recording each request separately (2880 records for 30 days),
+     * aggregate consumption by day (30 records for 30 days).
      *
      * @param balance balance to update
      * @param bytesConsumed bytes consumed in this update
      */
     private void recordConsumption(Balance balance, long bytesConsumed) {
-        //todo per day record consumption  84 ,30 days 2880 the case history records what are onther option you can give
         List<ConsumptionRecord> history = balance.getConsumptionHistory();
         if (history == null) {
-
             history = new ArrayList<>(AppConstant.CONSUMPTION_HISTORY_INITIAL_CAPACITY);
             balance.setConsumptionHistory(history);
         }
 
-        LocalDateTime now = getNow();
-        ConsumptionRecord consumptionRecord = new ConsumptionRecord(now, bytesConsumed);
-        history.add(consumptionRecord);
+        LocalDate today = getToday();
 
-        if (log.isTraceEnabled()) {
-            log.tracef("Recorded consumption for bucket %s: %d bytes at %s",
-                    balance.getBucketId(), bytesConsumed, now);
+        // Find existing record for today
+        ConsumptionRecord todayRecord = null;
+        for (ConsumptionRecord record : history) {
+            if (record.getDate().equals(today)) {
+                todayRecord = record;
+                break;
+            }
+        }
+
+        if (todayRecord == null) {
+            // Create new daily record
+            todayRecord = new ConsumptionRecord(today, bytesConsumed, 1);
+            history.add(todayRecord);
+
+            if (log.isTraceEnabled()) {
+                log.tracef("Created new daily consumption record for bucket %s: date=%s, bytes=%d",
+                        balance.getBucketId(), today, bytesConsumed);
+            }
+        } else {
+            // Aggregate into existing daily record
+            todayRecord.addConsumption(bytesConsumed);
+
+            if (log.isTraceEnabled()) {
+                log.tracef("Updated daily consumption record for bucket %s: date=%s, total_bytes=%d, request_count=%d",
+                        balance.getBucketId(), today, todayRecord.getBytesConsumed(), todayRecord.getRequestCount());
+            }
         }
     }
 

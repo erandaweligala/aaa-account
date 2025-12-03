@@ -20,7 +20,8 @@ public class AppConstant {
     public static final String DEFAULT_GROUP_ID = "1";
     public static final String BUCKET_INSTANCE_TABLE = "BUCKET_INSTANCE";
 
-    public static final int CONSUMPTION_HISTORY_INITIAL_CAPACITY = 24;
+    // Initial capacity for daily consumption history (31 days to accommodate month + 1 day buffer)
+    public static final int CONSUMPTION_HISTORY_INITIAL_CAPACITY = 31;
 
 
 }
