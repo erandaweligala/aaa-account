@@ -23,6 +23,7 @@ public class Balance {
     private Long consumptionLimit;
     private Long consumptionLimitWindow;
     private String bucketUsername;
+    private boolean isUnlimited;
     private List<ConsumptionRecord> consumptionHistory = new ArrayList<>();
     private boolean isGroup;
 

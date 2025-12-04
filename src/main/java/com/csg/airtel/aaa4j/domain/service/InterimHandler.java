@@ -75,7 +75,6 @@ public class InterimHandler {
                     int bucketCount = serviceBuckets.size();
                     List<Balance> balanceList = new ArrayList<>(bucketCount);
                     double totalQuota = 0.0;
-                    boolean hasUnlimitedBucket = false;
                     String groupId = null;
 
                     for (ServiceBucketInfo bucket : serviceBuckets) {
@@ -83,20 +82,12 @@ public class InterimHandler {
                             groupId = bucket.getBucketUser();
                         }
                         double currentBalance = bucket.getCurrentBalance();
-                        double initialBalance = bucket.getInitialBalance();
-
-                        // Check if this is an unlimited bucket (initialBalance = 0 and currentBalance/quota = 0)
-                        if (initialBalance == 0 && currentBalance == 0) {
-                            hasUnlimitedBucket = true;
-                        }
-
                         totalQuota += currentBalance;
                         balanceList.add(MappingUtil.createBalance(bucket));
 
                     }
 
-                    // Only disconnect if totalQuota is zero AND there are no unlimited buckets
-                    if (totalQuota <= 0 && !hasUnlimitedBucket) {
+                    if (totalQuota <= 0) {
                         log.warnf("User: %s has zero total data quota", request.username());
                         return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));

@@ -23,6 +23,7 @@ import java.util.List;
 
 @ApplicationScoped
 public class AccountingUtil {
+//todo need to implement if initialBalance = 0 and quota = 0 this bucket can used unlimited  pls write code
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
 
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
@@ -109,18 +110,6 @@ public class AccountingUtil {
     }
 
     /**
-     * Check if a bucket is unlimited (initialBalance = 0 and quota = 0).
-     * Unlimited buckets can be used without quota restrictions.
-     *
-     * @param balance the balance to check
-     * @return true if bucket is unlimited, false otherwise
-     */
-    private boolean isUnlimitedBucket(Balance balance) {
-        return balance.getInitialBalance() != null && balance.getInitialBalance() == 0 &&
-               balance.getQuota() != null && balance.getQuota() == 0;
-    }
-
-    /**
      * Check if a balance is eligible for selection .
      *
      * @param balance the balance to check
@@ -130,15 +119,7 @@ public class AccountingUtil {
      */
     private boolean isBalanceEligible(Balance balance, String timeWindow, LocalDateTime now) {
 
-        // Check if this is an unlimited bucket (initialBalance = 0 and quota = 0)
-        boolean isUnlimited = isUnlimitedBucket(balance);
-
-        if (isUnlimited && log.isDebugEnabled()) {
-            log.debugf("Bucket %s is unlimited (initialBalance=0, quota=0)", balance.getBucketId());
-        }
-
-        // For unlimited buckets, skip quota check. For others, require quota > 0
-        if (!isUnlimited && balance.getQuota() <= 0) {
+        if (balance.getQuota() <= 0) {
             return false;
         }
 
@@ -231,13 +212,12 @@ public class AccountingUtil {
         long totalUsage = calculateTotalUsage(request);
         String groupId = userData.getGroupId();
 
-        // Early exit optimization: Skip group data fetch for default group
+
         if (groupId == null || AppConstant.DEFAULT_GROUP_ID.equals(groupId)) {
             return processWithoutGroupData(userData, sessionData, request, bucketId, totalUsage)
                     .eventually(this::cleanupTemporalCacheAsync);
         }
 
-        // Optimized reactive chain: flattened with chain() instead of nested transformToUni()
         return getGroupBucketData(groupId)
                 .chain(groupData -> processWithGroupData(
                         userData, request, bucketId, totalUsage, groupData))
@@ -881,7 +861,7 @@ public class AccountingUtil {
     }
 
     private boolean shouldDisconnectSession(UpdateResult result, Balance foundBalance, String previousUsageBucketId) {
-        return result.newQuota() <= 0 || !foundBalance.getBucketId().equals(previousUsageBucketId);
+        return (result.newQuota() <= 0 && !foundBalance.isUnlimited()) || !foundBalance.getBucketId().equals(previousUsageBucketId) ;
     }
 
     /**
@@ -1072,12 +1052,10 @@ public class AccountingUtil {
     }
 
     private long getNewQuota(Session sessionData, Balance foundBalance, long totalUsage) {
-        // For unlimited buckets (initialBalance = 0 and quota = 0), keep quota at 0
-        if (isUnlimitedBucket(foundBalance)) {
-            if (log.isDebugEnabled()) {
-                log.debugf("Unlimited bucket %s: quota remains at 0 (no deduction)", foundBalance.getBucketId());
-            }
-            return 0;
+
+        //  bucket is unlimited quota calculation
+        if(foundBalance.isUnlimited()){
+           return totalUsage;
         }
 
         Long previousUsageObj = sessionData.getPreviousTotalUsageQuotaValue();
@@ -1087,7 +1065,6 @@ public class AccountingUtil {
             // if totalUsage is unexpectedly smaller than previous usage, clamp to 0
             usageDelta = 0;
         }
-
         return foundBalance.getQuota() - usageDelta;
     }
 
@@ -1144,7 +1121,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Update group balance bucket in cache (optimized string comparison).
+     * Update group balance bucket in cache
      */
     private Uni<Void> updateGroupBalanceBucket(Balance balance, String bucketUsername, String username) {
         if (username.equals(bucketUsername)) {

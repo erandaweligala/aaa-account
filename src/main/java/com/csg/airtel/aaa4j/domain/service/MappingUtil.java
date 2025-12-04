@@ -105,6 +105,12 @@ public class MappingUtil {
             String userName,
             String sessionId,
             EventType eventType) {
+        long usage;
+        if(!balance.isUnlimited()) {
+            usage = balance.getInitialBalance() - balance.getQuota();
+        }else {
+            usage = balance.getQuota();
+        }
 
         DBWriteRequest dbWriteRequest = new DBWriteRequest();
         dbWriteRequest.setSessionId(sessionId);
@@ -124,7 +130,7 @@ public class MappingUtil {
         // Set column values to update
         Map<String, Object> columnValues = Map.of(
                 AppConstant.CURRENT_BALANCE, balance.getQuota(),
-                AppConstant.USAGE, balance.getInitialBalance() - balance.getQuota(),
+                AppConstant.USAGE, usage,
                 AppConstant.UPDATED_AT, LocalDateTime.now()
         );
         dbWriteRequest.setColumnValues(columnValues);
