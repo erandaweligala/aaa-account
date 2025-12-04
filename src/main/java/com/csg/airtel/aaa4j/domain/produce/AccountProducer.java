@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.domain.produce;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
+import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -25,6 +26,14 @@ public class AccountProducer {
     Emitter<AccountingResponseEvent> accountingResponseEmitter;
     Emitter<AccountingCDREvent> accountingCDREventEmitter;
 
+    // Failover path tracking
+    private final ThreadLocal<FailoverPathLogger.FailureCounter> dbWriteCounter =
+            ThreadLocal.withInitial(() -> new FailoverPathLogger.FailureCounter("KAFKA_PRODUCE_DB_WRITE"));
+    private final ThreadLocal<FailoverPathLogger.FailureCounter> responseCounter =
+            ThreadLocal.withInitial(() -> new FailoverPathLogger.FailureCounter("KAFKA_PRODUCE_RESPONSE"));
+    private final ThreadLocal<FailoverPathLogger.FailureCounter> cdrCounter =
+            ThreadLocal.withInitial(() -> new FailoverPathLogger.FailureCounter("KAFKA_PRODUCE_CDR"));
+
     public AccountProducer(@Channel("db-write-events")Emitter<DBWriteRequest> dbWriteRequestEmitter,
                            @Channel("accounting-resp-events")Emitter<AccountingResponseEvent> accountingResponseEmitter,
                            @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter
@@ -40,6 +49,10 @@ public class AccountProducer {
     @Timeout(value = 10000)
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
         long startTime = System.currentTimeMillis();
+        FailoverPathLogger.FailureCounter counter = dbWriteCounter.get();
+        int attemptCount = counter.incrementAttempt();
+
+        FailoverPathLogger.logPrimaryPathAttempt(LOG, counter.getPath(), request.getSessionId());
         LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
         return Uni.createFrom().emitter(em -> {
             Message<DBWriteRequest> message = Message.of(request)
@@ -47,11 +60,17 @@ public class AccountProducer {
                             .withKey(request.getSessionId())
                             .build())
                     .withAck(() -> {
+                        if (counter.getFailureCount() > 0) {
+                            FailoverPathLogger.logSuccessAfterFailure(LOG, counter.getPath(), attemptCount, request.getSessionId());
+                        }
+                        counter.reset();
                         em.complete(null);
                         LOG.infof("Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
+                        int failCount = counter.incrementFailure();
+                        FailoverPathLogger.logFailoverAttempt(LOG, counter.getPath(), attemptCount, failCount, request.getSessionId(), throwable);
                         LOG.errorf("Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
@@ -69,6 +88,10 @@ public class AccountProducer {
     @Timeout(value = 10000)
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
+        FailoverPathLogger.FailureCounter counter = responseCounter.get();
+        int attemptCount = counter.incrementAttempt();
+
+        FailoverPathLogger.logPrimaryPathAttempt(LOG, counter.getPath(), event.sessionId());
         LOG.infof("Start produceAccountingResponseEvent process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
@@ -76,11 +99,17 @@ public class AccountProducer {
                             .withKey(event.sessionId())
                             .build())
                     .withAck(() -> {
+                        if (counter.getFailureCount() > 0) {
+                            FailoverPathLogger.logSuccessAfterFailure(LOG, counter.getPath(), attemptCount, event.sessionId());
+                        }
+                        counter.reset();
                         em.complete(null);
                         LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
+                        int failCount = counter.incrementFailure();
+                        FailoverPathLogger.logFailoverAttempt(LOG, counter.getPath(), attemptCount, failCount, event.sessionId(), throwable);
                         LOG.errorf("Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
@@ -95,18 +124,29 @@ public class AccountProducer {
     @Timeout(value = 10000)
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
+        FailoverPathLogger.FailureCounter counter = cdrCounter.get();
+        int attemptCount = counter.incrementAttempt();
+        String sessionId = event.getPayload().getSession().getSessionId();
+
+        FailoverPathLogger.logPrimaryPathAttempt(LOG, counter.getPath(), sessionId);
         LOG.infof("Start produce Accounting CDR Event process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingCDREvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
-                            .withKey(event.getPayload().getSession().getSessionId())
+                            .withKey(sessionId)
                             .build())
                     .withAck(() -> {
+                        if (counter.getFailureCount() > 0) {
+                            FailoverPathLogger.logSuccessAfterFailure(LOG, counter.getPath(), attemptCount, sessionId);
+                        }
+                        counter.reset();
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting CDR event for session: %s, %d ms", event.getPayload().getSession().getSessionId(),System.currentTimeMillis()-startTime);
+                        LOG.infof("Successfully sent accounting CDR event for session: %s, %d ms", sessionId,System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
+                        int failCount = counter.incrementFailure();
+                        FailoverPathLogger.logFailoverAttempt(LOG, counter.getPath(), attemptCount, failCount, sessionId, throwable);
                         LOG.errorf("CDR Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
