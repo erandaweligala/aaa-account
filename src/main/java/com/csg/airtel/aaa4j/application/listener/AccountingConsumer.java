@@ -8,6 +8,9 @@ import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.IncomingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
 
 
@@ -31,6 +34,9 @@ public class AccountingConsumer {
     }
 
     @Incoming("accounting-events")
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 10000, successThreshold = 3)
+    @Retry(maxRetries = 2, delay = 500, maxDuration = 15000)
+    @Timeout(value = 30000)
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start consumeAccountingEvent process");
