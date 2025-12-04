@@ -39,6 +39,9 @@ public class CacheClient {
     /**
      * Store user data in Redis
      */
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 5000, successThreshold = 2)
+    @Retry(maxRetries = 2, delay = 100, maxDuration = 5000)
+    @Timeout(value = 5000)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
         long startTime = System.currentTimeMillis();
         log.infof("Storing user data  for  cache userId: %s", userId);
@@ -87,6 +90,9 @@ public class CacheClient {
     }
 
 
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 5000, successThreshold = 2)
+    @Retry(maxRetries = 2, delay = 100, maxDuration = 5000)
+    @Timeout(value = 5000)
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
         long startTime = System.currentTimeMillis();
         log.infof("Updating user data and related caches for userId: %s", userId);
@@ -103,6 +109,9 @@ public class CacheClient {
                 .replaceWithVoid();
     }
 
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 5000, successThreshold = 2)
+    @Retry(maxRetries = 2, delay = 100, maxDuration = 5000)
+    @Timeout(value = 5000)
     public Uni<String> deleteKey(String key) {
         String userKey = KEY_PREFIX + key;
         ReactiveKeyCommands<String> keyCommands = reactiveRedisDataSource.key();

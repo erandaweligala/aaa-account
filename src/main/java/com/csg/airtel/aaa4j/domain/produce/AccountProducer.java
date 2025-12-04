@@ -6,6 +6,9 @@ import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Message;
@@ -31,6 +34,10 @@ public class AccountProducer {
         this.accountingCDREventEmitter = accountingCDREventEmitter;
 
     }
+
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 5000, successThreshold = 2)
+    @Retry(maxRetries = 3, delay = 200, maxDuration = 10000)
+    @Timeout(value = 10000)
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
@@ -57,7 +64,9 @@ public class AccountProducer {
     /**
      * @param event request
      */
-
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 5000, successThreshold = 2)
+    @Retry(maxRetries = 3, delay = 200, maxDuration = 10000)
+    @Timeout(value = 10000)
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produceAccountingResponseEvent process");
@@ -81,7 +90,9 @@ public class AccountProducer {
         });
     }
 
-
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 5000, successThreshold = 2)
+    @Retry(maxRetries = 3, delay = 200, maxDuration = 10000)
+    @Timeout(value = 10000)
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produce Accounting CDR Event process");

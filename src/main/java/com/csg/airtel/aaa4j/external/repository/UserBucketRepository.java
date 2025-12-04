@@ -10,6 +10,9 @@ import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 
@@ -55,6 +58,9 @@ public class UserBucketRepository {
      * @param userName the username to fetch buckets for
      * @return Uni containing list of ServiceBucketInfo
      */
+    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 10000, successThreshold = 3)
+    @Retry(maxRetries = 3, delay = 200, maxDuration = 10000)
+    @Timeout(value = 10000)
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
         if (log.isTraceEnabled()) {
             log.tracef("Fetching service buckets for user: %s", userName);
