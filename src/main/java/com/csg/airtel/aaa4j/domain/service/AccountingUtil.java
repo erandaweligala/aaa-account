@@ -23,7 +23,6 @@ import java.util.List;
 
 @ApplicationScoped
 public class AccountingUtil {
-//todo need to implement if initialBalance = 0 and quota = 0 this bucket can used unlimited  pls write code
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
 
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
@@ -350,7 +349,6 @@ public class AccountingUtil {
             return;
         }
 
-        // Use removeIf for efficient in-place removal
         history.removeIf(consumptionRecord -> consumptionRecord.getDate().isBefore(windowStartDate));
 
         if (log.isTraceEnabled() && !history.isEmpty()) {

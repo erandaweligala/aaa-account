@@ -5,7 +5,6 @@ import com.csg.airtel.aaa4j.domain.model.session.Balance;
 
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.core.Response;

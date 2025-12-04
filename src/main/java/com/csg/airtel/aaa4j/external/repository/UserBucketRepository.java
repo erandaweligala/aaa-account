@@ -3,7 +3,6 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 
-import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
@@ -11,9 +10,6 @@ import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
-import org.eclipse.microprofile.faulttolerance.Retry;
-import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 
@@ -48,10 +44,6 @@ public class UserBucketRepository {
 
     final Pool client;
 
-    // Failover path tracking
-    private final ThreadLocal<FailoverPathLogger.FailureCounter> queryCounter =
-            ThreadLocal.withInitial(() -> new FailoverPathLogger.FailureCounter("DB_QUERY_BUCKETS"));
-
     @Inject
     public UserBucketRepository(Pool client) {
         this.client = client;
@@ -63,35 +55,21 @@ public class UserBucketRepository {
      * @param userName the username to fetch buckets for
      * @return Uni containing list of ServiceBucketInfo
      */
-    @CircuitBreaker(requestVolumeThreshold = 10, failureRatio = 0.5, delay = 10000, successThreshold = 3)
-    @Retry(maxRetries = 3, delay = 200, maxDuration = 10000)
-    @Timeout(value = 10000)
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
-        FailoverPathLogger.FailureCounter counter = queryCounter.get();
-        int attemptCount = counter.incrementAttempt();
-
-        FailoverPathLogger.logPrimaryPathAttempt(log, counter.getPath(), userName);
-        if (log.isTraceEnabled()) {
+        if (log.isDebugEnabled()) {
             log.tracef("Fetching service buckets for user: %s", userName);
         }
-
         return client
                 .preparedQuery(QUERY_BALANCE)
                 .execute(Tuple.of(userName))
                 .onItem().transform(this::mapRowsToServiceBuckets)
                 .onFailure().invoke(error -> {
-                    int failCount = counter.incrementFailure();
-                    FailoverPathLogger.logFailoverAttempt(log, counter.getPath(), attemptCount, failCount, userName, error);
                     if (log.isDebugEnabled()) {
                         log.debugf(error, "Error fetching service buckets for user: %s", userName);
                     }
                 })
                 .onItem().invoke(results -> {
-                    if (counter.getFailureCount() > 0) {
-                        FailoverPathLogger.logSuccessAfterFailure(log, counter.getPath(), attemptCount, userName);
-                    }
-                    counter.reset();
-                    if (log.isTraceEnabled()) {
+                    if (log.isDebugEnabled()) {
                         log.tracef("Fetched %d service buckets for user: %s", results.size(), userName);
                     }
                 });
@@ -124,13 +102,13 @@ public class UserBucketRepository {
             // Bucket configuration
             info.setRule(row.getString(COL_RULE));
             info.setPriority(row.getLong(COL_PRIORITY));
-            info.setInitialBalance(row.getLong(COL_INITIAL_BALANCE));
+            info.setInitialBalance(row.getLong(COL_INITIAL_BALANCE) != null ? row.getLong(COL_INITIAL_BALANCE) : 0);
             info.setCurrentBalance(row.getLong(COL_CURRENT_BALANCE));
             info.setUsage(row.getLong(COL_USAGE));
 
             // Consumption limits and windows
-            info.setConsumptionLimit(row.getLong(COL_CONSUMPTION_LIMIT));
-            info.setConsumptionTimeWindow(row.getLong(COL_CONSUMPTION_LIMIT_WINDOW));
+            info.setConsumptionLimit(row.getLong(COL_CONSUMPTION_LIMIT) != null ? row.getLong(COL_CONSUMPTION_LIMIT) : 0);
+            info.setConsumptionTimeWindow(row.getLong(COL_CONSUMPTION_LIMIT_WINDOW)  != null ? row.getLong(COL_CONSUMPTION_LIMIT_WINDOW) : 0);
             info.setTimeWindow(row.getString(COL_TIME_WINDOW));
             info.setBucketExpiryDate(row.getLocalDateTime(COL_EXPIRATION));
 
