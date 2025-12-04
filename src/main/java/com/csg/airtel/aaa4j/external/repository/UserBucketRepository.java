@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 
+import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
@@ -47,6 +48,10 @@ public class UserBucketRepository {
 
     final Pool client;
 
+    // Failover path tracking
+    private final ThreadLocal<FailoverPathLogger.FailureCounter> queryCounter =
+            ThreadLocal.withInitial(() -> new FailoverPathLogger.FailureCounter("DB_QUERY_BUCKETS"));
+
     @Inject
     public UserBucketRepository(Pool client) {
         this.client = client;
@@ -62,6 +67,10 @@ public class UserBucketRepository {
     @Retry(maxRetries = 3, delay = 200, maxDuration = 10000)
     @Timeout(value = 10000)
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
+        FailoverPathLogger.FailureCounter counter = queryCounter.get();
+        int attemptCount = counter.incrementAttempt();
+
+        FailoverPathLogger.logPrimaryPathAttempt(log, counter.getPath(), userName);
         if (log.isTraceEnabled()) {
             log.tracef("Fetching service buckets for user: %s", userName);
         }
@@ -71,11 +80,17 @@ public class UserBucketRepository {
                 .execute(Tuple.of(userName))
                 .onItem().transform(this::mapRowsToServiceBuckets)
                 .onFailure().invoke(error -> {
+                    int failCount = counter.incrementFailure();
+                    FailoverPathLogger.logFailoverAttempt(log, counter.getPath(), attemptCount, failCount, userName, error);
                     if (log.isDebugEnabled()) {
                         log.debugf(error, "Error fetching service buckets for user: %s", userName);
                     }
                 })
                 .onItem().invoke(results -> {
+                    if (counter.getFailureCount() > 0) {
+                        FailoverPathLogger.logSuccessAfterFailure(log, counter.getPath(), attemptCount, userName);
+                    }
+                    counter.reset();
                     if (log.isTraceEnabled()) {
                         log.tracef("Fetched %d service buckets for user: %s", results.size(), userName);
                     }
