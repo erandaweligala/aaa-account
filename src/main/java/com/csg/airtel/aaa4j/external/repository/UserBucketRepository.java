@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 
+import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
@@ -10,10 +11,15 @@ import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Fallback;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
@@ -55,6 +61,19 @@ public class UserBucketRepository {
      * @param userName the username to fetch buckets for
      * @return Uni containing list of ServiceBucketInfo
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 10000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 2,
+            delay = 100,
+            maxDuration = 10000
+    )
+    @Timeout(value = 10000)
+    @Fallback(fallbackMethod = "fallbackGetServiceBucketsByUserName")
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
         if (log.isDebugEnabled()) {
             log.tracef("Fetching service buckets for user: %s", userName);
@@ -118,6 +137,19 @@ public class UserBucketRepository {
             results.add(info);
         }
         return results;
+    }
+
+    /**
+     * Fallback method for getServiceBucketsByUserName.
+     * Returns empty list and logs error without overhead when circuit breaker opens or operation fails.
+     *
+     * @param userName the username
+     * @param throwable the failure cause
+     * @return empty list
+     */
+    private Uni<List<ServiceBucketInfo>> fallbackGetServiceBucketsByUserName(String userName, Throwable throwable) {
+        FailoverPathLogger.logFallbackPath(log, "getServiceBucketsByUserName", userName, throwable);
+        return Uni.createFrom().item(Collections.emptyList());
     }
 
 }

@@ -3,9 +3,14 @@ package com.csg.airtel.aaa4j.domain.produce;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
+import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
+import org.eclipse.microprofile.faulttolerance.Fallback;
+import org.eclipse.microprofile.faulttolerance.Retry;
+import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Message;
@@ -17,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
 
 @ApplicationScoped
 public class AccountProducer {
-    //todo need to implement CircitBracker with fallback path log to error without any overhead
+
     private static final Logger LOG = Logger.getLogger(AccountProducer.class);
     Emitter<DBWriteRequest> dbWriteRequestEmitter;
     Emitter<AccountingResponseEvent> accountingResponseEmitter;
@@ -32,6 +37,20 @@ public class AccountProducer {
         this.accountingCDREventEmitter = accountingCDREventEmitter;
 
     }
+
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 3,
+            delay = 100,
+            maxDuration = 10000
+    )
+    @Timeout(value = 10000)
+    @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
@@ -58,7 +77,19 @@ public class AccountProducer {
     /**
      * @param event request
      */
-
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 3,
+            delay = 100,
+            maxDuration = 10000
+    )
+    @Timeout(value = 10000)
+    @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produceAccountingResponseEvent process");
@@ -82,7 +113,19 @@ public class AccountProducer {
         });
     }
 
-
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 3,
+            delay = 100,
+            maxDuration = 10000
+    )
+    @Timeout(value = 10000)
+    @Fallback(fallbackMethod = "fallbackProduceAccountingCDREvent")
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produce Accounting CDR Event process");
@@ -105,6 +148,48 @@ public class AccountProducer {
             accountingCDREventEmitter.send(message);
         });
 
+    }
+
+    /**
+     * Fallback method for produceDBWriteEvent.
+     * Logs error without overhead when circuit breaker opens or operation fails.
+     *
+     * @param request the DB write request
+     * @param throwable the failure cause
+     * @return empty Uni (operation failed)
+     */
+    private Uni<Void> fallbackProduceDBWriteEvent(DBWriteRequest request, Throwable throwable) {
+        FailoverPathLogger.logFallbackPath(LOG, "produceDBWriteEvent", request.getSessionId(), throwable);
+        return Uni.createFrom().voidItem();
+    }
+
+    /**
+     * Fallback method for produceAccountingResponseEvent.
+     * Logs error without overhead when circuit breaker opens or operation fails.
+     *
+     * @param event the accounting response event
+     * @param throwable the failure cause
+     * @return empty Uni (operation failed)
+     */
+    private Uni<Void> fallbackProduceAccountingResponseEvent(AccountingResponseEvent event, Throwable throwable) {
+        FailoverPathLogger.logFallbackPath(LOG, "produceAccountingResponseEvent", event.sessionId(), throwable);
+        return Uni.createFrom().voidItem();
+    }
+
+    /**
+     * Fallback method for produceAccountingCDREvent.
+     * Logs error without overhead when circuit breaker opens or operation fails.
+     *
+     * @param event the accounting CDR event
+     * @param throwable the failure cause
+     * @return empty Uni (operation failed)
+     */
+    private Uni<Void> fallbackProduceAccountingCDREvent(AccountingCDREvent event, Throwable throwable) {
+        String sessionId = event.getPayload() != null && event.getPayload().getSession() != null
+                ? event.getPayload().getSession().getSessionId()
+                : "unknown";
+        FailoverPathLogger.logFallbackPath(LOG, "produceAccountingCDREvent", sessionId, throwable);
+        return Uni.createFrom().voidItem();
     }
 
 }
