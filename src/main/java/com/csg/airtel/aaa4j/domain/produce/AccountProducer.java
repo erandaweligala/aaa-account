@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 
 @ApplicationScoped
 public class AccountProducer {
+    //todo need to implement CircitBracker with fallback path log to error without any overhead
     private static final Logger LOG = Logger.getLogger(AccountProducer.class);
     Emitter<DBWriteRequest> dbWriteRequestEmitter;
     Emitter<AccountingResponseEvent> accountingResponseEmitter;
