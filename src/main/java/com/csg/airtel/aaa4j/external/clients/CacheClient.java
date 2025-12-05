@@ -5,8 +5,10 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
+import io.quarkus.redis.datasource.keys.KeyScanArgs;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.SetArgs;
+import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 
 import io.smallrye.mutiny.unchecked.Unchecked;
@@ -120,6 +122,45 @@ public class CacheClient {
             throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR,ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
 
         }
+    }
+
+    /**
+     * Scan all user keys from Redis with pattern "user:*".
+     * Uses SCAN command for efficient iteration without blocking Redis.
+     * @return Multi stream of user keys (without the "user:" prefix)
+     */
+    public Multi<String> scanAllUserKeys() {
+        log.info("Scanning all user keys from Redis cache");
+        ReactiveKeyCommands<String> keyCommands = reactiveRedisDataSource.key();
+        KeyScanArgs scanArgs = new KeyScanArgs().match(KEY_PREFIX + "*").count(100);
+
+        return keyCommands.scan(scanArgs)
+                .map(key -> key.substring(KEY_PREFIX.length()))
+                .onFailure().invoke(e -> log.errorf("Failed to scan user keys: %s", e.getMessage()));
+    }
+
+    /**
+     * Get all user session data for a batch of user IDs.
+     * @param userIds list of user IDs to retrieve
+     * @return Multi stream of UserSessionData with their userIds
+     */
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 2,
+            delay = 100,
+            maxDuration = 5000
+    )
+    @Timeout(value = 10000)
+    public Multi<UserSessionData> getUserDataBatch(java.util.List<String> userIds) {
+        log.infof("Retrieving batch user data for %d users", userIds.size());
+        return Multi.createFrom().iterable(userIds)
+                .onItem().transformToUniAndMerge(this::getUserData)
+                .filter(java.util.Objects::nonNull);
     }
 
 }
