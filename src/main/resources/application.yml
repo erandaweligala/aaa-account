@@ -71,6 +71,14 @@ log:
 kafka:
   bootstrap.servers: confluent-ctrl-0-svc.rkafkacone.svc.cluster.local:9092
 
+# Idle Session Terminator Configuration
+# Sessions older than timeout-minutes will be automatically terminated
+idle-session:
+  enabled: true
+  timeout-minutes: 60    # 1 hour default - sessions older than this will be terminated
+  scheduler-interval: 5m # Run every 5 minutes
+  batch-size: 100        # Process 100 users per batch
+
 mp:
   messaging:
     outgoing:
