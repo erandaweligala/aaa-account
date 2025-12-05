@@ -152,7 +152,6 @@ public class AccountProducer {
 
     /**
      * Fallback method for produceDBWriteEvent.
-     * Logs error without overhead when circuit breaker opens or operation fails.
      *
      * @param request the DB write request
      * @param throwable the failure cause
@@ -165,7 +164,6 @@ public class AccountProducer {
 
     /**
      * Fallback method for produceAccountingResponseEvent.
-     * Logs error without overhead when circuit breaker opens or operation fails.
      *
      * @param event the accounting response event
      * @param throwable the failure cause
@@ -178,7 +176,6 @@ public class AccountProducer {
 
     /**
      * Fallback method for produceAccountingCDREvent.
-     * Logs error without overhead when circuit breaker opens or operation fails.
      *
      * @param event the accounting CDR event
      * @param throwable the failure cause
