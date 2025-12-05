@@ -135,6 +135,8 @@ public class CacheClient {
      * Uses SCAN command for efficient iteration without blocking Redis.
      * @return Multi stream of user keys (without the "user:" prefix)
      */
+
+    //todo Cannot resolve method 'map' in 'ReactiveKeyScanCursor' and Cannot resolve method 'substring(int)'
     public Multi<String> scanAllUserKeys() {
         log.info("Scanning all user keys from Redis cache");
         ReactiveKeyCommands<String> keyCommands = reactiveRedisDataSource.key();
