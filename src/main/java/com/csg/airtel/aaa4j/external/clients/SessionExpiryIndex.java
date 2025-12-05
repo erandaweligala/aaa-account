@@ -132,7 +132,6 @@ public class SessionExpiryIndex {
      * @param limit Maximum number of sessions to return (for batching)
      * @return Multi stream of SessionExpiryEntry with userId and sessionId
      */
-    //todo reason: Incompatible types: List<String> is not convertible to String
     public Multi<SessionExpiryEntry> getExpiredSessions(long expiryThresholdMillis, int limit) {
         log.infof("Querying expired sessions with threshold: %d, limit: %d", expiryThresholdMillis, limit);
 
@@ -140,7 +139,9 @@ public class SessionExpiryIndex {
         ScoreRange<Double> scoreRange = ScoreRange.from(Double.NEGATIVE_INFINITY, expiryThresholdMillis);
         ZRangeArgs args = new ZRangeArgs().limit(0, limit);
 
+        // zrangebyscore returns Uni<List<String>>, convert to Multi<String> before transforming
         return sortedSetCommands.zrangebyscore(EXPIRY_INDEX_KEY, scoreRange, args)
+                .onItem().transformToMulti(list -> Multi.createFrom().iterable(list))
                 .onItem().transform(this::parseMember)
                 .filter(Objects::nonNull);
     }
