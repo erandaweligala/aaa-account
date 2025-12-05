@@ -31,12 +31,15 @@ public class InterimHandler {
     private final UserBucketRepository userRepository;
     private final AccountingUtil accountingUtil;
     private final AccountProducer accountProducer;
+    private final SessionLifecycleManager sessionLifecycleManager;
+
     @Inject
-    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer) {
+    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
         this.accountingUtil = accountingUtil;
         this.accountProducer = accountProducer;
+        this.sessionLifecycleManager = sessionLifecycleManager;
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
@@ -121,7 +124,8 @@ public class InterimHandler {
         } else {
             Session finalSession = session;
             return accountingUtil.updateSessionAndBalance(userData, session, request,null)
-                    .onItem().transformToUni(updateResult -> {  // Changed from transform to transformToUni
+                    .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
+                    .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {
                             log.warnf("update failed for sessionId: %s", request.sessionId());
                         }
