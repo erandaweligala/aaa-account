@@ -32,7 +32,6 @@ import java.time.ZoneId;
  */
 @ApplicationScoped
 public class SessionLifecycleManager {
-    // todo need to add this methods related possions start,interim,stop
     private static final Logger log = Logger.getLogger(SessionLifecycleManager.class);
 
     private final SessionExpiryIndex sessionExpiryIndex;

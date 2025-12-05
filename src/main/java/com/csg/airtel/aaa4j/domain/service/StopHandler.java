@@ -25,12 +25,14 @@ public class StopHandler {
     private final CacheClient cacheUtil;
     private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
+    private final SessionLifecycleManager sessionLifecycleManager;
 
     @Inject
-    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil) {
+    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager) {
         this.cacheUtil = cacheUtil;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
+        this.sessionLifecycleManager = sessionLifecycleManager;
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
@@ -84,6 +86,7 @@ public class StopHandler {
                             )
                             .onFailure().recoverWithNull(); // Cache failure can still be swallowed
                 })
+                .call(() -> sessionLifecycleManager.onSessionTerminated(request.username(), request.sessionId()))
                 .invoke(() ->
                     //send CDR event asynchronously
                     generateAndSendCDR(request, finalSession)

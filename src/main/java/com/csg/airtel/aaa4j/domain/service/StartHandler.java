@@ -29,13 +29,15 @@ public class StartHandler {
     private final UserBucketRepository userRepository;
     private final AccountProducer  accountProducer;
     private final AccountingUtil accountingUtil;
+    private final SessionLifecycleManager sessionLifecycleManager;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
+        this.sessionLifecycleManager = sessionLifecycleManager;
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
@@ -164,6 +166,7 @@ public class StartHandler {
         }
 
         return updateCachesForSession(request, userSessionData, newSession, isGroupBalance)
+                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
                 .invoke(() -> {
                     log.infof("cdr write event started for user: %s", request.username());
                     generateAndSendCDR(request, newSession);
@@ -339,10 +342,13 @@ public class StartHandler {
                     request, result, session, highestPriorityBalance, userStorageUni);
         }
 
-        return userStorageUni.onItem().invoke(unused -> {
-            log.infof("CDR write event started for user: %s", request.username());
-            generateAndSendCDR(request, session);
-        });
+        Session finalSession = session;
+        return userStorageUni
+                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
+                .onItem().invoke(unused -> {
+                    log.infof("CDR write event started for user: %s", request.username());
+                    generateAndSendCDR(request, finalSession);
+                });
     }
 
     private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {
