@@ -64,8 +64,8 @@ log:
   redis:
     hosts: http://redis.redis.svc.cluster.local:6379
     timeout: 10s
-    max-pool-size: 20
-    max-pool-waiting: 24
+    max-pool-size: 50          # Increased from 20 for 10M user scale
+    max-pool-waiting: 100      # Increased for high throughput
 
 # Kafka Configuration
 kafka:
@@ -73,11 +73,13 @@ kafka:
 
 # Idle Session Terminator Configuration
 # Sessions older than timeout-minutes will be automatically terminated
+# Optimized for 10M+ users using Redis Sorted Set index
 idle-session:
   enabled: true
-  timeout-minutes: 60    # 1 hour default - sessions older than this will be terminated
-  scheduler-interval: 5m # Run every 5 minutes
-  batch-size: 100        # Process 100 users per batch
+  timeout-minutes: 60       # 1 hour default - sessions older than this will be terminated
+  scheduler-interval: 5m    # Run every 5 minutes
+  batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
+  # max-batches-per-run: 100  # Optional: limit total batches per scheduler run
 
 mp:
   messaging:
