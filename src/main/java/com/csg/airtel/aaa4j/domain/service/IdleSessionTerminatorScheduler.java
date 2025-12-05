@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 @ApplicationScoped
 public class IdleSessionTerminatorScheduler {
-
+  // todo hondle 10M users and any without overhead improve this code
     private static final Logger log = Logger.getLogger(IdleSessionTerminatorScheduler.class);
 
     private final CacheClient cacheClient;
