@@ -13,6 +13,7 @@ import org.jboss.logging.Logger;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Redis Sorted Set based index for tracking session expiry times.
@@ -131,6 +132,7 @@ public class SessionExpiryIndex {
      * @param limit Maximum number of sessions to return (for batching)
      * @return Multi stream of SessionExpiryEntry with userId and sessionId
      */
+    //todo reason: Incompatible types: List<String> is not convertible to String
     public Multi<SessionExpiryEntry> getExpiredSessions(long expiryThresholdMillis, int limit) {
         log.infof("Querying expired sessions with threshold: %d, limit: %d", expiryThresholdMillis, limit);
 
@@ -140,7 +142,7 @@ public class SessionExpiryIndex {
 
         return sortedSetCommands.zrangebyscore(EXPIRY_INDEX_KEY, scoreRange, args)
                 .onItem().transform(this::parseMember)
-                .filter(entry -> entry != null);
+                .filter(Objects::nonNull);
     }
 
     /**

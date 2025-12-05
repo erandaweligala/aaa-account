@@ -257,7 +257,7 @@ public class IdleSessionTerminatorScheduler {
         // Find sessions to terminate
         List<Session> sessionsToTerminate = sessions.stream()
                 .filter(s -> expiredSessionIds.contains(s.getSessionId()))
-                .collect(Collectors.toList());
+                .toList();
 
         if (sessionsToTerminate.isEmpty()) {
             // Sessions may have been terminated by other means
