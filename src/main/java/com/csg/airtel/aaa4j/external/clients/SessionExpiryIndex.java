@@ -127,11 +127,14 @@ public class SessionExpiryIndex {
      * Get all expired sessions up to a given timestamp with a limit.
      * This is the key optimization - O(log N + K) instead of O(N) full scan.
      *
+     * <p>Note: This returns session identifiers only. To get expired sessions
+     * with their full user data, use {@link CacheClient#getExpiredSessionsWithData}.</p>
+     *
      * @param expiryThresholdMillis Get sessions with expiry score <= this value
      * @param limit Maximum number of sessions to return (for batching)
      * @return Multi stream of SessionExpiryEntry with userId and sessionId
+     * @see CacheClient#getExpiredSessionsWithData(long, int)
      */
-    //todo already have expired sessions data but not retrived getExpiredSessions
     public Multi<SessionExpiryEntry> getExpiredSessions(long expiryThresholdMillis, int limit) {
         log.infof("Querying expired sessions with threshold: %d, limit: %d", expiryThresholdMillis, limit);
 
