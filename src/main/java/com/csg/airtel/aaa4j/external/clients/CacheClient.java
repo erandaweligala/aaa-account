@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.KeyScanArgs;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
+import io.quarkus.redis.datasource.value.ReactiveValueCommands;
 import io.quarkus.redis.datasource.value.SetArgs;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -22,6 +23,9 @@ import org.jboss.logging.Logger;
 
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 
 @ApplicationScoped
@@ -31,11 +35,13 @@ public class CacheClient {
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;
     private static final String KEY_PREFIX = "user:";
+    private final ReactiveValueCommands<String, String> valueCommands;
 
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource, ObjectMapper objectMapper) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
+        this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
     }
 
     /**
@@ -140,9 +146,12 @@ public class CacheClient {
     }
 
     /**
-     * Get all user session data for a batch of user IDs.
+     * Get all user session data for a batch of user IDs using MGET.
+     * MGET is O(N) where N is the number of keys, but uses a single network round trip.
+     * This is critical for 10M+ users - single round trip vs N round trips.
+     *
      * @param userIds list of user IDs to retrieve
-     * @return Multi stream of UserSessionData with their userIds
+     * @return Multi stream of UserSessionData (non-null entries only)
      */
     @CircuitBreaker(
             requestVolumeThreshold = 10,
@@ -157,10 +166,88 @@ public class CacheClient {
     )
     @Timeout(value = 10000)
     public Multi<UserSessionData> getUserDataBatch(java.util.List<String> userIds) {
-        log.infof("Retrieving batch user data for %d users", userIds.size());
-        return Multi.createFrom().iterable(userIds)
-                .onItem().transformToUniAndMerge(this::getUserData)
+        if (userIds == null || userIds.isEmpty()) {
+            return Multi.createFrom().empty();
+        }
+
+        log.infof("Retrieving batch user data for %d users using MGET", userIds.size());
+        long startTime = System.currentTimeMillis();
+
+        // Build keys with prefix
+        String[] keys = userIds.stream()
+                .map(id -> KEY_PREFIX + id)
+                .toArray(String[]::new);
+
+        // Use MGET for single network round trip - critical for scaling
+        return valueCommands.mget(keys)
+                .onItem().transformToMulti(resultMap -> {
+                    log.infof("MGET completed for %d keys in %d ms", keys.length, System.currentTimeMillis() - startTime);
+                    return Multi.createFrom().iterable(resultMap.values());
+                })
+                .filter(jsonValue -> jsonValue != null && !jsonValue.isEmpty())
+                .onItem().transform(Unchecked.function(jsonValue -> {
+                    try {
+                        return objectMapper.readValue(jsonValue, UserSessionData.class);
+                    } catch (Exception e) {
+                        log.warnf("Failed to deserialize user data: %s", e.getMessage());
+                        return null;
+                    }
+                }))
                 .filter(java.util.Objects::nonNull);
+    }
+
+    /**
+     * Get user session data as a map for a batch of user IDs using MGET.
+     * Returns a map of userId -> UserSessionData for efficient lookups.
+     *
+     * @param userIds list of user IDs to retrieve
+     * @return Uni with Map of userId -> UserSessionData
+     */
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 2,
+            delay = 100,
+            maxDuration = 5000
+    )
+    @Timeout(value = 10000)
+    public Uni<Map<String, UserSessionData>> getUserDataBatchAsMap(java.util.List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return Uni.createFrom().item(new HashMap<>());
+        }
+
+        log.infof("Retrieving batch user data as map for %d users using MGET", userIds.size());
+        long startTime = System.currentTimeMillis();
+
+        // Build keys with prefix
+        String[] keys = userIds.stream()
+                .map(id -> KEY_PREFIX + id)
+                .toArray(String[]::new);
+
+        // Use MGET for single network round trip
+        return valueCommands.mget(keys)
+                .onItem().transform(resultMap -> {
+                    log.infof("MGET completed for %d keys in %d ms", keys.length, System.currentTimeMillis() - startTime);
+
+                    Map<String, UserSessionData> userDataMap = new HashMap<>();
+                    for (Map.Entry<String, String> entry : resultMap.entrySet()) {
+                        if (entry.getValue() != null && !entry.getValue().isEmpty()) {
+                            try {
+                                // Strip prefix from key to get userId
+                                String userId = entry.getKey().substring(KEY_PREFIX.length());
+                                UserSessionData userData = objectMapper.readValue(entry.getValue(), UserSessionData.class);
+                                userDataMap.put(userId, userData);
+                            } catch (Exception e) {
+                                log.warnf("Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
+                            }
+                        }
+                    }
+                    return userDataMap;
+                });
     }
 
 }
