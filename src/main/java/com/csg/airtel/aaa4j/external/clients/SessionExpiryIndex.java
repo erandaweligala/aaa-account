@@ -33,7 +33,7 @@ public class SessionExpiryIndex {
 
     private static final Logger log = Logger.getLogger(SessionExpiryIndex.class);
 
-    private static final String EXPIRY_INDEX_KEY = "session:expiry:index";
+    private static final String EXPIRY_INDEX_KEY = "session:";
     private static final String MEMBER_SEPARATOR = ":";
 
     private final ReactiveSortedSetCommands<String, String> sortedSetCommands;

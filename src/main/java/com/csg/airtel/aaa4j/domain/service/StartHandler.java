@@ -486,10 +486,7 @@ public class StartHandler {
     private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
-                LocalDateTime.now()
-                        .atZone(ZoneId.systemDefault())
-                        .toInstant()
-                        .toEpochMilli(),
+                LocalDateTime.now(),
                 null,
                 0,
                 0L,
