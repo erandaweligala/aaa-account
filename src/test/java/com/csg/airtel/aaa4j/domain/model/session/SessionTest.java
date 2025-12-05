@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,7 +34,10 @@ class SessionTest {
         String framedId = "10.0.0.1";
         String nasIp = "192.168.1.1";
 
-        session = new Session(sessionId, initiatedTime, previousBucketId,
+        session = new Session(sessionId, LocalDateTime.now()
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli(), previousBucketId,
                              sessionTime, previousUsage, framedId, nasIp);
 
         assertEquals(sessionId, session.getSessionId());
@@ -56,7 +60,10 @@ class SessionTest {
     @Test
     void testSetAndGetSessionInitiatedTime() {
         session = new Session();
-        session.setSessionInitiatedTime(testDateTime);
+        session.setSessionInitiatedTime(LocalDateTime.now()
+                .atZone(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli());
         assertEquals(testDateTime, session.getSessionInitiatedTime());
     }
 

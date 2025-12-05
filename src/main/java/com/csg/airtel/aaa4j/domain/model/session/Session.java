@@ -12,7 +12,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class Session {
     private String sessionId;
-    private LocalDateTime sessionInitiatedTime;
+    private long sessionInitiatedTime;
     private String previousUsageBucketId;
     private Integer sessionTime;
     private Long previousTotalUsageQuotaValue;

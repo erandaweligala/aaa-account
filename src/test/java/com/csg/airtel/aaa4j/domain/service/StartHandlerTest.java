@@ -19,6 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -246,7 +247,10 @@ class StartHandlerTest {
         UserSessionData userData = createUserSessionData();
         Session session = new Session(
                 sessionId,
-                LocalDateTime.now(),
+                LocalDateTime.now()
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli(),
                 null,
                 0,
                 0L,

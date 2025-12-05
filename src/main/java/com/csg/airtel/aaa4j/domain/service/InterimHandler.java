@@ -150,7 +150,10 @@ public class InterimHandler {
     private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
-                LocalDateTime.ofInstant(request.timestamp(), ZoneId.systemDefault()),
+                LocalDateTime.now()
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli(),
                 null,
                 request.sessionTime() - 1,
                 0L,

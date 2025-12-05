@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -191,7 +192,10 @@ class StopHandlerTest {
 
         Session session = new Session(
                 "session-id-123",
-                LocalDateTime.now(),
+                LocalDateTime.now()
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli(),
                 null,
                 100,
                 2000L,
@@ -210,7 +214,10 @@ class StopHandlerTest {
 
         Session session = new Session(
                 "different-session-id",
-                LocalDateTime.now(),
+                LocalDateTime.now()
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli(),
                 null,
                 100,
                 2000L,

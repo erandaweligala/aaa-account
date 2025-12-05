@@ -86,8 +86,8 @@ public class IdleSessionTerminatorScheduler {
      * <p>This method uses the SessionExpiryIndex to find expired sessions in O(log N + K)
      * time instead of scanning all users in O(N) time.</p>
      */
-    @Scheduled(every = "${idle-session.scheduler-interval:5m}",
-               concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+//    @Scheduled(every = "${idle-session.scheduler-interval:5m}",
+//               concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     public void terminateIdleSessions() {
         if (!config.enabled()) {
             log.debug("Idle session terminator is disabled, skipping execution");
@@ -270,11 +270,11 @@ public class IdleSessionTerminatorScheduler {
         // Log session details
         LocalDateTime now = LocalDateTime.now();
         for (Session session : sessionsToTerminate) {
-            if (session.getSessionInitiatedTime() != null) {
-                Duration idleDuration = Duration.between(session.getSessionInitiatedTime(), now);
-                log.infof("Terminating idle session [sessionId: %s, user: %s, idleDuration: %d minutes]",
-                        session.getSessionId(), userName, idleDuration.toMinutes());
-            }
+//            if (session.getSessionInitiatedTime() != null) {
+//                Duration idleDuration = Duration.between(session.getSessionInitiatedTime(), now);
+//                log.infof("Terminating idle session [sessionId: %s, user: %s, idleDuration: %d minutes]",
+//                        session.getSessionId(), userName, idleDuration.toMinutes());
+//            }
         }
 
         // Remove terminated sessions
@@ -313,95 +313,4 @@ public class IdleSessionTerminatorScheduler {
                 );
     }
 
-    // =========================================================================
-    // FALLBACK: Legacy full-scan method for migration period
-    // =========================================================================
-
-    /**
-     * Fallback method using full scan for migration period.
-     * This is used when the session expiry index is not yet populated.
-     *
-     * @deprecated Use the optimized index-based approach instead.
-     *             This method will be removed after migration.
-     */
-    @Deprecated
-    public void terminateIdleSessionsLegacy() {
-        if (!config.enabled()) {
-            return;
-        }
-
-        long startTime = System.currentTimeMillis();
-        int timeoutMinutes = config.timeoutMinutes();
-        int batchSize = config.batchSize();
-
-        log.warn("Using legacy full-scan idle session termination - consider migrating to index-based approach");
-
-        AtomicInteger totalSessionsTerminated = new AtomicInteger(0);
-        AtomicInteger totalUsersProcessed = new AtomicInteger(0);
-
-        cacheClient.scanAllUserKeys()
-                .group().intoLists().of(batchSize)
-                .onItem().transformToUniAndMerge(userIdBatch ->
-                        processLegacyUserBatch(userIdBatch, timeoutMinutes, totalSessionsTerminated, totalUsersProcessed)
-                )
-                .collect().asList()
-                .subscribe().with(
-                        result -> log.infof("Legacy termination completed. Users: %d, Sessions: %d, Duration: %d ms",
-                                totalUsersProcessed.get(), totalSessionsTerminated.get(),
-                                System.currentTimeMillis() - startTime),
-                        error -> log.errorf(error, "Error during legacy idle session termination")
-                );
-    }
-
-    private Uni<Void> processLegacyUserBatch(List<String> userIds, int timeoutMinutes,
-                                              AtomicInteger totalSessionsTerminated,
-                                              AtomicInteger totalUsersProcessed) {
-        return cacheClient.getUserDataBatch(userIds)
-                .onItem().transformToUniAndMerge(userData ->
-                        processLegacyUserSessions(userData, timeoutMinutes, totalSessionsTerminated))
-                .collect().asList()
-                .invoke(() -> totalUsersProcessed.addAndGet(userIds.size()))
-                .replaceWithVoid();
-    }
-
-    private Uni<Void> processLegacyUserSessions(UserSessionData userData, int timeoutMinutes,
-                                                 AtomicInteger totalSessionsTerminated) {
-        if (userData == null || userData.getSessions() == null || userData.getSessions().isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        String userName = userData.getUserName();
-        List<Session> sessions = userData.getSessions();
-        LocalDateTime now = LocalDateTime.now();
-
-        List<Session> idleSessions = findIdleSessions(sessions, now, timeoutMinutes);
-
-        if (idleSessions.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        List<Session> activeSessions = new ArrayList<>(sessions);
-        activeSessions.removeAll(idleSessions);
-        userData.setSessions(activeSessions);
-
-        totalSessionsTerminated.addAndGet(idleSessions.size());
-
-        return cacheClient.updateUserAndRelatedCaches(userName, userData)
-                .onFailure().recoverWithNull()
-                .replaceWithVoid();
-    }
-
-    private List<Session> findIdleSessions(List<Session> sessions, LocalDateTime now, int timeoutMinutes) {
-        List<Session> idleSessions = new ArrayList<>();
-        for (Session session : sessions) {
-            if (session.getSessionInitiatedTime() == null) {
-                continue;
-            }
-            Duration sessionDuration = Duration.between(session.getSessionInitiatedTime(), now);
-            if (sessionDuration.toMinutes() >= timeoutMinutes) {
-                idleSessions.add(session);
-            }
-        }
-        return idleSessions;
-    }
 }

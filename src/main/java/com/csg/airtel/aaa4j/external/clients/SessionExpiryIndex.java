@@ -1,7 +1,6 @@
 package com.csg.airtel.aaa4j.external.clients;
 
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
-import io.quarkus.redis.datasource.sortedset.Range;
 import io.quarkus.redis.datasource.sortedset.ReactiveSortedSetCommands;
 import io.quarkus.redis.datasource.sortedset.ScoreRange;
 import io.quarkus.redis.datasource.sortedset.ZRangeArgs;
@@ -11,7 +10,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.time.Instant;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -132,6 +131,8 @@ public class SessionExpiryIndex {
      * @param limit Maximum number of sessions to return (for batching)
      * @return Multi stream of SessionExpiryEntry with userId and sessionId
      */
+
+    //todo Value is never used as Publisher
     public Multi<SessionExpiryEntry> getExpiredSessions(long expiryThresholdMillis, int limit) {
         log.infof("Querying expired sessions with threshold: %d, limit: %d", expiryThresholdMillis, limit);
 
