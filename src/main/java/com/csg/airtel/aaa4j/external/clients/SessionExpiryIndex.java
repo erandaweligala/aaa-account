@@ -131,6 +131,7 @@ public class SessionExpiryIndex {
      * @param limit Maximum number of sessions to return (for batching)
      * @return Multi stream of SessionExpiryEntry with userId and sessionId
      */
+    //todo already have expired sessions data but not retrived getExpiredSessions
     public Multi<SessionExpiryEntry> getExpiredSessions(long expiryThresholdMillis, int limit) {
         log.infof("Querying expired sessions with threshold: %d, limit: %d", expiryThresholdMillis, limit);
 
