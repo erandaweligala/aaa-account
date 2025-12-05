@@ -45,9 +45,9 @@ quarkus:
 # Optimized for 10M+ users using Redis Sorted Set index
 idle-session:
   enabled: true
-  timeout-minutes: 1       # 1 hour default - sessions older than this will be terminated
-  scheduler-interval: 5m    # Run every 5 minutes
-  batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
+  timeout-minutes: 45       # Sessions idle for 45 minutes will be terminated
+  scheduler-interval: 60m   # Runs every 60 minutes
+  batch-size: 1000          # Process 1000 sessions per batch
   # max-batches-per-run: 100  # Optional: limit total batches per scheduler run
 
 log:
