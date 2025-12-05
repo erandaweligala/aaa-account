@@ -23,8 +23,11 @@ import org.jboss.logging.Logger;
 
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 
 
@@ -36,12 +39,16 @@ public class CacheClient {
     final ObjectMapper objectMapper;
     private static final String KEY_PREFIX = "user:";
     private final ReactiveValueCommands<String, String> valueCommands;
+    private final SessionExpiryIndex sessionExpiryIndex;
 
     @Inject
-    public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource, ObjectMapper objectMapper) {
+    public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
+                       ObjectMapper objectMapper,
+                       SessionExpiryIndex sessionExpiryIndex) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
+        this.sessionExpiryIndex = sessionExpiryIndex;
     }
 
     /**
@@ -250,6 +257,107 @@ public class CacheClient {
                     }
                     return userDataMap;
                 });
+    }
+
+    /**
+     * Get expired sessions with their associated user data in a single operation.
+     * Combines SessionExpiryIndex lookup with batch user data retrieval.
+     *
+     * <p>This method provides a convenient way to get both:</p>
+     * <ul>
+     *   <li>The expired session entries (for index cleanup)</li>
+     *   <li>The actual user session data (for processing)</li>
+     * </ul>
+     *
+     * @param expiryThresholdMillis Get sessions with expiry score <= this value
+     * @param limit Maximum number of sessions to return (for batching)
+     * @return Uni with ExpiredSessionsWithData containing entries and user data map
+     */
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 2,
+            delay = 100,
+            maxDuration = 5000
+    )
+    @Timeout(value = 10000)
+    public Uni<ExpiredSessionsWithData> getExpiredSessionsWithData(long expiryThresholdMillis, int limit) {
+        log.infof("Retrieving expired sessions with data, threshold: %d, limit: %d",
+                expiryThresholdMillis, limit);
+        long startTime = System.currentTimeMillis();
+
+        return sessionExpiryIndex.getExpiredSessions(expiryThresholdMillis, limit)
+                .collect().asList()
+                .onItem().transformToUni(expiredEntries -> {
+                    if (expiredEntries.isEmpty()) {
+                        log.debug("No expired sessions found");
+                        return Uni.createFrom().item(
+                                new ExpiredSessionsWithData(expiredEntries, new HashMap<>()));
+                    }
+
+                    // Extract unique user IDs for batch retrieval
+                    List<String> userIds = expiredEntries.stream()
+                            .map(SessionExpiryIndex.SessionExpiryEntry::userId)
+                            .distinct()
+                            .collect(Collectors.toList());
+
+                    log.infof("Found %d expired sessions for %d users",
+                            expiredEntries.size(), userIds.size());
+
+                    // Batch fetch user data using MGET
+                    return getUserDataBatchAsMap(userIds)
+                            .onItem().transform(userDataMap -> {
+                                log.infof("Retrieved expired sessions with data in %d ms",
+                                        System.currentTimeMillis() - startTime);
+                                return new ExpiredSessionsWithData(expiredEntries, userDataMap);
+                            });
+                });
+    }
+
+    /**
+     * Result containing expired session entries and their associated user data.
+     *
+     * @param expiredEntries List of expired session entries from the index
+     * @param userDataMap Map of userId to UserSessionData for efficient lookup
+     */
+    public record ExpiredSessionsWithData(
+            List<SessionExpiryIndex.SessionExpiryEntry> expiredEntries,
+            Map<String, UserSessionData> userDataMap) {
+
+        /**
+         * Get the user data for a specific user ID.
+         *
+         * @param userId The user ID to look up
+         * @return The UserSessionData or null if not found
+         */
+        public UserSessionData getUserData(String userId) {
+            return userDataMap.get(userId);
+        }
+
+        /**
+         * Get expired entries grouped by user ID.
+         *
+         * @return Map of userId to list of expired session entries
+         */
+        public Map<String, List<SessionExpiryIndex.SessionExpiryEntry>> getEntriesByUser() {
+            return expiredEntries.stream()
+                    .collect(Collectors.groupingBy(SessionExpiryIndex.SessionExpiryEntry::userId));
+        }
+
+        /**
+         * Get raw members for index cleanup.
+         *
+         * @return List of raw member strings for removal from index
+         */
+        public List<String> getRawMembers() {
+            return expiredEntries.stream()
+                    .map(SessionExpiryIndex.SessionExpiryEntry::rawMember)
+                    .collect(Collectors.toList());
+        }
     }
 
 }
