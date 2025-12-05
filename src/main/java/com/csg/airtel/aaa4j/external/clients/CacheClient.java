@@ -136,13 +136,13 @@ public class CacheClient {
      * @return Multi stream of user keys (without the "user:" prefix)
      */
 
-    //todo Cannot resolve method 'map' in 'ReactiveKeyScanCursor' and Cannot resolve method 'substring(int)'
     public Multi<String> scanAllUserKeys() {
         log.info("Scanning all user keys from Redis cache");
         ReactiveKeyCommands<String> keyCommands = reactiveRedisDataSource.key();
         KeyScanArgs scanArgs = new KeyScanArgs().match(KEY_PREFIX + "*").count(100);
 
         return keyCommands.scan(scanArgs)
+                .toMulti()
                 .map(key -> key.substring(KEY_PREFIX.length()))
                 .onFailure().invoke(e -> log.errorf("Failed to scan user keys: %s", e.getMessage()));
     }
