@@ -26,8 +26,7 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
 
 @ApplicationScoped
 public class UserBucketRepository {
-
-    //todo implemet circitbracker and fallback apth log to error without any overhead
+    //todo implemet circitbracker and fallback apth log after close of thead
     private static final Logger log = Logger.getLogger(UserBucketRepository.class);
 
     private static final String COL_BUCKET_ID = "BUCKET_ID";
