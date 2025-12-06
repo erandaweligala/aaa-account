@@ -30,6 +30,7 @@ public class AccountingConsumer {
         this.accountingHandlerFactory = accountingHandlerFactory;
     }
 
+    //todo implement if message received then ack no need tp proccess complete
     @Incoming("accounting-events")
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();

@@ -4,7 +4,6 @@ import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
-import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
@@ -173,11 +172,6 @@ public class AccountProducer {
         String userId = request.getUserName();
         String sessionId = request.getSessionId();
 
-        if (userId == null || sessionId == null) {
-            LOG.warnf("Cannot revoke session - missing userId or sessionId in DBWriteRequest: userId=%s, sessionId=%s",
-                    userId, sessionId);
-            return Uni.createFrom().voidItem();
-        }
 
         LOG.infof("Initiating session revoke fallback for userId=%s, sessionId=%s", userId, sessionId);
 
