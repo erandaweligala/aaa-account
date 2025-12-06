@@ -18,5 +18,6 @@ public class Session {
     private Long previousTotalUsageQuotaValue;
     private String framedId;
     private String nasIp;
+    private boolean isNewSession;
 
 }

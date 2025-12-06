@@ -218,7 +218,7 @@ public class AccountingUtil {
 
         return getGroupBucketData(groupId)
                 .chain(groupData -> processWithGroupData(
-                        userData, request, bucketId, totalUsage, groupData))
+                        userData,sessionData, request, bucketId, totalUsage, groupData))
                 .eventually(this::cleanupTemporalCacheAsync);
     }
 
@@ -248,17 +248,26 @@ public class AccountingUtil {
     /**
      * Process balance update with group data.
      */
+    //todo need to handle proper solution
     private Uni<UpdateResult> processWithGroupData(
             UserSessionData userData,
+            Session session,
             AccountingRequestDto request,
             String bucketId,
             long totalUsage,
             UserSessionData groupData) {
 
+
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
-        List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
 
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
+
+       if((foundBalance!= null && session != null && !foundBalance.isGroup() && !AccountingRequestDto.ActionType.STOP.equals(request.actionType()))||session.isNewSession()) {
+            userData.getSessions().add(session);
+       }
+
+        List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
+
 
         if (log.isTraceEnabled()) {
             log.tracef("Processing with group data: user balances=%d, group balances=%d, combined=%d",
@@ -558,8 +567,11 @@ public class AccountingUtil {
      * @return combined list of sessions
      */
     private List<Session> getCombinedSessionsSync(List<Session> userSessions, UserSessionData groupData) {
+
         int userSize = userSessions != null ? userSessions.size() : 0;
+
         List<Session> groupSessions = groupData != null ? groupData.getSessions() : null;
+
         int groupSize = (groupSessions != null && !groupSessions.isEmpty()) ? groupSessions.size() : 0;
 
         List<Session> combined = new ArrayList<>(userSize + groupSize);

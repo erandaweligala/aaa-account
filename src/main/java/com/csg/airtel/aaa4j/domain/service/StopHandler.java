@@ -68,12 +68,16 @@ public class StopHandler {
         return cleanSessionAndUpdateBalance(userSessionData,bucketId,request,session)
                 .onFailure().recoverWithNull()
                 .onItem().transformToUni(updateResult -> {
-                    DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(updateResult.balance(), request.username(), request.sessionId(),EventType.UPDATE_EVENT);
-                    return accountProducer.produceDBWriteEvent(dbWriteRequest)
-                            .onFailure().invoke(throwable ->
-                                    log.errorf(throwable, "Failed to produce DB write event for session: %s",
-                                            request.sessionId())
-                            );
+                    if(updateResult != null) {
+                        DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(updateResult.balance(), request.username(), request.sessionId(), EventType.UPDATE_EVENT);
+                        return accountProducer.produceDBWriteEvent(dbWriteRequest)
+                                .onFailure().invoke(throwable ->
+                                        log.errorf(throwable, "Failed to produce DB write event for session: %s",
+                                                request.sessionId())
+                                );
+                    }else {
+                        return Uni.createFrom().voidItem();
+                    }
                 })
                 .invoke(() -> userSessionData.getSessions().remove(finalSession))
                 .call(() -> {

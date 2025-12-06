@@ -26,7 +26,6 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
 
 @ApplicationScoped
 public class UserBucketRepository {
-    //todo implemet circitbracker and fallback apth log after close of thead
     private static final Logger log = Logger.getLogger(UserBucketRepository.class);
 
     private static final String COL_BUCKET_ID = "BUCKET_ID";
@@ -48,6 +47,8 @@ public class UserBucketRepository {
     private static final String COL_EXPIRATION = "EXPIRATION";
 
     private static final int DEFAULT_BUCKET_LIST_CAPACITY = 10;
+    public static final String IS_UNLIMITED = "IS_UNLIMITED";
+    public static final String IS_GROUP = "IS_GROUP";
 
     final Pool client;
 
@@ -73,11 +74,9 @@ public class UserBucketRepository {
             delay = 100,
             maxDuration = 10000
     )
-    @Timeout(value = 10000)
-    @Fallback(fallbackMethod = "fallbackGetServiceBucketsByUserName")
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
         if (log.isDebugEnabled()) {
-            log.tracef("Fetching service buckets for user: %s", userName);
+            log.debugf("Fetching service buckets for user: %s", userName);
         }
         return client
                 .preparedQuery(QUERY_BALANCE)
@@ -90,7 +89,7 @@ public class UserBucketRepository {
                 })
                 .onItem().invoke(results -> {
                     if (log.isDebugEnabled()) {
-                        log.tracef("Fetched %d service buckets for user: %s", results.size(), userName);
+                        log.debugf("Fetched %d service buckets for user: %s", results.size(), userName);
                     }
                 });
     }
@@ -131,6 +130,8 @@ public class UserBucketRepository {
             info.setConsumptionTimeWindow(row.getLong(COL_CONSUMPTION_LIMIT_WINDOW)  != null ? row.getLong(COL_CONSUMPTION_LIMIT_WINDOW) : 0);
             info.setTimeWindow(row.getString(COL_TIME_WINDOW));
             info.setBucketExpiryDate(row.getLocalDateTime(COL_EXPIRATION));
+            info.setUnlimited(row.getLong(IS_UNLIMITED) == 1);
+            info.setGroup(row.getLong(IS_GROUP) == 1);
 
             // Session configuration
             info.setSessionTimeout(row.getString(COL_SESSION_TIMEOUT));
@@ -138,19 +139,6 @@ public class UserBucketRepository {
             results.add(info);
         }
         return results;
-    }
-
-    /**
-     * Fallback method for getServiceBucketsByUserName.
-     * Returns empty list and logs error without overhead when circuit breaker opens or operation fails.
-     *
-     * @param userName the username
-     * @param throwable the failure cause
-     * @return empty list
-     */
-    private Uni<List<ServiceBucketInfo>> fallbackGetServiceBucketsByUserName(String userName, Throwable throwable) {
-        FailoverPathLogger.logFallbackPath(log, "getServiceBucketsByUserName", userName, throwable);
-        return Uni.createFrom().item(Collections.emptyList());
     }
 
 }

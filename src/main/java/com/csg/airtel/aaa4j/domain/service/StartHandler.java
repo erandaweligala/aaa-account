@@ -497,7 +497,8 @@ public class StartHandler {
                 0,
                 0L,
                 request.framedIPAddress(),
-                request.nasIP()
+                request.nasIP(),
+                false
         );
     }
 

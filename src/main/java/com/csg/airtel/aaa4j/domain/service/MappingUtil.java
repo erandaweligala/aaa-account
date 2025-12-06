@@ -68,7 +68,6 @@ public class MappingUtil {
                 attributes);
     }
 
-
     public static Balance createBalance(ServiceBucketInfo bucket) {
         Balance balance = new Balance();
         balance.setBucketId(String.valueOf(bucket.getBucketId()));
@@ -84,6 +83,7 @@ public class MappingUtil {
         balance.setConsumptionLimitWindow(bucket.getConsumptionTimeWindow());
         balance.setBucketUsername(bucket.getBucketUser());
         balance.setBucketExpiryDate(bucket.getBucketExpiryDate());
+        balance.setGroup(bucket.isGroup());
         return balance;
     }
 

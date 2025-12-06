@@ -27,5 +27,7 @@ public class ServiceBucketInfo {
     private String timeWindow;
     private String sessionTimeout;
     private LocalDateTime bucketExpiryDate;
+    private boolean isUnlimited;
+    private boolean isGroup;
 
 }

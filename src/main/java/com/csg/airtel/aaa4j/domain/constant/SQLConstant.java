@@ -21,7 +21,9 @@ public class SQLConstant {
                            u.SESSION_TIMEOUT,
                            b.TIME_WINDOW,
                            b.CONSUMPTION_LIMIT_WINDOW,
-                           b.EXPIRATION
+                           b.EXPIRATION,
+                           b.IS_UNLIMITED,
+                           s.IS_GROUP
                         FROM SERVICE_INSTANCE s
                         JOIN AAA_USER  u
                           ON s.USERNAME  = u.USER_NAME
