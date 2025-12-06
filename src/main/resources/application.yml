@@ -40,22 +40,8 @@ quarkus:
   #      url: oracle:thin:@localhost:1521/freepdb1
   #      max-size: 20
   #      idle-timeout: PT10M
-# Idle Session Terminator Configuration
-# Sessions older than timeout-minutes will be automatically terminated
-# Optimized for 10M+ users using Redis Sorted Set index
-idle-session:
-  enabled: true
-  timeout-minutes: 1       # 1 hour default - sessions older than this will be terminated
-  scheduler-interval: 5m    # Run every 5 minutes
-  batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
-  # max-batches-per-run: 100  # Optional: limit total batches per scheduler run
 
-log:
-  file:
-   enable: true
-   path: D:\
-   level: INFO
-   format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+
   console:
     format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
     color: true
@@ -76,11 +62,11 @@ log:
     max-pool-size: 50          # Increased from 20 for 10M user scale
     max-pool-waiting: 100      # Increased for high throughput
 
-# Kafka Configuration
-kafka:
-  bootstrap.servers: confluent-ctrl-0-svc.rkafkacone.svc.cluster.local:9092
-
-
+idle-session:
+  enabled: true
+  timeout-minutes: 60       # 1 hour default - sessions older than this will be terminated
+  scheduler-interval: 60m    # Run every 60 minutes
+  batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
 
 mp:
   messaging:

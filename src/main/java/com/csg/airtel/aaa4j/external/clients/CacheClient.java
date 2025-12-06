@@ -5,11 +5,9 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
-import io.quarkus.redis.datasource.keys.KeyScanArgs;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
 import io.quarkus.redis.datasource.value.SetArgs;
-import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 
 import io.smallrye.mutiny.unchecked.Unchecked;
@@ -23,7 +21,6 @@ import org.jboss.logging.Logger;
 
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +30,8 @@ import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class CacheClient {
+
+    //todo 1000tps handling need to check any overhead methods
 
     private static final Logger log = Logger.getLogger(CacheClient.class);
     final ReactiveRedisDataSource reactiveRedisDataSource;
@@ -138,74 +137,6 @@ public class CacheClient {
     }
 
     /**
-     * Scan all user keys from Redis with pattern "user:*".
-     * Uses SCAN command for efficient iteration without blocking Redis.
-     * @return Multi stream of user keys (without the "user:" prefix)
-     */
-
-    public Multi<String> scanAllUserKeys() {
-        log.info("Scanning all user keys from Redis cache");
-        ReactiveKeyCommands<String> keyCommands = reactiveRedisDataSource.key();
-        KeyScanArgs scanArgs = new KeyScanArgs().match(KEY_PREFIX + "*").count(100);
-
-        return keyCommands.scan(scanArgs)
-                .toMulti()
-                .map(key -> key.substring(KEY_PREFIX.length()))
-                .onFailure().invoke(e -> log.errorf("Failed to scan user keys: %s", e.getMessage()));
-    }
-
-    /**
-     * Get all user session data for a batch of user IDs using MGET.
-     * MGET is O(N) where N is the number of keys, but uses a single network round trip.
-     * This is critical for 10M+ users - single round trip vs N round trips.
-     *
-     * @param userIds list of user IDs to retrieve
-     * @return Multi stream of UserSessionData (non-null entries only)
-     */
-    @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
-    )
-    @Retry(
-            maxRetries = 2,
-            delay = 100,
-            maxDuration = 5000
-    )
-    @Timeout(value = 10000)
-    public Multi<UserSessionData> getUserDataBatch(java.util.List<String> userIds) {
-        if (userIds == null || userIds.isEmpty()) {
-            return Multi.createFrom().empty();
-        }
-
-        log.infof("Retrieving batch user data for %d users using MGET", userIds.size());
-        long startTime = System.currentTimeMillis();
-
-        // Build keys with prefix
-        String[] keys = userIds.stream()
-                .map(id -> KEY_PREFIX + id)
-                .toArray(String[]::new);
-
-        // Use MGET for single network round trip - critical for scaling
-        return valueCommands.mget(keys)
-                .onItem().transformToMulti(resultMap -> {
-                    log.infof("MGET completed for %d keys in %d ms", keys.length, System.currentTimeMillis() - startTime);
-                    return Multi.createFrom().iterable(resultMap.values());
-                })
-                .filter(jsonValue -> jsonValue != null && !jsonValue.isEmpty())
-                .onItem().transform(Unchecked.function(jsonValue -> {
-                    try {
-                        return objectMapper.readValue(jsonValue, UserSessionData.class);
-                    } catch (Exception e) {
-                        log.warnf("Failed to deserialize user data: %s", e.getMessage());
-                        return null;
-                    }
-                }))
-                .filter(java.util.Objects::nonNull);
-    }
-
-    /**
      * Get user session data as a map for a batch of user IDs using MGET.
      * Returns a map of userId -> UserSessionData for efficient lookups.
      *
@@ -263,12 +194,6 @@ public class CacheClient {
      * Get expired sessions with their associated user data in a single operation.
      * Combines SessionExpiryIndex lookup with batch user data retrieval.
      *
-     * <p>This method provides a convenient way to get both:</p>
-     * <ul>
-     *   <li>The expired session entries (for index cleanup)</li>
-     *   <li>The actual user session data (for processing)</li>
-     * </ul>
-     *
      * @param expiryThresholdMillis Get sessions with expiry score <= this value
      * @param limit Maximum number of sessions to return (for batching)
      * @return Uni with ExpiredSessionsWithData containing entries and user data map
@@ -303,7 +228,7 @@ public class CacheClient {
                     List<String> userIds = expiredEntries.stream()
                             .map(SessionExpiryIndex.SessionExpiryEntry::userId)
                             .distinct()
-                            .collect(Collectors.toList());
+                            .toList();
 
                     log.infof("Found %d expired sessions for %d users",
                             expiredEntries.size(), userIds.size());
@@ -356,7 +281,7 @@ public class CacheClient {
         public List<String> getRawMembers() {
             return expiredEntries.stream()
                     .map(SessionExpiryIndex.SessionExpiryEntry::rawMember)
-                    .collect(Collectors.toList());
+                    .toList();
         }
     }
 

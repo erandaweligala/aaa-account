@@ -15,9 +15,7 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -25,42 +23,8 @@ import java.util.stream.Collectors;
 
 /**
  * Optimized scheduler service that terminates idle sessions based on configurable timeout threshold.
- *
- * <h2>Scaling Architecture for 10M+ Users</h2>
- *
- * <p><b>Previous approach (O(N) - not scalable):</b></p>
- * <ul>
- *   <li>SCAN all 10M user keys every 5 minutes</li>
- *   <li>Individual GET for each user to check sessions</li>
- *   <li>Linear time complexity regardless of expired session count</li>
- * </ul>
- *
- * <p><b>Optimized approach (O(log N + K) - highly scalable):</b></p>
- * <ul>
- *   <li>Use Redis Sorted Set as expiry index with score = expiry timestamp</li>
- *   <li>ZRANGEBYSCORE to get only expired sessions - O(log N + K) where K = expired count</li>
- *   <li>MGET to batch fetch user data - single network round trip</li>
- *   <li>Process only users with expired sessions, not all 10M users</li>
- * </ul>
- *
- * <p><b>Performance comparison at 10M users:</b></p>
- * <table border="1">
- *   <tr><th>Metric</th><th>Old Approach</th><th>New Approach</th></tr>
- *   <tr><td>Keys scanned</td><td>10,000,000</td><td>~1,000 (expired only)</td></tr>
- *   <tr><td>Network round trips</td><td>100,000+ (batched GETs)</td><td>2-10 (ZRANGEBYSCORE + MGET batches)</td></tr>
- *   <tr><td>Time complexity</td><td>O(N)</td><td>O(log N + K)</td></tr>
- *   <tr><td>Memory pressure</td><td>High (buffering all keys)</td><td>Low (only expired sessions)</td></tr>
- * </table>
- *
- * <p><b>Requirements for full optimization:</b></p>
- * <ul>
- *   <li>Sessions must be registered in SessionExpiryIndex when created</li>
- *   <li>Sessions must be updated in index on activity</li>
- *   <li>Sessions must be removed from index on termination</li>
- * </ul>
- *
- * @see SessionExpiryIndex for the sorted set index implementation
- */
+*/
+
 @ApplicationScoped
 public class IdleSessionTerminatorScheduler {
 
@@ -82,12 +46,9 @@ public class IdleSessionTerminatorScheduler {
     /**
      * Scheduled task to terminate idle sessions using optimized index-based lookup.
      * Runs at configurable intervals defined by idle-session.scheduler-interval.
-     *
-     * <p>This method uses the SessionExpiryIndex to find expired sessions in O(log N + K)
-     * time instead of scanning all users in O(N) time.</p>
      */
-//    @Scheduled(every = "${idle-session.scheduler-interval:5m}",
-//               concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
+    @Scheduled(every = "${idle-session.scheduler-interval:5m}",
+               concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     public void terminateIdleSessions() {
         if (!config.enabled()) {
             log.debug("Idle session terminator is disabled, skipping execution");
@@ -182,7 +143,7 @@ public class IdleSessionTerminatorScheduler {
                     return cacheClient.getUserDataBatchAsMap(userIds)
                             .onItem().transformToUni(userDataMap ->
                                 processUsersAndCleanupIndex(userDataMap, sessionsByUser,
-                                        expiredEntries, totalSessionsTerminated)
+                                         totalSessionsTerminated)
                             )
                             .onItem().transform(v -> expiredEntries.size());
                 });
@@ -193,7 +154,6 @@ public class IdleSessionTerminatorScheduler {
      */
     private Uni<Void> processUsersAndCleanupIndex(Map<String, UserSessionData> userDataMap,
                                                    Map<String, List<SessionExpiryEntry>> sessionsByUser,
-                                                   List<SessionExpiryEntry> allExpiredEntries,
                                                    AtomicInteger totalSessionsTerminated) {
 
         List<Uni<Void>> userUpdates = new ArrayList<>();
@@ -266,16 +226,6 @@ public class IdleSessionTerminatorScheduler {
         }
 
         log.infof("Terminating %d idle sessions for user: %s", sessionsToTerminate.size(), userName);
-
-        // Log session details
-        LocalDateTime now = LocalDateTime.now();
-        for (Session session : sessionsToTerminate) {
-//            if (session.getSessionInitiatedTime() != null) {
-//                Duration idleDuration = Duration.between(session.getSessionInitiatedTime(), now);
-//                log.infof("Terminating idle session [sessionId: %s, user: %s, idleDuration: %d minutes]",
-//                        session.getSessionId(), userName, idleDuration.toMinutes());
-//            }
-        }
 
         // Remove terminated sessions
         List<Session> activeSessions = new ArrayList<>(sessions);
