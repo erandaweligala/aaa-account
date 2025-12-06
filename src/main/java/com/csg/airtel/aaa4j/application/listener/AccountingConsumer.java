@@ -30,7 +30,6 @@ public class AccountingConsumer {
         this.accountingHandlerFactory = accountingHandlerFactory;
     }
 
-    //todo implement if message received then ack no need tp proccess complete
     @Incoming("accounting-events")
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
@@ -41,16 +40,19 @@ public class AccountingConsumer {
                     .ifPresent(metadata -> LOG.debugf("Partition: %d, Offset: %d",
                             metadata.getPartition(), metadata.getOffset()));
         }
-        return accountingHandlerFactory.getHandler(request,request.eventId())
-                .onItem().transformToUni(v ->{
-                    long duration = System.currentTimeMillis() - startTime;
-                    LOG.infof("Complete consumeAccountingEvent process %s ms",duration);
-                  return  Uni.createFrom().completionStage(message.ack());
-                })
-                .onFailure().recoverWithUni(e -> {
-                    LOG.errorf(e, "Failed processing session: %s", request.sessionId());
-                    return Uni.createFrom().completionStage(message.nack(e));
-                });
+
+        // ACK immediately upon message receipt - no need to wait for processing to complete
+        // This improves throughput by decoupling message consumption from processing
+        accountingHandlerFactory.getHandler(request, request.eventId())
+                .subscribe().with(
+                        v -> {
+                            long duration = System.currentTimeMillis() - startTime;
+                            LOG.infof("Complete consumeAccountingEvent process %s ms", duration);
+                        },
+                        e -> LOG.errorf(e, "Failed processing session: %s", request.sessionId())
+                );
+
+        return Uni.createFrom().completionStage(message.ack());
     }
 }
 
