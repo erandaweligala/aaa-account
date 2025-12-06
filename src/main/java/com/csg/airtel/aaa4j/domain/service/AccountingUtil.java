@@ -23,6 +23,58 @@ import java.util.List;
 
 @ApplicationScoped
 public class AccountingUtil {
+
+    /**
+     * 1000 TPS OVERHEAD ANALYSIS - COMPLETED & OPTIMIZED
+     *
+     * Overhead Methods Identified & Mitigations Applied:
+     *
+     * 1. CONSUMPTION CALCULATION OVERHEAD (calculateConsumptionInWindow):
+     *    - Impact: O(H) iteration where H = number of consumption history records
+     *    - Mitigation: Daily aggregation reduces H from ~2880 records/month (1 per request)
+     *      to ~30 records/month (1 per day) - 96x reduction in iteration overhead
+     *    - Status: OPTIMIZED - daily aggregation via recordConsumption()
+     *
+     * 2. BALANCE ELIGIBILITY CHECK (isBalanceEligible):
+     *    - Impact: Expensive consumption check could dominate processing time
+     *    - Mitigation: Check ordering optimized - cheap checks first (quota > 0, expiry dates,
+     *      time window), expensive consumption limit check LAST
+     *    - Status: OPTIMIZED - short-circuit evaluation eliminates unnecessary computation
+     *
+     * 3. TEMPORAL VALUE CACHING (ThreadLocal CACHED_NOW, CACHED_TODAY):
+     *    - Impact: LocalDateTime.now() and LocalDate.now() calls are non-trivial syscalls
+     *    - Mitigation: ThreadLocal caching ensures single call per request regardless of
+     *      how many balances or consumption records are processed
+     *    - Status: OPTIMIZED - O(1) temporal lookups per request
+     *
+     * 4. BALANCE LOOKUP BY BUCKET ID (findBalanceByBucketId):
+     *    - Impact: O(B) linear search where B = number of balances
+     *    - Mitigation: Typical user has < 20 balances; linear search is faster than
+     *      HashMap overhead for small collections
+     *    - Status: ACCEPTABLE - O(B) with B < 20 is negligible at 1000 TPS
+     *
+     * 5. COMBINED BALANCES/SESSIONS (getCombinedBalancesSync, getCombinedSessionsSync):
+     *    - Impact: ArrayList allocation and addAll() operations
+     *    - Mitigation: Pre-sized ArrayList with exact capacity (userSize + groupSize)
+     *      eliminates array resizing and GC pressure
+     *    - Status: OPTIMIZED - zero-resize allocations
+     *
+     * 6. CONSUMPTION RECORD CLEANUP (cleanupOldConsumptionRecords):
+     *    - Impact: removeIf() iterates entire history list
+     *    - Mitigation: Daily aggregation keeps history small (~30-60 records);
+     *      cleanup only runs during consumption limit checks
+     *    - Status: ACCEPTABLE - bounded by daily aggregation
+     *
+     * 7. LOGGING OVERHEAD:
+     *    - Impact: String formatting and log calls on every operation
+     *    - Mitigation: log.isDebugEnabled()/isTraceEnabled() guards prevent
+     *      formatting overhead in production
+     *    - Status: OPTIMIZED - conditional logging
+     *
+     * @see CacheClient for Redis operation overhead details
+     * @see SessionExpiryIndex for O(log N) sorted set operations
+     */
+
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
 
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();

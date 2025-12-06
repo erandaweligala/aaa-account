@@ -70,13 +70,8 @@ public class CacheClient {
      *    - Mitigation: Timing only calculated when debug logging is enabled
      *    - Status: OPTIMIZED - zero overhead in production
      *
-     * Related Overhead in AccountingUtil:
-     * - calculateConsumptionInWindow(): O(H) where H = history records - mitigated by daily aggregation
-     * - isBalanceEligible(): Expensive consumption check done LAST (correct ordering)
-     * - ThreadLocal temporal cache: Prevents repeated LocalDateTime.now() calls
-     * - findBalanceByBucketId(): O(B) linear search - acceptable for typical balance counts (<20)
-     *
-     * @see AccountingUtil for balance processing overhead details
+     * @see AccountingUtil for balance processing overhead details (consumption calculation,
+     *      eligibility checks, temporal caching, balance lookups)
      * @see SessionExpiryIndex for O(log N) sorted set operations
      */
 
