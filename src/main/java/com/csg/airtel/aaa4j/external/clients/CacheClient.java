@@ -22,6 +22,7 @@ import org.jboss.logging.Logger;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -31,54 +32,6 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class CacheClient {
 
-    /**
-     * 1000 TPS OVERHEAD ANALYSIS - COMPLETED & OPTIMIZED
-     *
-     * Overhead Methods Identified & Mitigations Applied:
-     *
-     * 1. SERIALIZATION OVERHEAD (serialize/deserialize):
-     *    - Impact: ObjectMapper.writeValueAsString() called on every cache update
-     *    - Mitigation: Jackson is optimized; ObjectMapper cached via DI (already done)
-     *    - Status: OPTIMIZED
-     *
-     * 2. CIRCUIT BREAKER LATENCY (getUserData, getUserDataBatchAsMap, getExpiredSessionsWithData):
-     *    - Impact: 5-10 second timeout windows, requestVolumeThreshold=10
-     *    - Mitigation: Required for fault tolerance; timeouts prevent cascade failures
-     *    - Status: OPTIMIZED - necessary overhead for resilience
-     *
-     * 3. RETRY MECHANISM (maxRetries=2, delay=100ms):
-     *    - Impact: Adds up to 5 seconds latency on failures
-     *    - Mitigation: Only triggers on actual failures; maxDuration caps total retry time
-     *    - Status: OPTIMIZED - necessary overhead for reliability
-     *
-     * 4. BATCH OPERATIONS (getUserDataBatchAsMap):
-     *    - Optimization: Uses Redis MGET for single network round trip vs N individual calls
-     *    - Status: OPTIMIZED - O(1) network calls instead of O(N)
-     *
-     * 5. LOGGING OVERHEAD:
-     *    - Impact: log.infof() calls on every operation
-     *    - Mitigation: Implemented log.isDebugEnabled() guards for high-frequency operations
-     *    - Status: OPTIMIZED - conditional logging reduces overhead by ~95% in production
-     *
-     * 6. HASHMAP PRE-SIZING:
-     *    - Impact: HashMap resizing during population causes GC pressure
-     *    - Mitigation: Pre-sized HashMaps based on expected capacity
-     *    - Status: OPTIMIZED - reduces memory allocations
-     *
-     * 7. TIMING CALCULATION OVERHEAD:
-     *    - Impact: System.currentTimeMillis() called even when not logging
-     *    - Mitigation: Timing only calculated when debug logging is enabled
-     *    - Status: OPTIMIZED - zero overhead in production
-     *
-     * Related Overhead in AccountingUtil:
-     * - calculateConsumptionInWindow(): O(H) where H = history records - mitigated by daily aggregation
-     * - isBalanceEligible(): Expensive consumption check done LAST (correct ordering)
-     * - ThreadLocal temporal cache: Prevents repeated LocalDateTime.now() calls
-     * - findBalanceByBucketId(): O(B) linear search - acceptable for typical balance counts (<20)
-     *
-     * @see AccountingUtil for balance processing overhead details
-     * @see SessionExpiryIndex for O(log N) sorted set operations
-     */
 
     private static final Logger log = Logger.getLogger(CacheClient.class);
     final ReactiveRedisDataSource reactiveRedisDataSource;
@@ -210,12 +163,6 @@ public class CacheClient {
 
     /**
      * Get user session data as a map for a batch of user IDs using MGET.
-     * Returns a map of userId -> UserSessionData for efficient lookups.
-     *
-     * OPTIMIZED:
-     * - Pre-sized HashMap to avoid resizing overhead
-     * - Logging guards for conditional debug logging
-     * - Optimized key building with pre-sized array
      *
      * @param userIds list of user IDs to retrieve
      * @return Uni with Map of userId -> UserSessionData
@@ -238,7 +185,6 @@ public class CacheClient {
         }
 
         final int size = userIds.size();
-        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
             log.debugf("Retrieving batch user data as map for %d users using MGET", size);
         }
@@ -252,12 +198,9 @@ public class CacheClient {
         // Use MGET for single network round trip
         return valueCommands.mget(keys)
                 .onItem().transform(resultMap -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("MGET completed for %d keys in %d ms", keys.length, System.currentTimeMillis() - startTime);
-                    }
 
                     // Pre-size HashMap: capacity = size / 0.75 load factor + 1
-                    Map<String, UserSessionData> userDataMap = new HashMap<>((int) (size / 0.75) + 1);
+                    Map<String, UserSessionData> userDataMap = HashMap.newHashMap((int) (size / 0.75) + 1);
                     for (Map.Entry<String, String> entry : resultMap.entrySet()) {
                         String value = entry.getValue();
                         if (value != null && !value.isEmpty()) {
@@ -267,9 +210,7 @@ public class CacheClient {
                                 UserSessionData userData = objectMapper.readValue(value, UserSessionData.class);
                                 userDataMap.put(userId, userData);
                             } catch (Exception e) {
-                                if (log.isDebugEnabled()) {
-                                    log.warnf("Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
-                                }
+                                    log.errorf("Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
                             }
                         }
                     }
@@ -277,19 +218,7 @@ public class CacheClient {
                 });
     }
 
-    /**
-     * Get expired sessions with their associated user data in a single operation.
-     * Combines SessionExpiryIndex lookup with batch user data retrieval.
-     *
-     * OPTIMIZED:
-     * - Logging guards for conditional debug logging
-     * - Empty map uses Map.of() for zero allocation
-     * - Pre-sized ArrayList for user ID collection
-     *
-     * @param expiryThresholdMillis Get sessions with expiry score <= this value
-     * @param limit Maximum number of sessions to return (for batching)
-     * @return Uni with ExpiredSessionsWithData containing entries and user data map
-     */
+
     @CircuitBreaker(
             requestVolumeThreshold = 10,
             failureRatio = 0.5,
@@ -322,7 +251,7 @@ public class CacheClient {
 
                     // Extract unique user IDs for batch retrieval - optimized with pre-sized set
                     int entryCount = expiredEntries.size();
-                    java.util.Set<String> uniqueUserIds = new java.util.HashSet<>((int) (entryCount / 0.75) + 1);
+                    java.util.Set<String> uniqueUserIds = HashSet.newHashSet((int) (entryCount / 0.75) + 1);
                     for (SessionExpiryIndex.SessionExpiryEntry entry : expiredEntries) {
                         uniqueUserIds.add(entry.userId());
                     }

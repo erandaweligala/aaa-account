@@ -157,6 +157,7 @@ public class AccountProducer {
      * @param throwable the failure cause
      * @return empty Uni (operation failed)
      */
+    //todo need to implement fallback path revoke to session clear
     private Uni<Void> fallbackProduceDBWriteEvent(DBWriteRequest request, Throwable throwable) {
         FailoverPathLogger.logFallbackPath(LOG, "produceDBWriteEvent", request.getSessionId(), throwable);
         return Uni.createFrom().voidItem();

@@ -24,7 +24,6 @@ import java.util.List;
 @ApplicationScoped
 public class AccountingUtil {
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
-
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
     private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
     private final AccountProducer accountProducer;
