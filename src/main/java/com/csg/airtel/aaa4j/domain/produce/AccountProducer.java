@@ -3,7 +3,11 @@ package com.csg.airtel.aaa4j.domain.produce;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
+import com.csg.airtel.aaa4j.domain.model.session.Session;
+import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
+import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
+import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -24,18 +28,23 @@ import java.util.concurrent.CompletableFuture;
 public class AccountProducer {
 
     private static final Logger LOG = Logger.getLogger(AccountProducer.class);
-    Emitter<DBWriteRequest> dbWriteRequestEmitter;
-    Emitter<AccountingResponseEvent> accountingResponseEmitter;
-    Emitter<AccountingCDREvent> accountingCDREventEmitter;
+    private final Emitter<DBWriteRequest> dbWriteRequestEmitter;
+    private final Emitter<AccountingResponseEvent> accountingResponseEmitter;
+    private final Emitter<AccountingCDREvent> accountingCDREventEmitter;
+    private final CacheClient cacheClient;
+    private final SessionLifecycleManager sessionLifecycleManager;
 
     public AccountProducer(@Channel("db-write-events")Emitter<DBWriteRequest> dbWriteRequestEmitter,
                            @Channel("accounting-resp-events")Emitter<AccountingResponseEvent> accountingResponseEmitter,
-                           @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter
+                           @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter,
+                           CacheClient cacheClient,
+                           SessionLifecycleManager sessionLifecycleManager
                           ) {
         this.dbWriteRequestEmitter = dbWriteRequestEmitter;
         this.accountingResponseEmitter = accountingResponseEmitter;
         this.accountingCDREventEmitter = accountingCDREventEmitter;
-
+        this.cacheClient = cacheClient;
+        this.sessionLifecycleManager = sessionLifecycleManager;
     }
 
     @CircuitBreaker(
@@ -152,15 +161,69 @@ public class AccountProducer {
 
     /**
      * Fallback method for produceDBWriteEvent.
+     * Revokes the session and clears it from cache when DB write fails after retries.
      *
      * @param request the DB write request
      * @param throwable the failure cause
-     * @return empty Uni (operation failed)
+     * @return Uni that completes when session is revoked
      */
-    //todo need to implement fallback path revoke to session clear
     private Uni<Void> fallbackProduceDBWriteEvent(DBWriteRequest request, Throwable throwable) {
         FailoverPathLogger.logFallbackPath(LOG, "produceDBWriteEvent", request.getSessionId(), throwable);
-        return Uni.createFrom().voidItem();
+
+        String userId = request.getUserName();
+        String sessionId = request.getSessionId();
+
+        if (userId == null || sessionId == null) {
+            LOG.warnf("Cannot revoke session - missing userId or sessionId in DBWriteRequest: userId=%s, sessionId=%s",
+                    userId, sessionId);
+            return Uni.createFrom().voidItem();
+        }
+
+        LOG.infof("Initiating session revoke fallback for userId=%s, sessionId=%s", userId, sessionId);
+
+        return cacheClient.getUserData(userId)
+                .onItem().transformToUni(userSessionData -> {
+                    if (userSessionData == null) {
+                        LOG.debugf("No user session data found for userId=%s during fallback revoke", userId);
+                        return Uni.createFrom().voidItem();
+                    }
+
+                    // Find and remove the session from user's sessions list
+                    Session sessionToRemove = null;
+                    if (userSessionData.getSessions() != null) {
+                        for (Session session : userSessionData.getSessions()) {
+                            if (sessionId.equals(session.getSessionId())) {
+                                sessionToRemove = session;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (sessionToRemove != null) {
+                        userSessionData.getSessions().remove(sessionToRemove);
+                        LOG.infof("Removed session %s from user %s sessions list during fallback", sessionId, userId);
+
+                        // Update cache and remove from expiry index
+                        return cacheClient.updateUserAndRelatedCaches(userId, userSessionData)
+                                .call(() -> sessionLifecycleManager.onSessionTerminated(userId, sessionId))
+                                .invoke(() -> LOG.infof("Session revoke fallback completed for userId=%s, sessionId=%s",
+                                        userId, sessionId))
+                                .onFailure().invoke(e -> LOG.errorf(e,
+                                        "Failed to complete session revoke fallback for userId=%s, sessionId=%s",
+                                        userId, sessionId))
+                                .onFailure().recoverWithNull()
+                                .replaceWithVoid();
+                    } else {
+                        LOG.debugf("Session %s not found in user %s sessions during fallback revoke", sessionId, userId);
+                        // Still try to clean up expiry index in case it exists there
+                        return sessionLifecycleManager.onSessionTerminated(userId, sessionId);
+                    }
+                })
+                .onFailure().invoke(e -> LOG.errorf(e,
+                        "Failed to retrieve user data during session revoke fallback for userId=%s, sessionId=%s",
+                        userId, sessionId))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
 
     /**
