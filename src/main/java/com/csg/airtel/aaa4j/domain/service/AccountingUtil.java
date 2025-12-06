@@ -247,9 +247,8 @@ public class AccountingUtil {
 
     /**
      * Process balance update with group data.
+     * Optimized to use efficient loops instead of stream operations.
      */
-
-    //todo processWithGroupData check with any overhead operation if have pls fixed
     private Uni<UpdateResult> processWithGroupData(
             UserSessionData userData,
             Session session,
@@ -262,20 +261,22 @@ public class AccountingUtil {
 
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
 
-        if(foundBalance != null && foundBalance.isGroup()) {
-            if (groupData.getSessions().stream().noneMatch(rs -> rs.getSessionId().equals(session.getSessionId()))) {
-                userData.getSessions().add(session);
-            }
-        }else {
-            if (userData.getSessions().stream().noneMatch(rs -> rs.getSessionId().equals(session.getSessionId()))) {
-                userData.getSessions().add(session);
-            }
+        // Determine which list to check for session existence based on balance type
+        // Use null-safe check for group sessions
+        List<Session> sessionsToCheck = (foundBalance != null && foundBalance.isGroup()
+                && groupData != null && groupData.getSessions() != null)
+                ? groupData.getSessions()
+                : userData.getSessions();
+
+        // Add session if not already present (using efficient loop instead of stream)
+        if (!containsSession(sessionsToCheck, session.getSessionId())) {
+            userData.getSessions().add(session);
         }
+
         List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
 
-        Session sessionData = combinedSessions.stream()
-                .filter(rs -> rs.getSessionId().equals(request.sessionId()))
-                .findFirst().orElse(null);
+        // Find session using efficient loop instead of stream
+        Session sessionData = findSessionById(combinedSessions, request.sessionId());
 
         if (sessionData != null && sessionData.getSessionTime() != null
                 && request.sessionTime() <= sessionData.getSessionTime()) {
@@ -289,6 +290,46 @@ public class AccountingUtil {
         return processBalanceUpdateWithCombinedData(
                 userData, sessionData, request, foundBalance,
                 combinedBalances, combinedSessions, totalUsage);
+    }
+
+    /**
+     * Check if a session with the given ID exists in the list.
+     * Uses efficient loop instead of stream for better performance.
+     *
+     * @param sessions list of sessions to search
+     * @param sessionId the session ID to find
+     * @return true if session exists, false otherwise
+     */
+    private boolean containsSession(List<Session> sessions, String sessionId) {
+        if (sessions == null || sessionId == null) {
+            return false;
+        }
+        for (Session s : sessions) {
+            if (sessionId.equals(s.getSessionId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Find a session by ID from a list.
+     * Uses efficient loop instead of stream for better performance.
+     *
+     * @param sessions list of sessions to search
+     * @param sessionId the session ID to find
+     * @return the session with matching ID, or null if not found
+     */
+    private Session findSessionById(List<Session> sessions, String sessionId) {
+        if (sessions == null || sessionId == null) {
+            return null;
+        }
+        for (Session s : sessions) {
+            if (sessionId.equals(s.getSessionId())) {
+                return s;
+            }
+        }
+        return null;
     }
 
     /**
