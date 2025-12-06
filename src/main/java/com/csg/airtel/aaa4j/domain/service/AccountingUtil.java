@@ -256,26 +256,22 @@ public class AccountingUtil {
             long totalUsage,
             UserSessionData groupData) {
 
-
+    //todo implemt check if session.sesstionTime <= request.sessionTime stop process and need this method if overhead pls improve this method
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
 
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
 
-        // Add session to user's sessions if:
-        // 1. Session is not null AND
-        // 2. Either it's a new session OR (balance is non-group and action is not STOP)
-        if (session != null) {
-            boolean isNotStopAction = !AccountingRequestDto.ActionType.STOP.equals(request.actionType());
-            boolean isNonGroupBalance = foundBalance != null && !foundBalance.isGroup();
-            boolean shouldAddToUserSessions = session.isNewSession() || (isNonGroupBalance && isNotStopAction);
-
-            if (shouldAddToUserSessions) {
+        if(foundBalance != null && foundBalance.isGroup()) {
+            if (groupData.getSessions().stream().noneMatch(rs -> rs.getSessionId().equals(session.getSessionId()))) {
+                userData.getSessions().add(session);
+            }
+        }else {
+            if (userData.getSessions().stream().noneMatch(rs -> rs.getSessionId().equals(session.getSessionId()))) {
                 userData.getSessions().add(session);
             }
         }
 
         List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
-
 
         if (log.isTraceEnabled()) {
             log.tracef("Processing with group data: user balances=%d, group balances=%d, combined=%d",
@@ -286,6 +282,7 @@ public class AccountingUtil {
         Session sessionData = combinedSessions.stream()
                 .filter(rs -> rs.getSessionId().equals(request.sessionId()))
                 .findFirst().orElse(null);
+
 
         return processBalanceUpdateWithCombinedData(
                 userData, sessionData, request, foundBalance,
@@ -628,6 +625,7 @@ public class AccountingUtil {
             log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
                     combinedBalances.size(), combinedSessions.size());
         }
+
 
 
 

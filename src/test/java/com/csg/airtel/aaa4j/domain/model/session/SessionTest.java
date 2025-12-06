@@ -34,7 +34,7 @@ class SessionTest {
         String nasIp = "192.168.1.1";
 
         session = new Session(sessionId, initiatedTime, previousBucketId,
-                             sessionTime, previousUsage, framedId, nasIp);
+                             sessionTime, previousUsage, framedId, nasIp,false);
 
         assertEquals(sessionId, session.getSessionId());
         assertEquals(initiatedTime, session.getSessionInitiatedTime());

@@ -134,7 +134,8 @@ public class StopHandler {
                 request.sessionTime(),
                 0L,
                 request.framedIPAddress(),
-                request.nasIP()
+                request.nasIP(),
+                false
         );
     }
 

@@ -252,7 +252,8 @@ class CdrMappingUtilTest {
                 0,
                 0L,
                 "192.168.1.1",
-                "10.0.0.1"
+                "10.0.0.1",
+                false
         );
     }
 }
