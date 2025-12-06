@@ -248,7 +248,6 @@ public class AccountingUtil {
     /**
      * Process balance update with group data.
      */
-    //todo need to handle proper solution
     private Uni<UpdateResult> processWithGroupData(
             UserSessionData userData,
             Session session,
@@ -262,9 +261,18 @@ public class AccountingUtil {
 
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
 
-       if((foundBalance!= null && session != null && !foundBalance.isGroup() && !AccountingRequestDto.ActionType.STOP.equals(request.actionType()))||session.isNewSession()) {
-            userData.getSessions().add(session);
-       }
+        // Add session to user's sessions if:
+        // 1. Session is not null AND
+        // 2. Either it's a new session OR (balance is non-group and action is not STOP)
+        if (session != null) {
+            boolean isNotStopAction = !AccountingRequestDto.ActionType.STOP.equals(request.actionType());
+            boolean isNonGroupBalance = foundBalance != null && !foundBalance.isGroup();
+            boolean shouldAddToUserSessions = session.isNewSession() || (isNonGroupBalance && isNotStopAction);
+
+            if (shouldAddToUserSessions) {
+                userData.getSessions().add(session);
+            }
+        }
 
         List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
 
