@@ -1,66 +1,78 @@
-# todo need to config  1000tps handling  and logs file path set
+# 1000 TPS Configuration - Optimized for high throughput
 quarkus:
   http:
     root-path: /api/v1
     port: 9905
+    io-threads: 8              # IO threads for handling HTTP requests (1000 TPS)
+    limits:
+      max-body-size: 10M
+      max-connections: 2000    # Max concurrent connections for 1000 TPS
+
   java:
     locale:
       timezone: "Asia/Colombo"
 
-
+  # Database Configuration - Optimized for 1000 TPS
   datasource:
     db-kind: oracle
     username: aaa
     password: Aaa!89nky78D
     reactive:
       url: oracle:thin:@localhost:1522/ORCL
-      max-size: 20
+      max-size: 50             # Increased from 20 for 1000 TPS (50 connections)
       idle-timeout: PT10M
+      acquisition-timeout: PT5S
 
+  # Vertx Configuration - Optimized for 1000 TPS
   vertx:
-    event-loops-pool-size: 32
+    event-loops-pool-size: 32  # Matches CPU cores for optimal event loop processing
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
     prefer-native-transport: true
     caching: true
 
+  # Thread Pool - Optimized for 1000 TPS
   thread-pool:
-    core-threads: 100
-    max-threads: 400
-    queue-size: 2000
-    growth-resistance: 0
+    core-threads: 100          # Base threads for steady-state 1000 TPS
+    max-threads: 500           # Increased from 400 to handle burst traffic
+    queue-size: 5000           # Increased from 2000 for 1000 TPS buffer
+    growth-resistance: 0       # Allow threads to grow immediately under load
     shutdown-timeout: 30s
 
-  #  datasource:
-  #    db-kind: oracle
-  #    username: system
-  #    password: admin
-  #    reactive:
-  #      url: oracle:thin:@localhost:1521/freepdb1
-  #      max-size: 20
-  #      idle-timeout: PT10M
+  # Logging Configuration - File and Console
+  log:
+    level: INFO
+    file:
+      enable: true
+      path: /var/log/aaa-account/aaa-account.log
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) traceId=%X{traceId} %s%e%n"
+      rotation:
+        max-file-size: 100M
+        max-backup-index: 10
+        rotate-on-boot: true
+    console:
+      enable: true
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      color: true
+    category:
+      "org.apache.kafka":
+        level: WARN
+      "io.smallrye.reactive.messaging.kafka":
+        level: INFO            # Changed from DEBUG to reduce log volume at 1000 TPS
+      "io.quarkus.config":
+        level: INFO            # Changed from DEBUG to reduce log volume
+      "io.smallrye.config":
+        level: INFO            # Changed from DEBUG to reduce log volume
+      "com.csg.airtel.aaa4j":
+        level: INFO            # Application-specific logging
 
-
-  console:
-    format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
-    color: true
-  level: INFO
-  category:
-    "org.apache.kafka":
-      level: WARN
-    "io.smallrye.reactive.messaging.kafka":
-      level: DEBUG
-    "io.quarkus.config":
-      level: DEBUG
-    "io.smallrye.config":
-      level: DEBUG
-
+  # Redis Configuration - Optimized for 1000 TPS
   redis:
     hosts: http://redis.redis.svc.cluster.local:6379
     timeout: 10s
-    max-pool-size: 50          # Increased from 20 for 10M user scale
-    max-pool-waiting: 100      # Increased for high throughput
+    max-pool-size: 100         # Increased from 50 for 1000 TPS throughput
+    max-pool-waiting: 200      # Increased waiting queue for burst handling
 
 idle-session:
   enabled: true
@@ -68,6 +80,7 @@ idle-session:
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
 
+# Kafka Producer/Consumer Configuration - Optimized for 1000 TPS
 mp:
   messaging:
     outgoing:
@@ -80,8 +93,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: snappy
-        batch.size: 16384
-        linger.ms: 10
+        batch.size: 32768              # Increased from 16384 for 1000 TPS batching
+        linger.ms: 5                   # Reduced from 10ms for lower latency
+        buffer.memory: 67108864        # 64MB buffer for high throughput
 
       accounting-resp-events:
         connector: smallrye-kafka
@@ -92,8 +106,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: snappy
-        batch.size: 16384
-        linger.ms: 10
+        batch.size: 32768              # Increased from 16384 for 1000 TPS batching
+        linger.ms: 5                   # Reduced from 10ms for lower latency
+        buffer.memory: 67108864        # 64MB buffer for high throughput
 
       accounting-cdr-events:
         connector: smallrye-kafka
@@ -104,8 +119,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: snappy
-        batch.size: 16384
-        linger.ms: 10
+        batch.size: 32768              # Increased from 16384 for 1000 TPS batching
+        linger.ms: 5                   # Reduced from 10ms for lower latency
+        buffer.memory: 67108864        # 64MB buffer for high throughput
 
     incoming:
       accounting-events:
@@ -116,9 +132,14 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: true
-        max.poll.records: 100
+        # 1000 TPS Optimized Kafka Consumer Settings
+        max.poll.records: 500              # Increased from 100 for 1000 TPS batch processing
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
+        fetch.min.bytes: 1024              # Minimum bytes to fetch per request
+        fetch.max.bytes: 52428800          # 50MB max fetch size
+        max.partition.fetch.bytes: 10485760 # 10MB per partition
+        receive.buffer.bytes: 65536        # 64KB receive buffer
         failure-strategy: ignore
 
 
