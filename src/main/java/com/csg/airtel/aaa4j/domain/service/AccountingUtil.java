@@ -256,7 +256,6 @@ public class AccountingUtil {
             long totalUsage,
             UserSessionData groupData) {
 
-    //todo implemt check if session.sesstionTime <= request.sessionTime stop process and need this method if overhead pls improve this method
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
 
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
@@ -283,6 +282,15 @@ public class AccountingUtil {
                 .filter(rs -> rs.getSessionId().equals(request.sessionId()))
                 .findFirst().orElse(null);
 
+        // Early return if session time hasn't increased (duplicate or out-of-order packet)
+        if (sessionData != null && sessionData.getSessionTime() != null
+                && request.sessionTime() <= sessionData.getSessionTime()) {
+            if (log.isDebugEnabled()) {
+                log.debugf("Skipping processing in group context: session time unchanged for sessionId: %s (request: %d, session: %d)",
+                        request.sessionId(), request.sessionTime(), sessionData.getSessionTime());
+            }
+            return Uni.createFrom().item(UpdateResult.skipped("Session time unchanged"));
+        }
 
         return processBalanceUpdateWithCombinedData(
                 userData, sessionData, request, foundBalance,
