@@ -29,7 +29,6 @@ public class AccountingConsumer {
         this.accountingProdEvent = accountingProdEvent;
         this.accountingHandlerFactory = accountingHandlerFactory;
     }
-    //todo Calling 'subscribe' in non-blocking context is not recommended
     @Incoming("accounting-events")
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
@@ -43,14 +42,17 @@ public class AccountingConsumer {
 
         // ACK immediately upon message receipt - no need to wait for processing to complete
         // This improves throughput by decoupling message consumption from processing
+        // Use subscribeAsCompletionStage() for proper fire-and-forget pattern
         accountingHandlerFactory.getHandler(request, request.eventId())
-                .subscribe().with(
-                        v -> {
-                            long duration = System.currentTimeMillis() - startTime;
-                            LOG.infof("Complete consumeAccountingEvent process %s ms", duration);
-                        },
-                        e -> LOG.errorf(e, "Failed processing session: %s", request.sessionId())
-                );
+                .subscribeAsCompletionStage()
+                .whenComplete((v, e) -> {
+                    if (e != null) {
+                        LOG.errorf(e, "Failed processing session: %s", request.sessionId());
+                    } else {
+                        long duration = System.currentTimeMillis() - startTime;
+                        LOG.infof("Complete consumeAccountingEvent process %s ms", duration);
+                    }
+                });
 
         return Uni.createFrom().completionStage(message.ack());
     }
