@@ -29,7 +29,7 @@ public class AccountingConsumer {
         this.accountingProdEvent = accountingProdEvent;
         this.accountingHandlerFactory = accountingHandlerFactory;
     }
-
+    //todo Calling 'subscribe' in non-blocking context is not recommended
     @Incoming("accounting-events")
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
