@@ -20,4 +20,8 @@ public record UpdateResult(
         return new UpdateResult(false, errorMessage, null,null, null,null);
     }
 
+    public static UpdateResult skipped(String reason) {
+        return new UpdateResult(true, reason, null, null, null, null);
+    }
+
 }
