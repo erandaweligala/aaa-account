@@ -21,7 +21,7 @@ public record UpdateResult(
     }
 
     public static UpdateResult skipped(String reason) {
-        return new UpdateResult(true, reason, null, null, null, null);
+        return new UpdateResult(false, reason, null, null, null, null);
     }
 
 }

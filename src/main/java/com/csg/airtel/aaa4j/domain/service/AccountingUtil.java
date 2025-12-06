@@ -248,6 +248,8 @@ public class AccountingUtil {
     /**
      * Process balance update with group data.
      */
+
+    //todo processWithGroupData check with any overhead operation if have pls fixed
     private Uni<UpdateResult> processWithGroupData(
             UserSessionData userData,
             Session session,
@@ -269,20 +271,12 @@ public class AccountingUtil {
                 userData.getSessions().add(session);
             }
         }
-
         List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
 
-        if (log.isTraceEnabled()) {
-            log.tracef("Processing with group data: user balances=%d, group balances=%d, combined=%d",
-                    userData.getBalance() != null ? userData.getBalance().size() : 0,
-                    groupData != null && groupData.getBalance() != null ? groupData.getBalance().size() : 0,
-                    combinedBalances.size());
-        }
         Session sessionData = combinedSessions.stream()
                 .filter(rs -> rs.getSessionId().equals(request.sessionId()))
                 .findFirst().orElse(null);
 
-        // Early return if session time hasn't increased (duplicate or out-of-order packet)
         if (sessionData != null && sessionData.getSessionTime() != null
                 && request.sessionTime() <= sessionData.getSessionTime()) {
             if (log.isDebugEnabled()) {

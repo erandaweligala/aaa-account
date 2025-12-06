@@ -55,7 +55,11 @@ public class StopHandler {
             UserSessionData userSessionData,AccountingRequestDto request
             ,String bucketId) {
 
+        if (request.delayTime() > 0) {
+            log.warnf("Duplicate Stop Request unchanged for sessionId: %s",request.sessionId());
+            return Uni.createFrom().voidItem();
 
+        }
         Session session = findSessionById(userSessionData.getSessions(), request.sessionId());
 
         if (session == null) {

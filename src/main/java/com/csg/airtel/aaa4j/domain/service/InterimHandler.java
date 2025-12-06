@@ -114,7 +114,6 @@ public class InterimHandler {
         Session session = findSession(userData, request.sessionId());
         if (session == null) {
             session = createSession(request);
-           // userData.getSessions().add(session);
         }
 
         // Early return if session time hasn't increased
