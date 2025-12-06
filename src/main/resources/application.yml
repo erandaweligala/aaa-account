@@ -1,4 +1,4 @@
-# Server Configuration
+# todo need to config  1000tps handling  and logs file path set
 quarkus:
   http:
     root-path: /api/v1

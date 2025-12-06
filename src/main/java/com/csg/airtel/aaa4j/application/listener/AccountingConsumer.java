@@ -39,10 +39,6 @@ public class AccountingConsumer {
                     .ifPresent(metadata -> LOG.debugf("Partition: %d, Offset: %d",
                             metadata.getPartition(), metadata.getOffset()));
         }
-
-        // ACK immediately upon message receipt - no need to wait for processing to complete
-        // This improves throughput by decoupling message consumption from processing
-        // Use subscribeAsCompletionStage() for proper fire-and-forget pattern
         accountingHandlerFactory.getHandler(request, request.eventId())
                 .subscribeAsCompletionStage()
                 .whenComplete((v, e) -> {

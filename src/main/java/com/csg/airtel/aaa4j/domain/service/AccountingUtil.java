@@ -855,6 +855,7 @@ public class AccountingUtil {
         sessionData.setPreviousTotalUsageQuotaValue(totalUsage);
         sessionData.setSessionTime(sessionTime);
         sessionData.setPreviousUsageBucketId(foundBalance.getBucketId());
+        sessionData.setSessionInitiatedTime(CACHED_NOW.get());
     }
 
     private boolean shouldDisconnectSession(UpdateResult result, Balance foundBalance, String previousUsageBucketId) {
