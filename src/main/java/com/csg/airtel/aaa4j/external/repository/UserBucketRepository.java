@@ -45,7 +45,7 @@ public class UserBucketRepository {
     public static final String IS_GROUP = "IS_GROUP";
     public static final String CONCURRENCY = "CONCURRENCY";
 
-    final Pool client;
+    final Pool client; //todo need to implement Pool config 1000tps handling
 
     @Inject
     public UserBucketRepository(Pool client) {
