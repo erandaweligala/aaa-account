@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
  * Applies configuration from PoolConfig to tune pool behavior.
  */
 
-//todo i have used io.vertx.mutiny.sqlclient.Pool; pls set this format
+//todo i have used io.vertx.mutiny.sqlclient.Pool; pls set this config
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
