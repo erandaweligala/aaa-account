@@ -1,8 +1,12 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.config.IdleSessionConfig;
+import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
+import com.csg.airtel.aaa4j.domain.model.EventType;
+import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
+import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.clients.SessionExpiryIndex;
 import com.csg.airtel.aaa4j.external.clients.SessionExpiryIndex.SessionExpiryEntry;
@@ -32,21 +36,25 @@ public class IdleSessionTerminatorScheduler {
     private final CacheClient cacheClient;
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
+    private final AccountProducer accountProducer;
 
     @Inject
     public IdleSessionTerminatorScheduler(CacheClient cacheClient,
                                            SessionExpiryIndex sessionExpiryIndex,
-                                           IdleSessionConfig config) {
+                                           IdleSessionConfig config,
+                                           AccountProducer accountProducer) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
+        this.accountProducer = accountProducer;
     }
 
     /**
      * Scheduled task to terminate idle sessions using optimized index-based lookup.
      * Runs at configurable intervals defined by idle-session.scheduler-interval.
+     * After session termination, creates DBWrite requests and publishes DB write events
+     * to persist balance updates to the database.
      */
-    //todo implement after session terminate Create DBWrite Request and publish DB Write event
     @Scheduled(every = "${idle-session.scheduler-interval:5m}",
                concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     public void terminateIdleSessions() {
@@ -197,6 +205,7 @@ public class IdleSessionTerminatorScheduler {
 
     /**
      * Process expired sessions for a single user.
+     * Terminates sessions, publishes DBWrite events for balance updates, and updates cache.
      */
     private Uni<Void> processUserExpiredSessions(UserSessionData userData,
                                                   List<SessionExpiryEntry> expiredSessionEntries,
@@ -233,12 +242,70 @@ public class IdleSessionTerminatorScheduler {
 
         totalSessionsTerminated.addAndGet(sessionsToTerminate.size());
 
-        // Update cache
-        return cacheClient.updateUserAndRelatedCaches(userName, userData)
+        // Create and publish DBWrite events for each terminated session's balances
+        List<Uni<Void>> dbWriteEvents = createDBWriteEventsForTerminatedSessions(
+                userData, sessionsToTerminate, userName);
+
+        // Execute DBWrite events in parallel, then update cache
+        Uni<Void> dbWriteUni = dbWriteEvents.isEmpty()
+                ? Uni.createFrom().voidItem()
+                : Uni.join().all(dbWriteEvents).andCollectFailures()
+                        .onFailure().invoke(error ->
+                                log.errorf(error, "Failed to publish DBWrite events for user: %s", userName))
+                        .onFailure().recoverWithNull()
+                        .replaceWithVoid();
+
+        // Update cache after publishing DBWrite events
+        return dbWriteUni.chain(() -> cacheClient.updateUserAndRelatedCaches(userName, userData)
                 .onFailure().invoke(error ->
                         log.errorf(error, "Failed to update cache for user: %s", userName))
                 .onFailure().recoverWithNull()
-                .replaceWithVoid();
+                .replaceWithVoid());
+    }
+
+    /**
+     * Creates DBWrite events for terminated sessions.
+     * For each terminated session, creates a DBWriteRequest for each balance and publishes it.
+     *
+     * @param userData the user session data containing balances
+     * @param sessionsToTerminate the list of sessions being terminated
+     * @param userName the username
+     * @return list of Uni representing DBWrite event publish operations
+     */
+    private List<Uni<Void>> createDBWriteEventsForTerminatedSessions(
+            UserSessionData userData,
+            List<Session> sessionsToTerminate,
+            String userName) {
+
+        List<Uni<Void>> dbWriteEvents = new ArrayList<>();
+        List<Balance> balances = userData.getBalance();
+
+        if (balances == null || balances.isEmpty()) {
+            log.debugf("No balances found for user %s, skipping DBWrite events", userName);
+            return dbWriteEvents;
+        }
+
+        for (Session session : sessionsToTerminate) {
+            String sessionId = session.getSessionId();
+
+            for (Balance balance : balances) {
+                DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(
+                        balance, userName, sessionId, EventType.UPDATE_EVENT);
+
+                Uni<Void> dbWriteUni = accountProducer.produceDBWriteEvent(dbWriteRequest)
+                        .onFailure().invoke(throwable ->
+                                log.errorf(throwable, "Failed to produce DBWrite event for session: %s, balance: %s",
+                                        sessionId, balance.getBucketId()))
+                        .onFailure().recoverWithNull()
+                        .replaceWithVoid();
+
+                dbWriteEvents.add(dbWriteUni);
+                log.debugf("Created DBWrite event for session: %s, balance: %s", sessionId, balance.getBucketId());
+            }
+        }
+
+        log.infof("Created %d DBWrite events for user: %s", dbWriteEvents.size(), userName);
+        return dbWriteEvents;
     }
 
     /**
