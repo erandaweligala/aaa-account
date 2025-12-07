@@ -1,19 +1,21 @@
 package com.csg.airtel.aaa4j.application.config;
 
-import io.quarkus.reactive.datasource.ReactiveDataSource;
 import io.quarkus.reactive.oracle.client.OraclePoolCreator;
 import io.vertx.oracleclient.OracleConnectOptions;
+import io.vertx.oracleclient.OraclePool;
+import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
-import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.jboss.logging.Logger;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
-//todo Class 'OraclePoolCustomizer' must either be declared abstract or implement abstract method 'create(Input)' in 'OraclePoolCreator'
-@ApplicationScoped
+@Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
     private static final Logger log = Logger.getLogger(OraclePoolCustomizer.class);
@@ -26,42 +28,45 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
     }
 
     @Override
-    @ReactiveDataSource("<default>")
-    public Pools pools() {
+    public Pool create(Input input) {
         log.info("Configuring Oracle pool for 1000 TPS handling");
 
+        // Get Quarkus-configured connect options as base
+        OracleConnectOptions connectOptions = input.oracleConnectOptions();
+
+        // Apply custom pool configuration for high TPS handling
         PoolOptions poolOptions = new PoolOptions()
                 .setMaxSize(poolConfig.maxSize())
                 .setIdleTimeout(poolConfig.idleTimeout())
-                .setIdleTimeoutUnit(java.util.concurrent.TimeUnit.MILLISECONDS)
+                .setIdleTimeoutUnit(TimeUnit.MILLISECONDS)
                 .setMaxLifetime(poolConfig.maxLifetime())
-                .setMaxLifetimeUnit(java.util.concurrent.TimeUnit.MILLISECONDS)
+                .setMaxLifetimeUnit(TimeUnit.MILLISECONDS)
                 .setConnectionTimeout(poolConfig.connectionTimeout())
-                .setConnectionTimeoutUnit(java.util.concurrent.TimeUnit.MILLISECONDS)
+                .setConnectionTimeoutUnit(TimeUnit.MILLISECONDS)
                 .setPoolCleanerPeriod(poolConfig.poolCleanerInterval())
                 .setEventLoopSize(poolConfig.eventLoopSize())
                 .setShared(true)
                 .setName("oracle-pool-1000tps");
 
+        // Apply TCP settings to connect options for better performance
+        connectOptions
+                .setTcpKeepAlive(poolConfig.tcpKeepAlive())
+                .setTcpNoDelay(poolConfig.tcpNoDelay());
+
+        // Apply prepared statement cache size
+        connectOptions.setPreparedStatementCacheMaxSize(poolConfig.preparedStatementCacheMaxSize());
+
         log.infof("Oracle pool configured: maxSize=%d, connectionTimeout=%dms, idleTimeout=%dms, " +
-                        "maxLifetime=%dms, eventLoopSize=%d, pipelining=%s",
+                        "maxLifetime=%dms, eventLoopSize=%d, pipelining=%s, tcpKeepAlive=%s, tcpNoDelay=%s",
                 poolConfig.maxSize(),
                 poolConfig.connectionTimeout(),
                 poolConfig.idleTimeout(),
                 poolConfig.maxLifetime(),
                 poolConfig.eventLoopSize(),
-                poolConfig.pipeliningEnabled());
+                poolConfig.pipeliningEnabled(),
+                poolConfig.tcpKeepAlive(),
+                poolConfig.tcpNoDelay());
 
-        return new Pools() {
-            @Override
-            public PoolOptions poolOptions() {
-                return poolOptions;
-            }
-
-            @Override
-            public OracleConnectOptions connectOptions() {
-                return null;
-            }
-        };
+        return OraclePool.pool(input.vertx(), connectOptions, poolOptions);
     }
 }
