@@ -72,7 +72,7 @@ public class StopHandler {
         return cleanSessionAndUpdateBalance(userSessionData,bucketId,request,session)
                 .onFailure().recoverWithNull()
                 .onItem().transformToUni(updateResult -> {
-                    if(updateResult != null) {
+                    if(updateResult != null && updateResult.success()) {
                         DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(updateResult.balance(), request.username(), request.sessionId(), EventType.UPDATE_EVENT);
                         return accountProducer.produceDBWriteEvent(dbWriteRequest)
                                 .onFailure().invoke(throwable ->

@@ -55,17 +55,17 @@ quarkus:
     enable: true
     format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
     color: true
-    category:
-      "org.apache.kafka":
-        level: WARN
-      "io.smallrye.reactive.messaging.kafka":
-        level: DEBUG            # Changed from DEBUG to reduce log volume at 1000 TPS
-      "io.quarkus.config":
-        level: INFO            # Changed from DEBUG to reduce log volume
-      "io.smallrye.config":
-        level: INFO            # Changed from DEBUG to reduce log volume
-      "com.csg.airtel.aaa4j":
-        level: DEBUG            # Application-specific logging
+  category:
+    "org.apache.kafka":
+      level: WARN
+    "io.smallrye.reactive.messaging.kafka":
+      level: DEBUG            # Changed from DEBUG to reduce log volume at 1000 TPS
+    "io.quarkus.config":
+      level: INFO            # Changed from DEBUG to reduce log volume
+    "io.smallrye.config":
+      level: INFO            # Changed from DEBUG to reduce log volume
+    "com.csg.airtel.aaa4j":
+      level: DEBUG            # Application-specific logging
 
   otel:
     traces:

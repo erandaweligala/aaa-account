@@ -261,8 +261,6 @@ public class AccountingUtil {
 
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
 
-        // Determine which list to check for session existence based on balance type
-        // Use null-safe check for group sessions
         List<Session> sessionsToCheck = (foundBalance != null && foundBalance.isGroup()
                 && groupData != null && groupData.getSessions() != null)
                 ? groupData.getSessions()
@@ -279,7 +277,7 @@ public class AccountingUtil {
         Session sessionData = findSessionById(combinedSessions, request.sessionId());
 
         if (sessionData != null && sessionData.getSessionTime() != null
-                && request.sessionTime() <= sessionData.getSessionTime()) {
+                && request.sessionTime() <= sessionData.getSessionTime() && AccountingRequestDto.ActionType.INTERIM_UPDATE.equals(request.actionType())) {
             if (log.isDebugEnabled()) {
                 log.debugf("Skipping processing in group context: session time unchanged for sessionId: %s (request: %d, session: %d)",
                         request.sessionId(), request.sessionTime(), sessionData.getSessionTime());
@@ -293,8 +291,6 @@ public class AccountingUtil {
     }
 
     /**
-     * Check if a session with the given ID exists in the list.
-     * Uses efficient loop instead of stream for better performance.
      *
      * @param sessions list of sessions to search
      * @param sessionId the session ID to find
@@ -1035,7 +1031,7 @@ public class AccountingUtil {
     }
 
     private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
-        if(!foundBalance.getBucketUsername().equals(request.username())) {
+        if(!foundBalance.getBucketUsername().equals(request.username()) ) {
             userData.getBalance().remove(foundBalance);
             userData.getSessions().remove(currentSession);
             // Fetch current group data to update sessions as well
@@ -1056,6 +1052,7 @@ public class AccountingUtil {
                                 .replaceWith(success);
                     });
         }else {
+            userData.getBalance().removeIf(Balance::isGroup);
             return cacheClient.updateUserAndRelatedCaches(request.username(), userData)
                     .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))

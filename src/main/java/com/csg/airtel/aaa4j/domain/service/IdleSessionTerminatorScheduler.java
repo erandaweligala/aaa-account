@@ -14,7 +14,6 @@ import org.jboss.logging.Logger;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +46,7 @@ public class IdleSessionTerminatorScheduler {
      * Scheduled task to terminate idle sessions using optimized index-based lookup.
      * Runs at configurable intervals defined by idle-session.scheduler-interval.
      */
+    //todo implement after session terminate Create DBWrite Request and publish DB Write event
     @Scheduled(every = "${idle-session.scheduler-interval:5m}",
                concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     public void terminateIdleSessions() {
@@ -170,8 +170,7 @@ public class IdleSessionTerminatorScheduler {
             }
 
             if (userData == null) {
-                // User data not found in cache, just log and continue
-                // The index cleanup will remove stale entries
+
                 log.debugf("User data not found for userId: %s, will clean up index entries", userId);
                 continue;
             }
