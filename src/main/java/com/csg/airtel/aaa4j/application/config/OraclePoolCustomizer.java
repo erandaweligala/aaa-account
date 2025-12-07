@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit;
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
-
+//todo 'create(Input)' in 'com.csg.airtel.aaa4j.application.config.OraclePoolCustomizer' clashes with 'create(Input)' in 'io.quarkus.reactive.oracle.client.OraclePoolCreator'; incompatible return type
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
