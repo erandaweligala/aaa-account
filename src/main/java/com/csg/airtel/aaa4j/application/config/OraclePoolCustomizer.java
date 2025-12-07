@@ -3,7 +3,7 @@ package com.csg.airtel.aaa4j.application.config;
 import io.quarkus.reactive.oracle.client.OraclePoolCreator;
 import io.vertx.oracleclient.OracleConnectOptions;
 import io.vertx.oracleclient.OraclePool;
-import io.vertx.sqlclient.Pool;
+import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit;
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
+
+//todo i have used io.vertx.mutiny.sqlclient.Pool; pls set this format
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
