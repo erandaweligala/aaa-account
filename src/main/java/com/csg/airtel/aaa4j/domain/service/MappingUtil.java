@@ -84,6 +84,8 @@ public class MappingUtil {
         balance.setBucketUsername(bucket.getBucketUser());
         balance.setBucketExpiryDate(bucket.getBucketExpiryDate());
         balance.setGroup(bucket.isGroup());
+        balance.setUnlimited(bucket.isUnlimited());
+        balance.setUsage(bucket.getUsage());
         return balance;
     }
 
@@ -101,11 +103,15 @@ public class MappingUtil {
             String userName,
             String sessionId,
             EventType eventType) {
-        long usage;
+        long usage = 0;
+        long currentBalance;
         if(!balance.isUnlimited()) {
             usage = balance.getInitialBalance() - balance.getQuota();
+            currentBalance = balance.getQuota();
+
         }else {
-            usage = balance.getQuota();
+            usage =balance.getUsage();
+            currentBalance = balance.getInitialBalance();
         }
 
         DBWriteRequest dbWriteRequest = new DBWriteRequest();
@@ -125,7 +131,7 @@ public class MappingUtil {
 
         // Set column values to update
         Map<String, Object> columnValues = Map.of(
-                AppConstant.CURRENT_BALANCE, balance.getQuota(),
+                AppConstant.CURRENT_BALANCE, currentBalance,
                 AppConstant.USAGE, usage,
                 AppConstant.UPDATED_AT, LocalDateTime.now()
         );

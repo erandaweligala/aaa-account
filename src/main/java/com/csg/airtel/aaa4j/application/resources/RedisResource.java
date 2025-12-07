@@ -3,14 +3,12 @@ package com.csg.airtel.aaa4j.application.resources;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
-import com.csg.airtel.aaa4j.domain.service.IdleSessionTerminatorScheduler;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.metrics.annotation.Timed;
 
 
@@ -31,13 +29,10 @@ public class RedisResource {
 
     final AccountingHandlerFactory accountingHandlerFactory;
 
-    final IdleSessionTerminatorScheduler idleSessionTerminatorScheduler;
-
-    public RedisResource(UserBucketRepository userRepository, CacheClient cacheClient, AccountingHandlerFactory accountingHandlerFactory, IdleSessionTerminatorScheduler idleSessionTerminatorScheduler) {
+    public RedisResource(UserBucketRepository userRepository, CacheClient cacheClient, AccountingHandlerFactory accountingHandlerFactory) {
         this.userRepository = userRepository;
         this.cacheClient = cacheClient;
         this.accountingHandlerFactory = accountingHandlerFactory;
-        this.idleSessionTerminatorScheduler = idleSessionTerminatorScheduler;
     }
 
     @GET
@@ -100,15 +95,5 @@ public class RedisResource {
                 .onItem().transform(result ->
                      result
                 );
-    }
-
-    @GET
-    @Path("/redis/scheduler")
-    @Timed(name = "process_time", description = "Time to process request")
-    @Produces(MediaType.APPLICATION_JSON)
-    @Consumes(MediaType.APPLICATION_JSON)
-    public String sessionTeminator() {
-        idleSessionTerminatorScheduler.terminateIdleSessions();
-        return "success";
     }
 }

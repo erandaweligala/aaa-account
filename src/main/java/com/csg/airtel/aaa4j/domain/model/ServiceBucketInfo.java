@@ -29,5 +29,6 @@ public class ServiceBucketInfo {
     private LocalDateTime bucketExpiryDate;
     private boolean isUnlimited;
     private boolean isGroup;
+    private long concurrency;
 
 }

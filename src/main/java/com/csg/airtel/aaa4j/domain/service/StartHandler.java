@@ -16,7 +16,6 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -96,6 +95,13 @@ public class StartHandler {
             UserSessionData userSessionData,
             List<Balance> balanceList) {
 
+        if(userSessionData.getConcurrency() >= userSessionData.getSessions().size()) {
+            log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
+            return accountProducer.produceAccountingResponseEvent(
+                    MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
+                            AccountingResponseEvent.EventType.COA,
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+        }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
         Uni<Void> validationResult = validateBalanceAndSession(request, userSessionData, combinedBalances);
@@ -310,14 +316,15 @@ public class StartHandler {
         List<Balance> balanceList = new ArrayList<>(serviceBuckets.size());
         List<Balance> balanceGroupList = new ArrayList<>();
         String groupId = null;
-
+        long concurrency = 0;
         for (ServiceBucketInfo bucket : serviceBuckets) {
             Balance balance = MappingUtil.createBalance(bucket);
             groupId = getGroupId(request, bucket, balanceGroupList, balance, groupId, balanceList);
+            concurrency = bucket.getConcurrency();
             totalQuota += bucket.getCurrentBalance();
         }
 
-        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota);
+        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota,concurrency);
     }
 
 
@@ -333,7 +340,7 @@ public class StartHandler {
 
         Session session = createSessionWithBalance(request, highestPriorityBalance);
         UserSessionData newUserSessionData = buildUserSessionData(
-                request, result.balanceList(), result.groupId(), session, highestPriorityBalance);
+                request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance);
 
         Uni<Void> userStorageUni = storeUserSessionData(request.username(), newUserSessionData);
 
@@ -342,7 +349,7 @@ public class StartHandler {
                     request, result, session, highestPriorityBalance, userStorageUni);
         }
 
-        Session finalSession = session;
+        final Session finalSession = session;
         return userStorageUni
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
                 .onItem().invoke(unused -> {
@@ -361,7 +368,7 @@ public class StartHandler {
     }
 
     private UserSessionData buildUserSessionData(
-            AccountingRequestDto request,
+            AccountingRequestDto request,long concurrency,
             List<Balance> balanceList,
             String groupId,
             Session session,
@@ -370,6 +377,7 @@ public class StartHandler {
         UserSessionData newUserSessionData = new UserSessionData();
         newUserSessionData.setGroupId(groupId);
         newUserSessionData.setUserName(request.username());
+        newUserSessionData.setConcurrency(concurrency);
         newUserSessionData.setBalance(balanceList);
 
         if (!isGroupBalance(highestPriorityBalance, request.username())) {
@@ -461,7 +469,7 @@ public class StartHandler {
             List<Balance> balanceList,
             List<Balance> balanceGroupList,
             String groupId,
-            double totalQuota) {
+            double totalQuota,long concurrency) {
     }
 
     private static String getGroupId(AccountingRequestDto request, ServiceBucketInfo bucket, List<Balance> balanceGroupList, Balance balance, String groupId, List<Balance> balanceList) {

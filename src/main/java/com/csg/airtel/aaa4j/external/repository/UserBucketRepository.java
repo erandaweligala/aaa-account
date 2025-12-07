@@ -2,8 +2,6 @@ package com.csg.airtel.aaa4j.external.repository;
 
 
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
-
-import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
@@ -12,14 +10,10 @@ import io.vertx.mutiny.sqlclient.Tuple;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
-import org.eclipse.microprofile.faulttolerance.Fallback;
 import org.eclipse.microprofile.faulttolerance.Retry;
-import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
-
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
@@ -49,6 +43,7 @@ public class UserBucketRepository {
     private static final int DEFAULT_BUCKET_LIST_CAPACITY = 10;
     public static final String IS_UNLIMITED = "IS_UNLIMITED";
     public static final String IS_GROUP = "IS_GROUP";
+    public static final String CONCURRENCY = "CONCURRENCY";
 
     final Pool client;
 
@@ -132,6 +127,8 @@ public class UserBucketRepository {
             info.setBucketExpiryDate(row.getLocalDateTime(COL_EXPIRATION));
             info.setUnlimited(row.getLong(IS_UNLIMITED) == 1);
             info.setGroup(row.getLong(IS_GROUP) == 1);
+            info.setConcurrency(row.getLong(CONCURRENCY));
+
 
             // Session configuration
             info.setSessionTimeout(row.getString(COL_SESSION_TIMEOUT));

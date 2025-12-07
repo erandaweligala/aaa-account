@@ -22,7 +22,6 @@ import org.jboss.logging.Logger;
 import java.util.concurrent.CompletableFuture;
 
 
-
 @ApplicationScoped
 public class AccountProducer {
 

@@ -29,6 +29,7 @@ public class AccountingConsumer {
         this.accountingProdEvent = accountingProdEvent;
         this.accountingHandlerFactory = accountingHandlerFactory;
     }
+
     @Incoming("accounting-events")
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
@@ -39,18 +40,16 @@ public class AccountingConsumer {
                     .ifPresent(metadata -> LOG.debugf("Partition: %d, Offset: %d",
                             metadata.getPartition(), metadata.getOffset()));
         }
-        accountingHandlerFactory.getHandler(request, request.eventId())
-                .subscribeAsCompletionStage()
-                .whenComplete((v, e) -> {
-                    if (e != null) {
-                        LOG.errorf(e, "Failed processing session: %s", request.sessionId());
-                    } else {
-                        long duration = System.currentTimeMillis() - startTime;
-                        LOG.infof("Complete consumeAccountingEvent process %s ms", duration);
-                    }
+        return accountingHandlerFactory.getHandler(request,request.eventId())
+                .onItem().transformToUni(v ->{
+                    long duration = System.currentTimeMillis() - startTime;
+                    LOG.infof("Complete consumeAccountingEvent process %s ms",duration);
+                  return  Uni.createFrom().completionStage(message.ack());
+                })
+                .onFailure().recoverWithUni(e -> {
+                    LOG.errorf(e, "Failed processing session: %s", request.sessionId());
+                    return Uni.createFrom().completionStage(message.nack(e));
                 });
-
-        return Uni.createFrom().completionStage(message.ack());
     }
 }
 

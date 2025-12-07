@@ -26,5 +26,6 @@ public class Balance {
     private boolean isUnlimited;
     private List<ConsumptionRecord> consumptionHistory = new ArrayList<>();
     private boolean isGroup;
+    private long usage;
 
 }

@@ -2,7 +2,6 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.response.ApiResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
-
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
@@ -11,8 +10,10 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
-
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 
 
 @ApplicationScoped
@@ -49,7 +50,7 @@ public class BucketService {
                             .build();
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
-                            .call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName))
+                            /*.call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName)) no need to disconnect*/
                             .onItem().transform(result -> createSuccessResponse(balance,"Bucket Added Successfully"));
                 })
                 .onFailure().recoverWithItem(throwable -> {

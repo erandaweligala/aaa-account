@@ -14,6 +14,7 @@ public class UserSessionData {
     private String sessionTimeOut;
     private String userName;
     private String groupId;
+    private long concurrency;
     private List<Balance> balance = new ArrayList<>();
     private List<Session> sessions = new ArrayList<>();
     private QosParam qosParam;

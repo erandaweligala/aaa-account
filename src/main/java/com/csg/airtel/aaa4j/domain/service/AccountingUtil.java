@@ -117,7 +117,7 @@ public class AccountingUtil {
      */
     private boolean isBalanceEligible(Balance balance, String timeWindow, LocalDateTime now) {
 
-        if (balance.getQuota() <= 0) {
+        if (balance.getQuota() <= 0 && !balance.isUnlimited()) {
             return false;
         }
 
@@ -1108,15 +1108,14 @@ public class AccountingUtil {
     }
 
     private long getNewQuota(Session sessionData, Balance foundBalance, long totalUsage) {
-
-        //  bucket is unlimited quota calculation
-        if(foundBalance.isUnlimited()){
-           return totalUsage;
-        }
-
         Long previousUsageObj = sessionData.getPreviousTotalUsageQuotaValue();
         long previousUsage = previousUsageObj == null ? 0L : previousUsageObj;
         long usageDelta = totalUsage - previousUsage;
+        //  bucket is unlimited quota calculation
+        if(foundBalance.isUnlimited()){
+            foundBalance.setUsage(foundBalance.getUsage() + usageDelta);
+           return totalUsage;
+        }
         if (usageDelta < 0) {
             // if totalUsage is unexpectedly smaller than previous usage, clamp to 0
             usageDelta = 0;
