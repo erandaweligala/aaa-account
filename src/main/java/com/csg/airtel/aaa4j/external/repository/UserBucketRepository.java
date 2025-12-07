@@ -45,7 +45,7 @@ public class UserBucketRepository {
     public static final String IS_GROUP = "IS_GROUP";
     public static final String CONCURRENCY = "CONCURRENCY";
 
-    final Pool client; //todo need to implement Pool config 1000tps handling
+    final Pool client; // Pool configured via OraclePoolCustomizer for 1000 TPS handling
 
     @Inject
     public UserBucketRepository(Pool client) {
