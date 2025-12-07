@@ -12,6 +12,7 @@ import org.jboss.logging.Logger;
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
+//todo Class 'OraclePoolCustomizer' must either be declared abstract or implement abstract method 'create(Input)' in 'OraclePoolCreator'
 @ApplicationScoped
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
