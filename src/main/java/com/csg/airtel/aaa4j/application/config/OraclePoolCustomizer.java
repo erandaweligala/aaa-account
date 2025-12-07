@@ -1,10 +1,9 @@
 package com.csg.airtel.aaa4j.application.config;
 
 import io.quarkus.reactive.oracle.client.OraclePoolCreator;
-import io.vertx.mutiny.core.Vertx;
-import io.vertx.mutiny.oracleclient.OraclePool;
-import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.oracleclient.OracleConnectOptions;
+import io.vertx.oracleclient.OraclePool;
+import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -16,7 +15,6 @@ import java.util.concurrent.TimeUnit;
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
-//todo 'create(Input)' in 'com.csg.airtel.aaa4j.application.config.OraclePoolCustomizer' clashes with 'create(Input)' in 'io.quarkus.reactive.oracle.client.OraclePoolCreator'; incompatible return type
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
@@ -69,8 +67,7 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 poolConfig.tcpKeepAlive(),
                 poolConfig.tcpNoDelay());
 
-        // Wrap bare Vert.x in Mutiny wrapper to create Mutiny Pool
-        Vertx mutinyVertx = Vertx.newInstance(input.vertx());
-        return OraclePool.pool(mutinyVertx, connectOptions, poolOptions);
+        // Create pool using bare Vert.x types (Quarkus will wrap it in Mutiny automatically)
+        return OraclePool.pool(input.vertx(), connectOptions, poolOptions);
     }
 }
