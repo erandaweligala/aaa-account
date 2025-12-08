@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
+//todo  .setName("oracle-pool-1000tps"); not showing this pool name in console bd operations
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
