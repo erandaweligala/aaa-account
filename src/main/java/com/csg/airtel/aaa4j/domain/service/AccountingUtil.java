@@ -913,6 +913,9 @@ public class AccountingUtil {
         sessionData.setSessionTime(sessionTime);
         sessionData.setPreviousUsageBucketId(foundBalance.getBucketId());
         sessionData.setSessionInitiatedTime(CACHED_NOW.get());
+        sessionData.setAvailableBalance(foundBalance.getQuota()); // last available balance
+
+
     }
 
     private boolean shouldDisconnectSession(UpdateResult result, Balance foundBalance, String previousUsageBucketId) {

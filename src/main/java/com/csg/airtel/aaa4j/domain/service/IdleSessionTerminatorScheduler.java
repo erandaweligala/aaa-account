@@ -1,8 +1,11 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.config.IdleSessionConfig;
+import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
+import com.csg.airtel.aaa4j.domain.model.EventType;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
+import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.clients.SessionExpiryIndex;
 import com.csg.airtel.aaa4j.external.clients.SessionExpiryIndex.SessionExpiryEntry;
@@ -32,14 +35,16 @@ public class IdleSessionTerminatorScheduler {
     private final CacheClient cacheClient;
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
+    private final AccountProducer  accountProducer;
 
     @Inject
     public IdleSessionTerminatorScheduler(CacheClient cacheClient,
-                                           SessionExpiryIndex sessionExpiryIndex,
-                                           IdleSessionConfig config) {
+                                          SessionExpiryIndex sessionExpiryIndex,
+                                          IdleSessionConfig config, AccountProducer accountProducer) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
+        this.accountProducer = accountProducer;
     }
 
     /**
@@ -238,6 +243,29 @@ public class IdleSessionTerminatorScheduler {
                         log.errorf(error, "Failed to update cache for user: %s", userName))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
+    }
+
+    //todo implement complete operation and set related posision  call to this method if ahve any overhead method pls resolve
+    private void triggerDBRequestInitiate(List<Session> sessionsToTerminate,UserSessionData userData){
+
+
+        for (Session session : sessionsToTerminate) {
+
+            userData.getBalance()
+                    .stream()
+                    .filter(rs -> rs.getBucketId().equals(session.getPreviousUsageBucketId()))
+                    .findFirst()
+                    .ifPresent(rs -> {
+                        if(!(rs.getQuota()<session.getAvailableBalance())){
+                            DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(rs, rs.getBucketUsername(), session.getSessionId(), EventType.UPDATE_EVENT);
+                            accountProducer.produceDBWriteEvent(dbWriteRequest);
+                        }
+                    })
+
+
+        }
+
+
     }
 
     /**

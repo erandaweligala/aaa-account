@@ -19,5 +19,6 @@ public class Session {
     private String framedId;
     private String nasIp;
     private boolean isNewSession;
+    private long availableBalance;
 
 }
