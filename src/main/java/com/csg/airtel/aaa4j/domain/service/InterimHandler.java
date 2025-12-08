@@ -79,13 +79,14 @@ public class InterimHandler {
                     List<Balance> balanceList = new ArrayList<>(bucketCount);
                     double totalQuota = 0.0;
                     String groupId = null;
-
+                    long concurrency = 0;
                     for (ServiceBucketInfo bucket : serviceBuckets) {
                         if(!Objects.equals(bucket.getBucketUser(), request.username())){
                             groupId = bucket.getBucketUser();
                         }
                         double currentBalance = bucket.getCurrentBalance();
                         totalQuota += currentBalance;
+                        concurrency = bucket.getConcurrency();
                         balanceList.add(MappingUtil.createBalance(bucket));
 
                     }
@@ -97,7 +98,7 @@ public class InterimHandler {
                     }
 
                      UserSessionData newUserSessionData =  UserSessionData.builder()
-                             .groupId(groupId).userName(request.username())
+                             .groupId(groupId).userName(request.username()).concurrency(concurrency)
                     .balance(balanceList).sessions(new ArrayList<>(List.of(createSession(request)))).build();
 
                      return processAccountingRequest(newUserSessionData, request,traceId);
@@ -115,6 +116,13 @@ public class InterimHandler {
             session = createSession(request);
         }
 
+        if(userData.getConcurrency() <= userData.getSessions().size()) {
+            log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
+            return accountProducer.produceAccountingResponseEvent(
+                    MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
+                            AccountingResponseEvent.EventType.COA,
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+        }
         // Early return if session time hasn't increased
         if (request.sessionTime() <= session.getSessionTime()) {
             log.warnf("TraceId: %s Duplicate Session time unchanged for sessionId: %s", traceId,request.sessionId());

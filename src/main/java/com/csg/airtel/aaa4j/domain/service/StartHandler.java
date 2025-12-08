@@ -95,7 +95,7 @@ public class StartHandler {
             UserSessionData userSessionData,
             List<Balance> balanceList) {
 
-        if(userSessionData.getConcurrency() >= userSessionData.getSessions().size()) {
+        if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",

@@ -7,7 +7,6 @@ import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import org.eclipse.microprofile.metrics.annotation.Timed;
@@ -30,7 +29,6 @@ public class RedisResource {
 
     final AccountingHandlerFactory accountingHandlerFactory;
 
-    @Inject
     public RedisResource(UserBucketRepository userRepository, CacheClient cacheClient, AccountingHandlerFactory accountingHandlerFactory) {
         this.userRepository = userRepository;
         this.cacheClient = cacheClient;
