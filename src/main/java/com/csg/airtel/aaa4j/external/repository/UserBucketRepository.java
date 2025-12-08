@@ -3,7 +3,7 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import io.smallrye.mutiny.Uni;
-import io.vertx.mutiny.sqlclient.Pool;
+import io.vertx.mutiny.oracleclient.OraclePool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
@@ -45,11 +45,10 @@ public class UserBucketRepository {
     public static final String IS_GROUP = "IS_GROUP";
     public static final String CONCURRENCY = "CONCURRENCY";
 
-    final Pool client; // Pool configured via OraclePoolCustomizer for 1000 TPS handling
+    final OraclePool client; // Pool configured via OraclePoolCustomizer for 1000 TPS handling
 
-    //todo Unsatisfied dependency: no bean matches the injection point  what the reason
     @Inject
-    public UserBucketRepository(Pool client) {
+    public UserBucketRepository(OraclePool client) {
         this.client = client;
     }
 
