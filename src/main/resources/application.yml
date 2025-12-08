@@ -39,32 +39,30 @@ quarkus:
     growth-resistance: 0
     shutdown-timeout: 30s
 
+  console:
+    color: true
   log:
     level: INFO
     file:
-      enable: true
       path: /var/log/aaa-account/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
         max-file-size: 100M
         max-backup-index: 10
         rotate-on-boot: true
-  console:
-    level: DEBUG
-    enable: true
-    format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
-    color: true
-  category:
-    "org.apache.kafka":
-      level: WARN
-    "io.smallrye.reactive.messaging.kafka":
-      level: DEBUG
-    "io.quarkus.config":
-      level: INFO
-    "io.smallrye.config":
-      level: INFO
-    "com.csg.airtel.aaa4j":
-      level: DEBUG
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+    category:
+      "org.apache.kafka":
+        level: WARN
+      "io.smallrye.reactive.messaging.kafka":
+        level: DEBUG
+      "io.quarkus.config":
+        level: INFO
+      "io.smallrye.config":
+        level: INFO
+      "com.csg.airtel.aaa4j":
+        level: DEBUG
 
   otel:
     traces:

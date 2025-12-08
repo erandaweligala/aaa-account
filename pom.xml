@@ -141,6 +141,7 @@
         <version>${surefire-plugin.version}</version>
         <configuration>
           <systemPropertyVariables>
+              <quarkus.log.console.color>true</quarkus.log.console.color>
             <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
             <maven.home>${maven.home}</maven.home>
           </systemPropertyVariables>
