@@ -11,6 +11,7 @@ quarkus:
     locale:
       timezone: "Asia/Colombo"
 
+  # Database Configuration - Optimized for 1000 TPS
   datasource:
     db-kind: oracle
     username: aaa
@@ -61,7 +62,7 @@ quarkus:
       "io.smallrye.config":
         level: INFO
       "com.csg.airtel.aaa4j":
-        level: DEBUG
+        level: INFO
 
   otel:
     traces:
@@ -74,9 +75,9 @@ quarkus:
     max-pool-size: 100
     max-pool-waiting: 200
 
-# Pool Configuration - Optimized for 1000 TPS
+# Pool Configuration
 pool:
-  max-size: 50                      # Max connections (1000 TPS / 20 queries per second per conn)
+  max-size: 50                      # Max connections
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -89,6 +90,7 @@ pool:
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
   pool-cleaner-interval: 60000      # Clean every minute
+
 
 idle-session:
   enabled: true

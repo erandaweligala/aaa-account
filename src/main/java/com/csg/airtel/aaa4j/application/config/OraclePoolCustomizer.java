@@ -5,6 +5,7 @@ import io.vertx.oracleclient.OracleBuilder;
 import io.vertx.oracleclient.OracleConnectOptions;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
+import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.jboss.logging.Logger;
@@ -12,7 +13,7 @@ import org.jboss.logging.Logger;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Customizes the Oracle connection pool for optimal 1000 TPS handling.
+ * Customizes the Oracle connection
  * Applies configuration from PoolConfig to tune pool behavior.
  */
 @Singleton
@@ -21,6 +22,8 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
     private static final Logger log = Logger.getLogger(OraclePoolCustomizer.class);
 
     private final PoolConfig poolConfig;
+
+    private Pool corePool;
 
     @Inject
     public OraclePoolCustomizer(PoolConfig poolConfig) {
@@ -46,7 +49,7 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 .setShared(true)
                 .setName("oracle-pool-1000tps");
 
-        // Apply TCP settings to connect options for better performance
+
         connectOptions
                 .setTcpKeepAlive(poolConfig.tcpKeepAlive())
                 .setTcpNoDelay(poolConfig.tcpNoDelay());
@@ -66,10 +69,17 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 poolConfig.tcpKeepAlive(),
                 poolConfig.tcpNoDelay());
 
-        return OracleBuilder.pool()
+        this.corePool = OracleBuilder.pool()
                 .with(poolOptions)
                 .connectingTo(connectOptions)
                 .using(input.vertx())
                 .build();
+        return corePool;
+    }
+
+    @Produces
+    @Singleton
+    io.vertx.mutiny.sqlclient.Pool mutinyPool() {
+        return io.vertx.mutiny.sqlclient.Pool.newInstance(corePool);
     }
 }

@@ -8,10 +8,6 @@ quarkus:
       max-body-size: 10M
       max-connections: 2000
 
-  java:
-    locale:
-      timezone: "Asia/Colombo"
-
 
   datasource:
     db-kind: oracle
@@ -40,32 +36,30 @@ quarkus:
     growth-resistance: 0
     shutdown-timeout: 30s
 
+  console:
+    color: true
   log:
     level: INFO
     file:
-      enable: true
-      path: /var/log/aaa-account/aaa-account.log
+      path: /var/dte/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
         max-file-size: 100M
         max-backup-index: 10
         rotate-on-boot: true
-  console:
-    level: DEBUG
-    enable: true
-    format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
-    color: true
-  category:
-    "org.apache.kafka":
-      level: WARN
-    "io.smallrye.reactive.messaging.kafka":
-      level: DEBUG
-    "io.quarkus.config":
-      level: INFO
-    "io.smallrye.config":
-      level: INFO
-    "com.csg.airtel.aaa4j":
-      level: DEBUG
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+    category:
+      "org.apache.kafka":
+        level: INFO
+      "io.smallrye.reactive.messaging.kafka":
+        level: INFO
+      "io.quarkus.config":
+        level: INFO
+      "io.smallrye.config":
+        level: INFO
+      "com.csg.airtel.aaa4j":
+        level: INFO
 
   otel:
     traces:
@@ -77,6 +71,22 @@ quarkus:
     timeout: 10s
     max-pool-size: 100
     max-pool-waiting: 200
+
+# Pool Configuration
+pool:
+  max-size: 50                      # Max connections
+  connection-timeout: 5000          # 5 seconds to acquire connection
+  idle-timeout: 600000              # 10 minutes idle before closing
+  max-lifetime: 1800000             # 30 minutes max connection lifetime
+  acquire-increment: 4              # Connections to acquire at once
+  prepared-statement-cache-max-size: 256  # Cache prepared statements
+  pipelining-enabled: true          # Enable query pipelining
+  pipelining-limit: 256             # Max pipelined queries
+  event-loop-size: 32               # Match vertx event-loops-pool-size
+  tcp-keep-alive: true              # Detect dead connections
+  tcp-no-delay: true                # Reduce latency
+  pool-cleaner-enabled: true        # Clean idle connections
+  pool-cleaner-interval: 60000      # Clean every minute
 
 idle-session:
   enabled: true

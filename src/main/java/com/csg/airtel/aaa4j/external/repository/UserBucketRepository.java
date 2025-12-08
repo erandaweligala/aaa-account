@@ -20,6 +20,7 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
 
 @ApplicationScoped
 public class UserBucketRepository {
+
     private static final Logger log = Logger.getLogger(UserBucketRepository.class);
 
     private static final String COL_BUCKET_ID = "BUCKET_ID";
