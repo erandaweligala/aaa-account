@@ -269,6 +269,8 @@ public class IdleSessionTerminatorScheduler {
      * @param userData user session data containing balance information
      * @return Uni that completes when all DB write events are produced
      */
+
+    //todo Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
     private Uni<Void> triggerDBRequestInitiate(List<Session> sessionsToTerminate, UserSessionData userData) {
         if (sessionsToTerminate == null || sessionsToTerminate.isEmpty()) {
             return Uni.createFrom().voidItem();
