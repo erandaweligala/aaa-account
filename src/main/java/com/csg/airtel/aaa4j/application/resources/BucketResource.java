@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.service.BucketService;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.PATCH;
 import jakarta.ws.rs.Path;
@@ -22,6 +23,7 @@ public class BucketResource {
     private static final Logger log = Logger.getLogger(BucketResource.class);
     private final BucketService bucketService;
 
+    @Inject
     public BucketResource(BucketService bucketService) {
         this.bucketService = bucketService;
     }

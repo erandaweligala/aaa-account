@@ -10,6 +10,7 @@ import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDate;
@@ -31,6 +32,7 @@ public class AccountingUtil {
     private final COAService coaService;
 
 
+    @Inject
     public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;

@@ -6,6 +6,7 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
@@ -22,6 +23,7 @@ public class BucketService {
     private final CacheClient cacheClient;
     private final COAService  coaService;
 
+    @Inject
     public BucketService(CacheClient cacheClient, COAService coaService) {
         this.cacheClient = cacheClient;
         this.coaService = coaService;
