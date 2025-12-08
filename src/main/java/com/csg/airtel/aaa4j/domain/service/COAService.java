@@ -7,6 +7,7 @@ import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
@@ -19,6 +20,7 @@ public class COAService {
 
     private final AccountProducer accountProducer;
 
+    @Inject
     public COAService(AccountProducer accountProducer) {
         this.accountProducer = accountProducer;
     }
