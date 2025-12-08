@@ -1,8 +1,8 @@
 package com.csg.airtel.aaa4j.application.config;
 
 import io.quarkus.reactive.oracle.client.OraclePoolCreator;
+import io.vertx.oracleclient.OracleBuilder;
 import io.vertx.oracleclient.OracleConnectOptions;
-import io.vertx.oracleclient.OraclePool;
 import io.vertx.sqlclient.Pool;
 import io.vertx.sqlclient.PoolOptions;
 import jakarta.inject.Inject;
@@ -65,7 +65,10 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 poolConfig.tcpKeepAlive(),
                 poolConfig.tcpNoDelay());
 
-        //todo 'io.vertx.oracleclient.OraclePool' is deprecated
-        return OraclePool.pool(input.vertx(), connectOptions, poolOptions);
+        return OracleBuilder.pool()
+                .with(poolOptions)
+                .connectingTo(connectOptions)
+                .using(input.vertx())
+                .build();
     }
 }
