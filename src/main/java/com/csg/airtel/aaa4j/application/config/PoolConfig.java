@@ -104,4 +104,12 @@ public interface PoolConfig {
      */
     @WithDefault("60000")
     int poolCleanerInterval();
+
+    /**
+     * Name of the Oracle connection pool.
+     * Used for identifying pool in logs and thread tracking during DB operations.
+     * Default: "oracle-pool"
+     */
+    @WithDefault("oracle-pool")
+    String poolName();
 }

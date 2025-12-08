@@ -78,6 +78,23 @@ quarkus:
     max-pool-size: 100
     max-pool-waiting: 200
 
+# Pool Configuration - Optimized for 1000 TPS
+pool:
+  pool-name: "oracle-db-pool-dev"   # Pool name for thread identification in logs
+  max-size: 50                      # Max connections (1000 TPS / 20 queries per second per conn)
+  connection-timeout: 5000          # 5 seconds to acquire connection
+  idle-timeout: 600000              # 10 minutes idle before closing
+  max-lifetime: 1800000             # 30 minutes max connection lifetime
+  acquire-increment: 4              # Connections to acquire at once
+  prepared-statement-cache-max-size: 256  # Cache prepared statements
+  pipelining-enabled: true          # Enable query pipelining
+  pipelining-limit: 256             # Max pipelined queries
+  event-loop-size: 32               # Match vertx event-loops-pool-size
+  tcp-keep-alive: true              # Detect dead connections
+  tcp-no-delay: true                # Reduce latency
+  pool-cleaner-enabled: true        # Clean idle connections
+  pool-cleaner-interval: 60000      # Clean every minute
+
 idle-session:
   enabled: true
   timeout-minutes: 60       # 1 hour default - sessions older than this will be terminated

@@ -76,6 +76,7 @@ quarkus:
 
 # Pool Configuration - Optimized for 1000 TPS
 pool:
+  pool-name: "oracle-db-pool"       # Pool name for thread identification in logs
   max-size: 50                      # Max connections (1000 TPS / 20 queries per second per conn)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
