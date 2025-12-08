@@ -47,6 +47,7 @@ public class UserBucketRepository {
 
     final Pool client; // Pool configured via OraclePoolCustomizer for 1000 TPS handling
 
+    //todo Unsatisfied dependency: no bean matches the injection point  what the reason
     @Inject
     public UserBucketRepository(Pool client) {
         this.client = client;
