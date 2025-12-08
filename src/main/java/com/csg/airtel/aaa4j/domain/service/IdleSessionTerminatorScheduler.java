@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.application.config.IdleSessionConfig;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.EventType;
+import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
@@ -35,16 +36,20 @@ public class IdleSessionTerminatorScheduler {
     private final CacheClient cacheClient;
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
-    private final AccountProducer  accountProducer;
+    private final AccountProducer accountProducer;
+    private final SessionLifecycleManager sessionLifecycleManager;
 
     @Inject
     public IdleSessionTerminatorScheduler(CacheClient cacheClient,
                                           SessionExpiryIndex sessionExpiryIndex,
-                                          IdleSessionConfig config, AccountProducer accountProducer) {
+                                          IdleSessionConfig config,
+                                          AccountProducer accountProducer,
+                                          SessionLifecycleManager sessionLifecycleManager) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
         this.accountProducer = accountProducer;
+        this.sessionLifecycleManager = sessionLifecycleManager;
     }
 
     /**
@@ -201,6 +206,8 @@ public class IdleSessionTerminatorScheduler {
 
     /**
      * Process expired sessions for a single user.
+     * This method removes expired sessions from cache and triggers DB write operations
+     * to persist balance updates for terminated sessions.
      */
     private Uni<Void> processUserExpiredSessions(UserSessionData userData,
                                                   List<SessionExpiryEntry> expiredSessionEntries,
@@ -212,15 +219,20 @@ public class IdleSessionTerminatorScheduler {
         String userName = userData.getUserName();
         List<Session> sessions = userData.getSessions();
 
-        // Build set of expired session IDs for O(1) lookup
-        var expiredSessionIds = expiredSessionEntries.stream()
-                .map(SessionExpiryEntry::sessionId)
-                .collect(Collectors.toSet());
+        // Build set of expired session IDs for O(1) lookup - using efficient loop instead of stream
+        int expiredCount = expiredSessionEntries.size();
+        var expiredSessionIds = new java.util.HashSet<String>(expiredCount);
+        for (SessionExpiryEntry entry : expiredSessionEntries) {
+            expiredSessionIds.add(entry.sessionId());
+        }
 
-        // Find sessions to terminate
-        List<Session> sessionsToTerminate = sessions.stream()
-                .filter(s -> expiredSessionIds.contains(s.getSessionId()))
-                .toList();
+        // Find sessions to terminate - using efficient loop instead of stream
+        List<Session> sessionsToTerminate = new ArrayList<>();
+        for (Session session : sessions) {
+            if (expiredSessionIds.contains(session.getSessionId())) {
+                sessionsToTerminate.add(session);
+            }
+        }
 
         if (sessionsToTerminate.isEmpty()) {
             // Sessions may have been terminated by other means
@@ -237,35 +249,89 @@ public class IdleSessionTerminatorScheduler {
 
         totalSessionsTerminated.addAndGet(sessionsToTerminate.size());
 
-        // Update cache
-        return cacheClient.updateUserAndRelatedCaches(userName, userData)
-                .onFailure().invoke(error ->
-                        log.errorf(error, "Failed to update cache for user: %s", userName))
-                .onFailure().recoverWithNull()
-                .replaceWithVoid();
+        // Trigger DB write operations for terminated sessions to persist balance state
+        return triggerDBRequestInitiate(sessionsToTerminate, userData)
+                .onItem().transformToUni(v ->
+                        // Update cache after DB write is initiated
+                        cacheClient.updateUserAndRelatedCaches(userName, userData)
+                                .onFailure().invoke(error ->
+                                        log.errorf(error, "Failed to update cache for user: %s", userName))
+                                .onFailure().recoverWithNull()
+                                .replaceWithVoid()
+                );
     }
 
-    //todo implement complete operation and set related posision  call to this method if ahve any overhead method pls resolve
-    private void triggerDBRequestInitiate(List<Session> sessionsToTerminate,UserSessionData userData){
-
-
-        for (Session session : sessionsToTerminate) {
-
-            userData.getBalance()
-                    .stream()
-                    .filter(rs -> rs.getBucketId().equals(session.getPreviousUsageBucketId()))
-                    .findFirst()
-                    .ifPresent(rs -> {
-                        if(!(rs.getQuota()<session.getAvailableBalance())){
-                            DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(rs, rs.getBucketUsername(), session.getSessionId(), EventType.UPDATE_EVENT);
-                            accountProducer.produceDBWriteEvent(dbWriteRequest);
-                        }
-                    })
-
-
+    /**
+     * Triggers DB write operations to persist balance state for terminated sessions.
+     * Uses efficient loops to avoid stream overhead and produces events reactively.
+     *
+     * @param sessionsToTerminate list of sessions being terminated
+     * @param userData user session data containing balance information
+     * @return Uni that completes when all DB write events are produced
+     */
+    private Uni<Void> triggerDBRequestInitiate(List<Session> sessionsToTerminate, UserSessionData userData) {
+        if (sessionsToTerminate == null || sessionsToTerminate.isEmpty()) {
+            return Uni.createFrom().voidItem();
         }
 
+        List<Balance> balances = userData.getBalance();
+        if (balances == null || balances.isEmpty()) {
+            return Uni.createFrom().voidItem();
+        }
 
+        List<Uni<Void>> dbWriteOperations = new ArrayList<>();
+
+        // Use efficient loop instead of stream to find matching balances
+        for (Session session : sessionsToTerminate) {
+            String bucketId = session.getPreviousUsageBucketId();
+            if (bucketId == null) {
+                continue;
+            }
+
+            // Find matching balance using efficient loop
+            Balance matchingBalance = null;
+            for (Balance balance : balances) {
+                if (bucketId.equals(balance.getBucketId())) {
+                    matchingBalance = balance;
+                    break;
+                }
+            }
+
+            if (matchingBalance != null) {
+                // Check if balance needs to be persisted (quota is valid relative to session's available balance)
+                if (matchingBalance.getQuota() >= session.getAvailableBalance()) {
+                    DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(
+                            matchingBalance,
+                            matchingBalance.getBucketUsername(),
+                            session.getSessionId(),
+                            EventType.UPDATE_EVENT
+                    );
+
+                    Uni<Void> dbWriteOp = accountProducer.produceDBWriteEvent(dbWriteRequest)
+                            .onFailure().invoke(error ->
+                                    log.errorf(error, "Failed to produce DB write event for session: %s",
+                                            session.getSessionId()))
+                            .onFailure().recoverWithNull()
+                            .replaceWithVoid();
+
+                    dbWriteOperations.add(dbWriteOp);
+
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Triggered DB write for terminated session: %s, bucketId: %s",
+                                session.getSessionId(), bucketId);
+                    }
+                }
+            }
+        }
+
+        if (dbWriteOperations.isEmpty()) {
+            return Uni.createFrom().voidItem();
+        }
+
+        // Execute all DB write operations in parallel
+        return Uni.join().all(dbWriteOperations).andCollectFailures()
+                .replaceWithVoid()
+                .onFailure().invoke(e -> log.errorf(e, "Error producing DB write events for terminated sessions"));
     }
 
     /**
