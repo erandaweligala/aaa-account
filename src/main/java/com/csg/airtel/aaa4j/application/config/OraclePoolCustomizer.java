@@ -15,7 +15,6 @@ import java.util.concurrent.TimeUnit;
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
-//todo  .setName("oracle-pool-1000tps"); not showing this pool name in console bd operations
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
@@ -55,8 +54,9 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
         // Apply prepared statement cache size
         connectOptions.setPreparedStatementCacheMaxSize(poolConfig.preparedStatementCacheMaxSize());
 
-        log.infof("Oracle pool configured: maxSize=%d, connectionTimeout=%dms, idleTimeout=%dms, " +
+        log.infof("Oracle pool '%s' configured: maxSize=%d, connectionTimeout=%dms, idleTimeout=%dms, " +
                         "maxLifetime=%dms, eventLoopSize=%d, pipelining=%s, tcpKeepAlive=%s, tcpNoDelay=%s",
+                poolOptions.getName(),
                 poolConfig.maxSize(),
                 poolConfig.connectionTimeout(),
                 poolConfig.idleTimeout(),
