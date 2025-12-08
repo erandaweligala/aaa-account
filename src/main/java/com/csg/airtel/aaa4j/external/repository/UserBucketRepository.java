@@ -3,7 +3,7 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import io.smallrye.mutiny.Uni;
-import io.vertx.mutiny.oracleclient.OraclePool;
+import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
 import io.vertx.mutiny.sqlclient.RowSet;
 import io.vertx.mutiny.sqlclient.Tuple;
@@ -45,10 +45,10 @@ public class UserBucketRepository {
     public static final String IS_GROUP = "IS_GROUP";
     public static final String CONCURRENCY = "CONCURRENCY";
 
-    final OraclePool client; // todo 'io.vertx.mutiny.oracleclient.OraclePool' is deprecated
+    final Pool client;
 
     @Inject
-    public UserBucketRepository(OraclePool client) {
+    public UserBucketRepository(Pool client) {
         this.client = client;
     }
 
