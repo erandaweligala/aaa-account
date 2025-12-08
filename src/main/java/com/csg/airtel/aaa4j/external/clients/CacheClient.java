@@ -37,7 +37,7 @@ public class CacheClient {
     private static final String KEY_PREFIX = "user:";
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
-    //todo Unsatisfied dependency: (ReactiveRedisDataSource) no bean matches the injection point
+
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,

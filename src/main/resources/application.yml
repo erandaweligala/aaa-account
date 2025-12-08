@@ -74,6 +74,10 @@ quarkus:
     timeout: 10s
     max-pool-size: 100
     max-pool-waiting: 200
+    devservices:
+      enabled: true
+    health:
+      enabled: true
 
 # Pool Configuration
 pool:
