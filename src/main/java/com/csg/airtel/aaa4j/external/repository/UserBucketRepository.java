@@ -45,7 +45,7 @@ public class UserBucketRepository {
     public static final String IS_GROUP = "IS_GROUP";
     public static final String CONCURRENCY = "CONCURRENCY";
 
-    final OraclePool client; // Pool configured via OraclePoolCustomizer for 1000 TPS handling
+    final OraclePool client; // todo 'io.vertx.mutiny.oracleclient.OraclePool' is deprecated
 
     @Inject
     public UserBucketRepository(OraclePool client) {
