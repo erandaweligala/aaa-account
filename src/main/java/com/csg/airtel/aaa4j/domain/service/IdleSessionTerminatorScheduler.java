@@ -262,6 +262,75 @@ public class IdleSessionTerminatorScheduler {
     }
 
     /**
+     * Find a balance matching the given bucket ID.
+     *
+     * @param balances List of balances to search
+     * @param bucketId The bucket ID to match
+     * @return Matching balance or null if not found
+     */
+    private Balance findBalanceByBucketId(List<Balance> balances, String bucketId) {
+        for (Balance balance : balances) {
+            if (bucketId.equals(balance.getBucketId())) {
+                return balance;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Create a DB write operation for a session if the balance needs to be persisted.
+     *
+     * @param session The session being terminated
+     * @param balance The matching balance
+     * @return Uni for the DB write operation, or null if no write is needed
+     */
+    private Uni<Void> createDBWriteOperationIfNeeded(Session session, Balance balance) {
+        if (balance.getQuota() < session.getAvailableBalance()) {
+            return null;
+        }
+
+        DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(
+                balance,
+                balance.getBucketUsername(),
+                session.getSessionId(),
+                EventType.UPDATE_EVENT
+        );
+
+        if (log.isDebugEnabled()) {
+            log.debugf("Triggered DB write for terminated session: %s, bucketId: %s",
+                    session.getSessionId(), balance.getBucketId());
+        }
+
+        return accountProducer.produceDBWriteEvent(dbWriteRequest)
+                .onFailure().invoke(error ->
+                        log.errorf(error, "Failed to produce DB write event for session: %s",
+                                session.getSessionId()))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
+    }
+
+    /**
+     * Process a single session and create a DB write operation if needed.
+     *
+     * @param session The session to process
+     * @param balances List of balances to search for matching bucket
+     * @return Uni for the DB write operation, or null if no write is needed
+     */
+    private Uni<Void> processSessionForDBWrite(Session session, List<Balance> balances) {
+        String bucketId = session.getPreviousUsageBucketId();
+        if (bucketId == null) {
+            return null;
+        }
+
+        Balance matchingBalance = findBalanceByBucketId(balances, bucketId);
+        if (matchingBalance == null) {
+            return null;
+        }
+
+        return createDBWriteOperationIfNeeded(session, matchingBalance);
+    }
+
+    /**
      * Triggers DB write operations to persist balance state for terminated sessions.
      * Uses efficient loops to avoid stream overhead and produces events reactively.
      *
@@ -269,8 +338,6 @@ public class IdleSessionTerminatorScheduler {
      * @param userData user session data containing balance information
      * @return Uni that completes when all DB write events are produced
      */
-
-    //todo Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
     private Uni<Void> triggerDBRequestInitiate(List<Session> sessionsToTerminate, UserSessionData userData) {
         if (sessionsToTerminate == null || sessionsToTerminate.isEmpty()) {
             return Uni.createFrom().voidItem();
@@ -283,46 +350,10 @@ public class IdleSessionTerminatorScheduler {
 
         List<Uni<Void>> dbWriteOperations = new ArrayList<>();
 
-        // Use efficient loop instead of stream to find matching balances
         for (Session session : sessionsToTerminate) {
-            String bucketId = session.getPreviousUsageBucketId();
-            if (bucketId == null) {
-                continue;
-            }
-
-            // Find matching balance using efficient loop
-            Balance matchingBalance = null;
-            for (Balance balance : balances) {
-                if (bucketId.equals(balance.getBucketId())) {
-                    matchingBalance = balance;
-                    break;
-                }
-            }
-
-            if (matchingBalance != null) {
-                // Check if balance needs to be persisted (quota is valid relative to session's available balance)
-                if (matchingBalance.getQuota() >= session.getAvailableBalance()) {
-                    DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(
-                            matchingBalance,
-                            matchingBalance.getBucketUsername(),
-                            session.getSessionId(),
-                            EventType.UPDATE_EVENT
-                    );
-
-                    Uni<Void> dbWriteOp = accountProducer.produceDBWriteEvent(dbWriteRequest)
-                            .onFailure().invoke(error ->
-                                    log.errorf(error, "Failed to produce DB write event for session: %s",
-                                            session.getSessionId()))
-                            .onFailure().recoverWithNull()
-                            .replaceWithVoid();
-
-                    dbWriteOperations.add(dbWriteOp);
-
-                    if (log.isDebugEnabled()) {
-                        log.debugf("Triggered DB write for terminated session: %s, bucketId: %s",
-                                session.getSessionId(), bucketId);
-                    }
-                }
+            Uni<Void> dbWriteOp = processSessionForDBWrite(session, balances);
+            if (dbWriteOp != null) {
+                dbWriteOperations.add(dbWriteOp);
             }
         }
 
@@ -330,7 +361,6 @@ public class IdleSessionTerminatorScheduler {
             return Uni.createFrom().voidItem();
         }
 
-        // Execute all DB write operations in parallel
         return Uni.join().all(dbWriteOperations).andCollectFailures()
                 .replaceWithVoid()
                 .onFailure().invoke(e -> log.errorf(e, "Error producing DB write events for terminated sessions"));
