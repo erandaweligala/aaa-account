@@ -15,8 +15,6 @@ import java.util.concurrent.TimeUnit;
  * Customizes the Oracle connection pool for optimal 1000 TPS handling.
  * Applies configuration from PoolConfig to tune pool behavior.
  */
-
-//todo i have used pool (io.vertx.mutiny.sqlclient.Pool) UserBucketRepository class pls give me thi related config not afected to below config
 @Singleton
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
@@ -67,7 +65,7 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 poolConfig.tcpKeepAlive(),
                 poolConfig.tcpNoDelay());
 
-        // Create pool using bare Vert.x types (Quarkus will wrap it in Mutiny automatically)
+        //todo 'io.vertx.oracleclient.OraclePool' is deprecated
         return OraclePool.pool(input.vertx(), connectOptions, poolOptions);
     }
 }
