@@ -27,7 +27,6 @@ public class BucketService {
         this.coaService = coaService;
     }
 
-    //todo implement if  userData == null  pls add new entry without session section add balance details related
     public Uni<ApiResponse<Balance>> addBucketBalance(String userName, Balance balance) {
         // Input validation
         if (userName == null || userName.isBlank()) {
@@ -39,16 +38,31 @@ public class BucketService {
 
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
-                    // Create defensive copy with null-safe handling
-                    List<Balance> newBalances = new ArrayList<>(
-                            Objects.requireNonNullElse(userData.getBalance(), List.of())
-                    );
-                    newBalances.add(balance);
+                    UserSessionData updatedUserData;
 
-                    // Use immutable builder/wither pattern
-                    UserSessionData updatedUserData = userData.toBuilder()
-                            .balance(Collections.unmodifiableList(newBalances))
-                            .build();
+                    if (userData == null) {
+                        // Create new entry without session section, only with balance details
+                        log.infof("User data not found for user %s, creating new entry with balance", userName);
+                        List<Balance> newBalances = new ArrayList<>();
+                        newBalances.add(balance);
+
+                        updatedUserData = UserSessionData.builder()
+                                .userName(userName)
+                                .balance(Collections.unmodifiableList(newBalances))
+                                .sessions(Collections.emptyList())
+                                .build();
+                    } else {
+                        // Create defensive copy with null-safe handling for existing user
+                        List<Balance> newBalances = new ArrayList<>(
+                                Objects.requireNonNullElse(userData.getBalance(), List.of())
+                        );
+                        newBalances.add(balance);
+
+                        // Use immutable builder/wither pattern
+                        updatedUserData = userData.toBuilder()
+                                .balance(Collections.unmodifiableList(newBalances))
+                                .build();
+                    }
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
                             /*.call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName)) no need to disconnect*/
