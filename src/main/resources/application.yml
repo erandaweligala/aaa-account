@@ -62,7 +62,7 @@ quarkus:
       "io.smallrye.config":
         level: INFO
       "com.csg.airtel.aaa4j":
-        level: INFO
+        level: DEBUG
 
   otel:
     traces:

@@ -12,4 +12,6 @@ public  class User {
 
     @JsonProperty("userName")
     private String userName;
+    @JsonProperty("groupId")
+    private String groupId;
 }

@@ -112,11 +112,13 @@ public class InterimHandler {
         log.infof("TraceId: %s Processing interim accounting request for user: %s, sessionId: %s",
                 traceId,request.username(), request.sessionId());
         Session session = findSession(userData, request.sessionId());
+        int i = 0;
         if (session == null) {
             session = createSession(request);
+            i = 1;
         }
 
-        if(userData.getConcurrency() <= userData.getSessions().size()) {
+        if(userData.getConcurrency() < userData.getSessions().size()+i) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
@@ -167,7 +169,8 @@ public class InterimHandler {
                 0L,
                 request.framedIPAddress(),
                 request.nasIP(),
-                true
+                true,
+                0
 
         );
     }

@@ -19,6 +19,7 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,19 +38,19 @@ public class IdleSessionTerminatorScheduler {
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
     private final AccountProducer accountProducer;
-    private final SessionLifecycleManager sessionLifecycleManager;
+
 
     @Inject
     public IdleSessionTerminatorScheduler(CacheClient cacheClient,
                                           SessionExpiryIndex sessionExpiryIndex,
                                           IdleSessionConfig config,
-                                          AccountProducer accountProducer,
-                                          SessionLifecycleManager sessionLifecycleManager) {
+                                          AccountProducer accountProducer
+                                    ) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
         this.accountProducer = accountProducer;
-        this.sessionLifecycleManager = sessionLifecycleManager;
+
     }
 
     /**
@@ -221,7 +222,7 @@ public class IdleSessionTerminatorScheduler {
 
         // Build set of expired session IDs for O(1) lookup - using efficient loop instead of stream
         int expiredCount = expiredSessionEntries.size();
-        var expiredSessionIds = new java.util.HashSet<String>(expiredCount);
+        var expiredSessionIds = HashSet.newHashSet(expiredCount);
         for (SessionExpiryEntry entry : expiredSessionEntries) {
             expiredSessionIds.add(entry.sessionId());
         }

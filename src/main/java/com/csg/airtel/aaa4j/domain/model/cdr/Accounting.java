@@ -33,4 +33,7 @@ public class Accounting {
 
     @JsonProperty("acctOutputGigawords")
     private Integer acctOutputGigawords;
+
+    @JsonProperty("totalUsage")
+    private Long totalUsage;
 }
