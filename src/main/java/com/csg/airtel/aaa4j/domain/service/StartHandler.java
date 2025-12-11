@@ -101,6 +101,7 @@ public class StartHandler {
                         session.getNasPortId().equals(request.nasPortId()));
 
         // Allow session creation if nasPortId matches, even if concurrency limit is reached
+
         if(!nasPortIdMatches && userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return accountProducer.produceAccountingResponseEvent(

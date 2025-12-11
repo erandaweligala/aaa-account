@@ -50,7 +50,6 @@ public class CacheClient {
 
     /**
      * Store user data in Redis.
-     *
      * OPTIMIZED: Logging guards prevent overhead on high-frequency operations.
      * Timing calculations only performed when debug logging is enabled.
      */
@@ -71,7 +70,6 @@ public class CacheClient {
 
     /**
      * Retrieve user data from Redis.
-     *
      * OPTIMIZED: Logging guards and conditional timing prevent overhead.
      */
     @CircuitBreaker(
@@ -113,7 +111,6 @@ public class CacheClient {
 
     /**
      * Update user data and related caches.
-     *
      * OPTIMIZED: Logging guards and conditional timing prevent overhead.
      * Removed unnecessary intermediate logging of serialized JSON.
      */
