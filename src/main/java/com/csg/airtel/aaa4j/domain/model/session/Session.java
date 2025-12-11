@@ -19,6 +19,7 @@ public class Session {
     private Long previousTotalUsageQuotaValue;
     private String framedId;
     private String nasIp;
+    private String nasPortId;
     private boolean isNewSession;
     private long availableBalance;
 

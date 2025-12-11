@@ -139,6 +139,7 @@ public class StopHandler {
                 0L,
                 request.framedIPAddress(),
                 request.nasIP(),
+                request.nasPortId(),
                 false,
                 0
         );

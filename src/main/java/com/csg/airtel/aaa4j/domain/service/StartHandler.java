@@ -94,8 +94,9 @@ public class StartHandler {
             AccountingRequestDto request,
             UserSessionData userSessionData,
             List<Balance> balanceList) {
-
+        //todo implement to if have request.nasportId ==  userSessionData.getSessions().nasPordId can allow to create session
         if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
+
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
@@ -506,6 +507,7 @@ public class StartHandler {
                 0L,
                 request.framedIPAddress(),
                 request.nasIP(),
+                request.nasPortId(),
                 false,
                 0
         );

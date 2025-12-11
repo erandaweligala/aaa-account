@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.response.ApiResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
+import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
@@ -27,7 +28,7 @@ public class BucketService {
         this.coaService = coaService;
     }
 
-    public Uni<ApiResponse<Balance>> addBucketBalance(String userName, Balance balance) {
+    public Uni<ApiResponse<Balance>> addBucketBalance(String userName, BalanceWrapper balance) {
         // Input validation
         if (userName == null || userName.isBlank()) {
             return Uni.createFrom().item(createErrorResponse("Username is required"));
@@ -36,17 +37,24 @@ public class BucketService {
             return Uni.createFrom().item(createErrorResponse("Balance is required"));
         }
 
+
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
                     UserSessionData updatedUserData;
 
-                    if (userData == null) {
+                    if (userData == null ) {
                         // Create new entry without session section, only with balance details
                         log.infof("User data not found for user %s, creating new entry with balance", userName);
                         List<Balance> newBalances = new ArrayList<>();
-                        newBalances.add(balance);
+                        newBalances.add(balance.getBalance());
+                        String groupId = null;
+                        if(balance.getBalance().isGroup()){
+                            groupId = balance.getBalance().getBucketUsername();
+                        }
 
                         updatedUserData = UserSessionData.builder()
+                                .concurrency(balance.getConcurrency())
+                                .groupId(groupId)
                                 .userName(userName)
                                 .balance(Collections.unmodifiableList(newBalances))
                                 .sessions(Collections.emptyList())
@@ -56,7 +64,7 @@ public class BucketService {
                         List<Balance> newBalances = new ArrayList<>(
                                 Objects.requireNonNullElse(userData.getBalance(), List.of())
                         );
-                        newBalances.add(balance);
+                        newBalances.add(balance.getBalance());
 
                         // Use immutable builder/wither pattern
                         updatedUserData = userData.toBuilder()
@@ -66,7 +74,7 @@ public class BucketService {
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
                             /*.call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName)) no need to disconnect*/
-                            .onItem().transform(result -> createSuccessResponse(balance,"Bucket Added Successfully"));
+                            .onItem().transform(result -> createSuccessResponse(balance.getBalance(),"Bucket Added Successfully"));
                 })
                 .onFailure().recoverWithItem(throwable -> {
                     log.errorf("Failed to add balance for user {}: {}",

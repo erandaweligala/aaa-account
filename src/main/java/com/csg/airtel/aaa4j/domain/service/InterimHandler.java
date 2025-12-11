@@ -169,6 +169,7 @@ public class InterimHandler {
                 0L,
                 request.framedIPAddress(),
                 request.nasIP(),
+                request.nasPortId(),
                 true,
                 0
 

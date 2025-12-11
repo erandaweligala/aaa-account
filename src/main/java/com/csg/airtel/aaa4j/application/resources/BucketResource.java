@@ -2,14 +2,11 @@ package com.csg.airtel.aaa4j.application.resources;
 
 
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
+import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
 import com.csg.airtel.aaa4j.domain.service.BucketService;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.PATCH;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.metrics.annotation.Timed;
@@ -31,7 +28,7 @@ public class BucketResource {
     @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    public Uni<Response> addBucket(@PathParam("userName") String userName, Balance balance) {
+    public Uni<Response> addBucket(@PathParam("userName") String userName, BalanceWrapper balance) {
         log.infof("Adding bucket  Start %s", userName);
         return bucketService.addBucketBalance(userName, balance)
                 .onItem().transform(apiResponse -> {

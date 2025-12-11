@@ -60,9 +60,8 @@ public class CacheClient {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        String jsonValue = serialize(userData);
-        return reactiveRedisDataSource.value(String.class)
-                .set(key, jsonValue)
+        return reactiveRedisDataSource.value(UserSessionData.class)
+                .set(key, userData)
                 .invoke(() -> {
                     if (log.isDebugEnabled()) {
                         log.debugf("User data stored for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
@@ -93,18 +92,17 @@ public class CacheClient {
             log.debugf("Retrieving user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        return reactiveRedisDataSource.value(String.class)
+        return reactiveRedisDataSource.value(UserSessionData.class)
                 .get(key)
                 .onItem().transform(Unchecked.function(jsonValue -> {
-                    if (jsonValue == null || jsonValue.isEmpty()) {
+                    if (jsonValue == null ) {
                         return null; // No record found
                     }
                     try {
-                        UserSessionData userSessionData = objectMapper.readValue(jsonValue, UserSessionData.class);
                         if (log.isDebugEnabled()) {
                             log.debugf("User data retrieved for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
                         }
-                        return userSessionData;
+                        return jsonValue;
                     } catch (Exception e) {
                         throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR, ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
                     }
@@ -126,10 +124,10 @@ public class CacheClient {
         }
         String userKey = KEY_PREFIX + userId;
 
-        return Uni.createFrom().item(() -> serialize(userData))
+        return Uni.createFrom().voidItem()
                 .onItem().transformToUni(serializedData ->
-                        reactiveRedisDataSource.value(String.class)
-                                .set(userKey, serializedData, new SetArgs().ex(Duration.ofHours(1000)))
+                        reactiveRedisDataSource.value(UserSessionData.class)
+                                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(1000)))
                 )
                 .invoke(() -> {
                     if (log.isDebugEnabled()) {
@@ -148,15 +146,6 @@ public class CacheClient {
                 .map(deleted -> deleted > 0
                         ? "Key deleted: " + key
                         : "Key not found: " + key);
-    }
-
-    private String serialize(UserSessionData data) {
-        try {
-            return objectMapper.writeValueAsString(data);
-        } catch (Exception e) {
-            throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR,ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
-
-        }
     }
 
     /**
@@ -208,7 +197,7 @@ public class CacheClient {
                                 UserSessionData userData = objectMapper.readValue(value, UserSessionData.class);
                                 userDataMap.put(userId, userData);
                             } catch (Exception e) {
-                                    log.errorf("Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
+                                log.errorf("Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
                             }
                         }
                     }
