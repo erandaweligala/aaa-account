@@ -94,14 +94,24 @@ public class StartHandler {
             AccountingRequestDto request,
             UserSessionData userSessionData,
             List<Balance> balanceList) {
-        //todo implement to if have request.nasportId ==  userSessionData.getSessions().nasPordId can allow to create session
-        if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
+        // Check if request.nasPortId matches any existing session's nasPortId
+        boolean nasPortIdMatches = userSessionData.getSessions()
+                .stream()
+                .anyMatch(session -> session.getNasPortId() != null &&
+                        session.getNasPortId().equals(request.nasPortId()));
 
+        // Allow session creation if nasPortId matches, even if concurrency limit is reached
+        if(!nasPortIdMatches && userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT));
+        }
+
+        if(nasPortIdMatches) {
+            log.infof("NAS Port ID %s matches existing session for user: %s, allowing session creation",
+                    request.nasPortId(), request.username());
         }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
