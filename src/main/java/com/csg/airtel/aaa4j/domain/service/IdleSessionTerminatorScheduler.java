@@ -250,6 +250,9 @@ public class IdleSessionTerminatorScheduler {
 
         totalSessionsTerminated.addAndGet(sessionsToTerminate.size());
 
+        // Generate CDRs for idle sessions being terminated
+        generateCDRsForIdleSessions(sessionsToTerminate, userName);
+
         // Trigger DB write operations for terminated sessions to persist balance state
         return triggerDBRequestInitiate(sessionsToTerminate, userData)
                 .onItem().transformToUni(v ->
@@ -386,6 +389,38 @@ public class IdleSessionTerminatorScheduler {
                         v -> {},
                         e -> log.warnf("Failed to get expired count: %s", e.getMessage())
                 );
+    }
+
+    /**
+     * Generate and publish CDR events for idle sessions being terminated.
+     * Runs asynchronously to avoid blocking the termination process.
+     *
+     * @param sessionsToTerminate List of sessions being terminated due to idle timeout
+     * @param username Username associated with the sessions
+     */
+    private void generateCDRsForIdleSessions(List<Session> sessionsToTerminate, String username) {
+        if (sessionsToTerminate == null || sessionsToTerminate.isEmpty()) {
+            return;
+        }
+
+        log.infof("Generating CDRs for %d idle sessions, user: %s", sessionsToTerminate.size(), username);
+
+        for (Session session : sessionsToTerminate) {
+            try {
+                accountProducer.produceAccountingCDREvent(
+                        CdrMappingUtil.buildCOADisconnectCDREvent(session, username)
+                ).subscribe().with(
+                        success -> {
+                            if (log.isDebugEnabled()) {
+                                log.debugf("CDR sent successfully for idle session: %s", session.getSessionId());
+                            }
+                        },
+                        failure -> log.errorf(failure, "Failed to send CDR for idle session: %s", session.getSessionId())
+                );
+            } catch (Exception e) {
+                log.errorf(e, "Error building CDR for idle session: %s", session.getSessionId());
+            }
+        }
     }
 
 }
