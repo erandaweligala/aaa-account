@@ -83,6 +83,18 @@ public class CdrMappingUtil {
             );
         }
 
+        public static AccountingMetrics forCOADisconnect(Session session) {
+            return new AccountingMetrics(
+                    "COA-Disconnect",
+                    EventTypes.ACCOUNTING_COA.name(),
+                    session.getSessionTime() != null ? session.getSessionTime() : 0,
+                    0L,  // Input octets not available in Session object
+                    0L,  // Output octets not available in Session object
+                    0,   // Input gigawords not available in Session object
+                    0    // Output gigawords not available in Session object
+            );
+        }
+
         // Getters
         public String getAcctStatusType() { return acctStatusType; }
         public String getEventType() { return eventType; }
@@ -112,6 +124,36 @@ public class CdrMappingUtil {
      */
     public static AccountingCDREvent buildStopCDREvent(AccountingRequestDto request, Session session) {
         return buildCDREvent(request, session, AccountingMetrics.forStop(request));
+    }
+
+    /**
+     * Builds a complete AccountingCDREvent for COA-DISCONNECT events
+     * Used when a session is terminated via COA (Change of Authorization) Disconnect
+     */
+    public static AccountingCDREvent buildCOADisconnectCDREvent(Session session, String username) {
+        log.infof("Building COA Disconnect CDR event for session: %s", session.getSessionId());
+
+        AccountingMetrics metrics = AccountingMetrics.forCOADisconnect(session);
+        SessionCdr cdrSession = buildSessionCdrFromSession(session, metrics.getSessionTime(), metrics.getEventType());
+        User cdrUser = buildUserCdrFromSession(username);
+        Network cdrNetwork = buildNetworkCdrFromSession(session);
+        Accounting cdrAccounting = buildAccountingCdr(metrics);
+
+        Payload payload = Payload.builder()
+                .session(cdrSession)
+                .user(cdrUser)
+                .network(cdrNetwork)
+                .accounting(cdrAccounting)
+                .build();
+
+        return AccountingCDREvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .eventType(metrics.getEventType())
+                .eventVersion("1.0")
+                .eventTimestamp(Instant.now())
+                .source("AAA-Service")
+                .payload(payload)
+                .build();
     }
 
     /**
@@ -232,5 +274,49 @@ public class CdrMappingUtil {
         } catch (Exception e) {
             log.errorf(e, "Error building CDR event for session: %s", request.sessionId());
         }
+    }
+
+    /**
+     * Builds a SessionCdr object from Session data (for COA Disconnect scenarios)
+     */
+    private static SessionCdr buildSessionCdrFromSession(Session session, Integer sessionTime, String eventType) {
+        String sessionTimeStr = sessionTime != null ? String.valueOf(sessionTime) : "0";
+        Instant eventEndTime = Objects.equals(eventType, EventTypes.ACCOUNTING_COA.name()) ? Instant.now() : null;
+
+        // Convert LocalDateTime to Instant for startTime
+        Instant startTime = session.getSessionInitiatedTime() != null
+                ? session.getSessionInitiatedTime().atZone(java.time.ZoneId.systemDefault()).toInstant()
+                : Instant.now();
+
+        return SessionCdr.builder()
+                .sessionId(session.getSessionId())
+                .sessionTime(sessionTimeStr)
+                .startTime(startTime)
+                .updateTime(Instant.now())
+                .nasIdentifier(session.getNasIp())  // Use NAS IP as identifier
+                .nasIpAddress(session.getNasIp())
+                .nasPort(session.getNasPortId())
+                .nasPortType(session.getNasPortId())
+                .sessionStopTime(eventEndTime)
+                .build();
+    }
+
+    /**
+     * Builds a User CDR object from username (for COA Disconnect scenarios)
+     */
+    private static User buildUserCdrFromSession(String username) {
+        return User.builder()
+                .userName(username)
+                .build();
+    }
+
+    /**
+     * Builds a Network CDR object from Session data (for COA Disconnect scenarios)
+     */
+    private static Network buildNetworkCdrFromSession(Session session) {
+        return Network.builder()
+                .framedIpAddress(session.getFramedId())
+                .calledStationId(session.getNasIp())
+                .build();
     }
 }
