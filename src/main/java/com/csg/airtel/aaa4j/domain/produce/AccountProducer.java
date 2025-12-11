@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
+import com.csg.airtel.aaa4j.domain.service.CdrMappingUtil;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
@@ -84,7 +85,6 @@ public class AccountProducer {
     /**
      * @param event request
      */
-    //todo COA DISCONNECT CDR Genarate call from this method
     @CircuitBreaker(
             requestVolumeThreshold = 10,
             failureRatio = 0.5,
@@ -101,23 +101,34 @@ public class AccountProducer {
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produceAccountingResponseEvent process");
-        return Uni.createFrom().emitter(em -> {
-            Message<AccountingResponseEvent> message = Message.of(event)
-                    .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
-                            .withKey(event.sessionId())
-                            .build())
-                    .withAck(() -> {
-                        em.complete(null);
-                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
-                        return CompletableFuture.completedFuture(null);
-                    })
-                    .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
-                        em.fail(throwable);
-                        return CompletableFuture.completedFuture(null);
-                    });
 
-            accountingResponseEmitter.send(message);
+        // Generate COA DISCONNECT CDR if this is a disconnect event
+        Uni<Void> cdrGenerationUni = generateCOADisconnectCDRIfNeeded(event);
+
+        return cdrGenerationUni.onItemOrFailure().transformToUni((item, failure) -> {
+            if (failure != null) {
+                LOG.warnf(failure, "Failed to generate COA DISCONNECT CDR for session: %s, continuing with response event",
+                        event.sessionId());
+            }
+
+            return Uni.createFrom().emitter(em -> {
+                Message<AccountingResponseEvent> message = Message.of(event)
+                        .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
+                                .withKey(event.sessionId())
+                                .build())
+                        .withAck(() -> {
+                            em.complete(null);
+                            LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
+                            return CompletableFuture.completedFuture(null);
+                        })
+                        .withNack(throwable -> {
+                            LOG.errorf("Send failed: %s", throwable.getMessage());
+                            em.fail(throwable);
+                            return CompletableFuture.completedFuture(null);
+                        });
+
+                accountingResponseEmitter.send(message);
+            });
         });
     }
 
@@ -156,6 +167,71 @@ public class AccountProducer {
             accountingCDREventEmitter.send(message);
         });
 
+    }
+
+    /**
+     * Generate and publish CDR event for COA Disconnect scenario if the event is a COA DISCONNECT
+     *
+     * @param event the accounting response event
+     * @return Uni that completes when CDR is generated (or immediately if not a COA DISCONNECT)
+     */
+    private Uni<Void> generateCOADisconnectCDRIfNeeded(AccountingResponseEvent event) {
+        // Only generate CDR for COA DISCONNECT events
+        if (event.eventType() != AccountingResponseEvent.EventType.COA ||
+                event.action() != AccountingResponseEvent.ResponseAction.DISCONNECT) {
+            return Uni.createFrom().voidItem();
+        }
+
+        String sessionId = event.sessionId();
+        String username = event.qosParameters() != null ? event.qosParameters().get("username") : null;
+
+        if (username == null) {
+            LOG.warnf("Username not found in COA DISCONNECT event for session: %s", sessionId);
+            return Uni.createFrom().voidItem();
+        }
+
+        LOG.infof("Generating COA DISCONNECT CDR for session: %s, user: %s", sessionId, username);
+
+        return cacheClient.getUserData(username)
+                .onItem().transformToUni(userSessionData -> {
+                    if (userSessionData == null || userSessionData.getSessions() == null) {
+                        LOG.warnf("No user session data found for user: %s during COA DISCONNECT CDR generation", username);
+                        return Uni.createFrom().voidItem();
+                    }
+
+                    // Find the session with matching sessionId
+                    Session targetSession = null;
+                    for (Session session : userSessionData.getSessions()) {
+                        if (sessionId.equals(session.getSessionId())) {
+                            targetSession = session;
+                            break;
+                        }
+                    }
+
+                    if (targetSession == null) {
+                        LOG.warnf("Session %s not found in user %s sessions during COA DISCONNECT CDR generation",
+                                sessionId, username);
+                        return Uni.createFrom().voidItem();
+                    }
+
+                    try {
+                        AccountingCDREvent cdrEvent = CdrMappingUtil.buildCOADisconnectCDREvent(targetSession, username);
+
+                        return produceAccountingCDREvent(cdrEvent)
+                                .onItem().invoke(() ->
+                                        LOG.infof("COA DISCONNECT CDR sent successfully for session: %s", sessionId))
+                                .onFailure().invoke(failure ->
+                                        LOG.errorf(failure, "Failed to send COA DISCONNECT CDR for session: %s", sessionId));
+                    } catch (Exception e) {
+                        LOG.errorf(e, "Error building COA DISCONNECT CDR for session: %s", sessionId);
+                        return Uni.createFrom().failure(e);
+                    }
+                })
+                .onFailure().invoke(failure ->
+                        LOG.errorf(failure, "Failed to retrieve user data for COA DISCONNECT CDR generation, user: %s, session: %s",
+                                username, sessionId))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
 
     /**
