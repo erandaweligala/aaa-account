@@ -14,12 +14,15 @@ public class AccountingHandlerFactory {
     final StartHandler startHandler;
     final InterimHandler interimHandler;
     final StopHandler stopHandler;
+    final COADisconnectRequestHandler coaDisconnectRequestHandler;
 
     @Inject
-    public AccountingHandlerFactory(StartHandler startHandler, InterimHandler interimHandler, StopHandler stopHandler) {
+    public AccountingHandlerFactory(StartHandler startHandler, InterimHandler interimHandler,
+                                   StopHandler stopHandler, COADisconnectRequestHandler coaDisconnectRequestHandler) {
         this.startHandler = startHandler;
         this.interimHandler = interimHandler;
         this.stopHandler = stopHandler;
+        this.coaDisconnectRequestHandler = coaDisconnectRequestHandler;
     }
 
     public Uni<Void> getHandler(AccountingRequestDto request,String traceId) {
@@ -29,6 +32,7 @@ public class AccountingHandlerFactory {
             case START -> startHandler.processAccountingStart(request,traceId);
             case INTERIM_UPDATE -> interimHandler.handleInterim(request,traceId);
             case STOP -> stopHandler.stopProcessing(request, null,traceId);
+            case COA_DISCONNECT_REQUEST -> coaDisconnectRequestHandler.processCoaDisconnectRequest(request, traceId);
         };
     }
 

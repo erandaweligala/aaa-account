@@ -24,6 +24,7 @@ public record AccountingRequestDto(
     public enum ActionType {
         START,
         INTERIM_UPDATE,
-        STOP
+        STOP,
+        COA_DISCONNECT_REQUEST
     }
 }
