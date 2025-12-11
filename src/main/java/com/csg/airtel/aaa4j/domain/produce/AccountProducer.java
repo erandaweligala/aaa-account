@@ -84,6 +84,7 @@ public class AccountProducer {
     /**
      * @param event request
      */
+    //todo COA DISCONNECT CDR Genarate call from this method
     @CircuitBreaker(
             requestVolumeThreshold = 10,
             failureRatio = 0.5,
