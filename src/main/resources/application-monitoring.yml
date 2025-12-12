@@ -1,0 +1,92 @@
+# Monitoring Configuration for AAA Accounting Service
+# This configuration enables comprehensive monitoring, metrics collection,
+# and observability features.
+
+# ==================== Monitoring Settings ====================
+monitoring:
+  # Metrics export configuration
+  metrics-export:
+    # Enable/disable metrics export to file
+    enabled: true
+    # File path for metrics export (for Fluent Bit consumption)
+    file-path: /var/log/aaa-account/metrics.json
+    # Export interval
+    interval: 30s
+
+# ==================== Metrics Configuration ====================
+quarkus:
+  # Enable SmallRye Metrics
+  micrometer:
+    enabled: true
+    # Export to Prometheus format
+    export:
+      prometheus:
+        enabled: true
+        path: /q/metrics
+    # Enable JVM metrics
+    binder:
+      jvm: true
+      system: true
+      http-server: true
+
+  # ==================== Health Check Configuration ====================
+  smallrye-health:
+    # Root health endpoint
+    root-path: /q/health
+    # Liveness probe endpoint
+    liveness-path: /q/health/live
+    # Readiness probe endpoint
+    readiness-path: /q/health/ready
+    # Enable UI
+    ui:
+      enable: true
+      root-path: /q/health-ui
+
+  # ==================== OpenTelemetry Configuration ====================
+  # Enable OpenTelemetry for distributed tracing (optional)
+  otel:
+    # Enable/disable tracing
+    traces:
+      enabled: false
+      # Exporter can be set to 'otlp', 'jaeger', or 'none'
+      exporter: none
+    # Service name for tracing
+    service:
+      name: aaa-accounting-service
+
+  # ==================== Logging Configuration ====================
+  log:
+    # Enable JSON logging for better log aggregation
+    console:
+      json: false  # Set to true for structured logging
+    # Log levels for monitoring components
+    category:
+      "com.csg.airtel.aaa4j.domain.service.MonitoringService":
+        level: INFO
+      "com.csg.airtel.aaa4j.domain.service.SystemMetricsCollector":
+        level: INFO
+      "com.csg.airtel.aaa4j.domain.service.MetricsExporter":
+        level: INFO
+      "com.csg.airtel.aaa4j.application.health":
+        level: INFO
+      "com.csg.airtel.aaa4j.application.monitoring":
+        level: INFO
+
+# ==================== Application Monitoring Thresholds ====================
+# These can be used by custom alerting systems
+thresholds:
+  # CPU usage threshold (percentage)
+  cpu-usage-warning: 70
+  cpu-usage-critical: 90
+  # Memory usage threshold (percentage)
+  memory-usage-warning: 75
+  memory-usage-critical: 90
+  # Thread count threshold
+  thread-count-warning: 400
+  thread-count-critical: 450
+  # Error rate threshold (errors per minute)
+  error-rate-warning: 10
+  error-rate-critical: 50
+  # Active sessions threshold
+  active-sessions-warning: 8000
+  active-sessions-critical: 9500

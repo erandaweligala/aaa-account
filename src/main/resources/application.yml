@@ -63,10 +63,39 @@ quarkus:
         level: INFO
       "com.csg.airtel.aaa4j":
         level: DEBUG
+      "com.csg.airtel.aaa4j.domain.service.MonitoringService":
+        level: INFO
+      "com.csg.airtel.aaa4j.domain.service.SystemMetricsCollector":
+        level: INFO
+      "com.csg.airtel.aaa4j.domain.service.MetricsExporter":
+        level: INFO
+      "com.csg.airtel.aaa4j.application.health":
+        level: INFO
 
   otel:
     traces:
       exporter: none
+
+  # Micrometer Metrics
+  micrometer:
+    enabled: true
+    export:
+      prometheus:
+        enabled: true
+        path: /q/metrics
+    binder:
+      jvm: true
+      system: true
+      http-server: true
+
+  # SmallRye Health
+  smallrye-health:
+    root-path: /q/health
+    liveness-path: /q/health/live
+    readiness-path: /q/health/ready
+    ui:
+      enable: true
+      root-path: /q/health-ui
 
   # Redis Configuration - Optimized for 1000 TPS
   redis:
@@ -159,4 +188,9 @@ mp:
         receive.buffer.bytes: 65536
         failure-strategy: ignore
 
-
+# ==================== Monitoring & Observability Configuration ====================
+monitoring:
+  metrics-export:
+    enabled: true
+    file-path: /var/log/aaa-account/metrics.json
+    interval: 30s

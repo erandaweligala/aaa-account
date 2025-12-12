@@ -29,18 +29,23 @@ public class StartHandler {
     private final AccountProducer  accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final MonitoringService monitoringService;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, MonitoringService monitoringService) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
+        this.monitoringService = monitoringService;
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
+        io.micrometer.core.instrument.Timer.Sample sample = monitoringService.startTimer();
+        monitoringService.recordStartRequest();
+
         log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
 
@@ -65,10 +70,14 @@ public class StartHandler {
                     return accountingResponseEventUni;
                 }
             })
-            .onFailure().recoverWithUni(throwable -> {
+            .onItem().invoke(() -> monitoringService.recordStartHandlerTime(sample))
+            .onFailure().invoke(throwable -> {
                 log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s", traceId, request.username());
-                return Uni.createFrom().voidItem();
-            });
+                monitoringService.recordRequestError("START", throwable.getMessage());
+                monitoringService.recordAccountingFailure("START", throwable.getClass().getSimpleName());
+                monitoringService.recordStartHandlerTime(sample);
+            })
+            .onFailure().recoverWithUni(throwable -> Uni.createFrom().voidItem());
 }
 
     private Uni<Void> handleExistingUserSession(
@@ -104,6 +113,7 @@ public class StartHandler {
 
         if(!nasPortIdMatches && userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
+            monitoringService.recordSessionCreationFailure("ConcurrencyLimitExceeded");
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
@@ -142,6 +152,8 @@ public class StartHandler {
         double availableBalance = calculateAvailableBalance(combinedBalances);
         if (availableBalance <= 0) {
             log.warnf("User: %s has exhausted their data balance. Cannot start new session.", request.username());
+            monitoringService.recordSessionCreationFailure("BalanceExhausted");
+            monitoringService.recordBalanceUpdateFailure("InsufficientBalance");
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Data balance exhausted",
                             AccountingResponseEvent.EventType.COA,
@@ -187,12 +199,14 @@ public class StartHandler {
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
                 .invoke(() -> {
                     log.infof("cdr write event started for user: %s", request.username());
+                    monitoringService.recordSessionCreated();
                     generateAndSendCDR(request, newSession);
                 })
-                .onFailure().recoverWithUni(throwable -> {
+                .onFailure().invoke(throwable -> {
                     log.errorf(throwable, "Failed to update cache for user: %s", request.username());
-                    return Uni.createFrom().voidItem();
-                });
+                    monitoringService.recordSessionCreationFailure("CacheUpdateFailed");
+                })
+                .onFailure().recoverWithUni(throwable -> Uni.createFrom().voidItem());
     }
 
     private Session createSessionWithBalance(AccountingRequestDto request, Balance balance) {
@@ -304,6 +318,7 @@ public class StartHandler {
 
     private Uni<Void> handleNoServiceBuckets(AccountingRequestDto request) {
         log.warnf("No service buckets found for user: %s. Cannot create session data.", request.username());
+        monitoringService.recordSessionCreationFailure("NoServiceBuckets");
         return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "No service buckets found",
                                 AccountingResponseEvent.EventType.COA,
@@ -313,6 +328,8 @@ public class StartHandler {
 
     private Uni<Void> handleZeroQuota(AccountingRequestDto request) {
         log.warnf("User: %s has zero total data quota. Cannot create session data.", request.username());
+        monitoringService.recordSessionCreationFailure("ZeroQuota");
+        monitoringService.recordBalanceUpdateFailure("ZeroQuota");
         return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "Data quota is zero",
                                 AccountingResponseEvent.EventType.COA,
@@ -366,6 +383,7 @@ public class StartHandler {
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
                 .onItem().invoke(unused -> {
                     log.infof("CDR write event started for user: %s", request.username());
+                    monitoringService.recordSessionCreated();
                     generateAndSendCDR(request, finalSession);
                 });
     }
