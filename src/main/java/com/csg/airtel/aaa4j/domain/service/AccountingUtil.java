@@ -1321,7 +1321,7 @@ public class AccountingUtil {
         if (thresholdCache.isAsync()) {
             checkAndNotifyQuotaThresholdsAsync(balance, username)
                     .ifNoItem().after(thresholdCache.getAsyncTimeout())
-                    .recoverWithNull()
+                    .recoverWithNull() //todo Cannot resolve method 'recoverWithNull' in 'UniOnTimeout'
                     .subscribe().with(
                             result -> {
                                 if (log.isTraceEnabled() && result != null) {
@@ -1330,7 +1330,7 @@ public class AccountingUtil {
                             },
                             failure -> {
                                 if (log.isDebugEnabled()) {
-                                    log.debugf(failure, "Async quota threshold check failed for user: %s", username);
+                                    log.errorf( "Async quota threshold check failed for user: %s", username);
                                 }
                             }
                     );
