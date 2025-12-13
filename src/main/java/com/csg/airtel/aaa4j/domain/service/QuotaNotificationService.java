@@ -24,16 +24,20 @@ public class QuotaNotificationService {
 
     private final AccountProducer accountProducer;
     private final MessageTemplateCacheService templateCacheService;
+    private final NotificationTrackingService notificationTrackingService;
 
     public QuotaNotificationService(
             AccountProducer accountProducer,
-            MessageTemplateCacheService templateCacheService) {
+            MessageTemplateCacheService templateCacheService,
+            NotificationTrackingService notificationTrackingService) {
         this.accountProducer = accountProducer;
         this.templateCacheService = templateCacheService;
+        this.notificationTrackingService = notificationTrackingService;
     }
 
     /**
      * Check quota thresholds and publish notifications if thresholds are exceeded.
+     * Prevents duplicate notifications by tracking sent notifications in Redis.
      *
      * @param userData User session data containing template IDs
      * @param balance Balance/bucket being checked
@@ -41,7 +45,6 @@ public class QuotaNotificationService {
      * @param newQuota New quota value after update
      * @return Uni that completes when notifications are published
      */
-    //todo implement if already have publish notification above template no need to agiants send this above template
     public Uni<Void> checkAndNotifyThresholds(
             UserSessionData userData,
             Balance balance,
@@ -87,7 +90,7 @@ public class QuotaNotificationService {
                     .onItem().transformToUni(template -> {
                         if (template != null) {
                             return checkThreshold(
-                                    userData, balance, template, oldUsagePercentage, newUsagePercentage, newQuota
+                                    userData, balance, template, templateId, oldUsagePercentage, newUsagePercentage, newQuota
                             );
                         }
                         return Uni.createFrom().nullItem();
@@ -111,11 +114,13 @@ public class QuotaNotificationService {
 
     /**
      * Check if a specific threshold has been crossed and publish notification.
+     * Prevents duplicate notifications by checking if the same notification was already sent.
      */
     private Uni<Void> checkThreshold(
             UserSessionData userData,
             Balance balance,
             ThresholdGlobalTemplates template,
+            Long templateId,
             double oldUsagePercentage,
             double newUsagePercentage,
             long newQuota) {
@@ -131,11 +136,32 @@ public class QuotaNotificationService {
                     threshold, userData.getUserName(), balance.getBucketId(),
                     oldUsagePercentage, newUsagePercentage);
 
-            QuotaNotificationEvent event = createNotificationEvent(
-                    userData, balance, template, newQuota
-            );
+            // Check if this notification was already sent to prevent duplicates
+            return notificationTrackingService.isDuplicateNotification(
+                    userData.getUserName(),
+                    templateId,
+                    balance.getBucketId(),
+                    threshold
+            ).onItem().transformToUni(isDuplicate -> {
+                if (isDuplicate) {
+                    LOG.infof("Skipping duplicate notification for user=%s, templateId=%d, bucket=%s, threshold=%d%%",
+                            userData.getUserName(), templateId, balance.getBucketId(), threshold);
+                    return Uni.createFrom().voidItem();
+                }
 
-            return accountProducer.produceQuotaNotificationEvent(event);
+                // Create and send notification
+                QuotaNotificationEvent event = createNotificationEvent(
+                        userData, balance, template, templateId, newQuota
+                );
+
+                // Mark notification as sent and publish the event
+                return notificationTrackingService.markNotificationSent(
+                        userData.getUserName(),
+                        templateId,
+                        balance.getBucketId(),
+                        threshold
+                ).onItem().transformToUni(v -> accountProducer.produceQuotaNotificationEvent(event));
+            });
         }
 
         return null;
@@ -148,6 +174,7 @@ public class QuotaNotificationService {
             UserSessionData userData,
             Balance balance,
             ThresholdGlobalTemplates template,
+            Long templateId,
             long availableQuota) {
 
         String message = formatMessage(
@@ -167,7 +194,8 @@ public class QuotaNotificationService {
                 availableQuota,
                 balance.getBucketId(),
                 template.getThreshold(),
-                balance.getInitialBalance()
+                balance.getInitialBalance(),
+                templateId
         );
     }
 
