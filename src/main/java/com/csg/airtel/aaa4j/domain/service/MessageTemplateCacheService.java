@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.domain.model.ThresholdGlobalTemplates;
 import com.csg.airtel.aaa4j.external.repository.MessageTemplateRepository;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
+import io.quarkus.runtime.Startup;
 import io.smallrye.mutiny.Uni;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -51,6 +52,7 @@ public class MessageTemplateCacheService {
      * Loads all active templates from database and caches them in Redis and in-memory.
      */
     @PostConstruct
+    @Startup
     void initializeTemplateCache() {
         LOG.info("Initializing message template cache at application startup...");
 

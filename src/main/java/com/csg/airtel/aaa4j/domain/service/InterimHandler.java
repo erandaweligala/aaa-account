@@ -80,6 +80,7 @@ public class InterimHandler {
                     double totalQuota = 0.0;
                     String groupId = null;
                     long concurrency = 0;
+                    String templates = null;
                     for (ServiceBucketInfo bucket : serviceBuckets) {
                         if(!Objects.equals(bucket.getBucketUser(), request.username())){
                             groupId = bucket.getBucketUser();
@@ -87,6 +88,7 @@ public class InterimHandler {
                         double currentBalance = bucket.getCurrentBalance();
                         totalQuota += currentBalance;
                         concurrency = bucket.getConcurrency();
+                        templates = bucket.getNotificationTemplates();
                         balanceList.add(MappingUtil.createBalance(bucket));
 
                     }
@@ -97,7 +99,7 @@ public class InterimHandler {
                                 AccountingResponseEvent.ResponseAction.DISCONNECT));
                     }
 
-                     UserSessionData newUserSessionData =  UserSessionData.builder()
+                     UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)
                              .groupId(groupId).userName(request.username()).concurrency(concurrency)
                     .balance(balanceList).sessions(new ArrayList<>(List.of(createSession(request)))).build();
 

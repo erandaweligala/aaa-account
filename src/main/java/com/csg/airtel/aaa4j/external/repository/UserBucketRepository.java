@@ -45,6 +45,7 @@ public class UserBucketRepository {
     public static final String IS_UNLIMITED = "IS_UNLIMITED";
     public static final String IS_GROUP = "IS_GROUP";
     public static final String CONCURRENCY = "CONCURRENCY";
+    public static final String NOTIFICATION_TEMPLATES = "NOTIFICATION_TEMPLATES";
 
     final Pool client;
 
@@ -133,6 +134,7 @@ public class UserBucketRepository {
 
             // Session configuration
             info.setSessionTimeout(row.getString(COL_SESSION_TIMEOUT));
+            info.setNotificationTemplates(row.getString(NOTIFICATION_TEMPLATES));
 
             results.add(info);
         }

@@ -317,15 +317,17 @@ public class StartHandler {
         List<Balance> balanceList = new ArrayList<>(serviceBuckets.size());
         List<Balance> balanceGroupList = new ArrayList<>();
         String groupId = null;
+        String templates = null;
         long concurrency = 0;
         for (ServiceBucketInfo bucket : serviceBuckets) {
             Balance balance = MappingUtil.createBalance(bucket);
             groupId = getGroupId(request, bucket, balanceGroupList, balance, groupId, balanceList);
             concurrency = bucket.getConcurrency();
+            templates = bucket.getNotificationTemplates();
             totalQuota += bucket.getCurrentBalance();
         }
 
-        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota,concurrency);
+        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota,concurrency,templates);
     }
 
 
@@ -341,7 +343,7 @@ public class StartHandler {
 
         Session session = createSessionWithBalance(request, highestPriorityBalance);
         UserSessionData newUserSessionData = buildUserSessionData(
-                request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance);
+                request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates);
 
         Uni<Void> userStorageUni = storeUserSessionData(request.username(), newUserSessionData);
 
@@ -373,14 +375,14 @@ public class StartHandler {
             List<Balance> balanceList,
             String groupId,
             Session session,
-            Balance highestPriorityBalance) {
+            Balance highestPriorityBalance,String templates) {
 
         UserSessionData newUserSessionData = new UserSessionData();
         newUserSessionData.setGroupId(groupId);
         newUserSessionData.setUserName(request.username());
         newUserSessionData.setConcurrency(concurrency);
         newUserSessionData.setBalance(balanceList);
-
+        newUserSessionData.setTemplateIds(templates);
         if (!isGroupBalance(highestPriorityBalance, request.username())) {
             newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
         }
@@ -470,7 +472,7 @@ public class StartHandler {
             List<Balance> balanceList,
             List<Balance> balanceGroupList,
             String groupId,
-            double totalQuota,long concurrency) {
+            double totalQuota,long concurrency,String templates) {
     }
 
     private static String getGroupId(AccountingRequestDto request, ServiceBucketInfo bucket, List<Balance> balanceGroupList, Balance balance, String groupId, List<Balance> balanceList) {

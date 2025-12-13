@@ -24,7 +24,8 @@ public class SQLConstant {
                            b.EXPIRATION,
                            b.IS_UNLIMITED,
                            s.IS_GROUP,
-                           u.CONCURRENCY
+                           u.CONCURRENCY,
+                           u.NOTIFICATION_TEMPLATES
                         FROM SERVICE_INSTANCE s
                         JOIN AAA_USER  u
                           ON s.USERNAME  = u.USER_NAME

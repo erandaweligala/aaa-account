@@ -90,26 +90,17 @@ public class MessageTemplateRepository {
         for (Row row : rows) {
             MessageTemplate template = new MessageTemplate();
 
-            // Primary identifier
             template.setTemplateId(row.getLong(COL_TEMPLATE_ID));
-
-            // Template metadata
             template.setStatus(row.getString(COL_STATUS));
             template.setTemplateName(row.getString(COL_TEMPLATE_NAME));
             template.setMessageType(row.getString(COL_MESSAGE_TYPE));
-
-            // Type-specific fields (may be null based on MESSAGE_TYPE)
             Integer daysToExpire = row.getInteger(COL_DAYS_TO_EXPIRE);
             template.setDaysToExpire(daysToExpire);
 
             Integer quotaPercentage = row.getInteger(COL_QUOTA_PERCENTAGE);
             template.setQuotaPercentage(quotaPercentage);
-
-            // Message content (CLOB)
             String messageContent = row.getString(COL_MESSAGE_CONTENT);
             template.setMessageContent(messageContent);
-
-            // Audit fields
             template.setCreatedDate(row.getLocalDateTime(COL_CREATED_DATE));
             template.setCreatedBy(row.getString(COL_CREATED_BY));
             template.setModifiedDate(row.getLocalDateTime(COL_MODIFIED_DATE));
