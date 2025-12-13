@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.domain.produce;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
+import com.csg.airtel.aaa4j.domain.model.QuotaNotificationEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
@@ -29,18 +30,21 @@ public class AccountProducer {
     private final Emitter<DBWriteRequest> dbWriteRequestEmitter;
     private final Emitter<AccountingResponseEvent> accountingResponseEmitter;
     private final Emitter<AccountingCDREvent> accountingCDREventEmitter;
+    private final Emitter<QuotaNotificationEvent> quotaNotificationEmitter;
     private final CacheClient cacheClient;
     private final SessionLifecycleManager sessionLifecycleManager;
 
     public AccountProducer(@Channel("db-write-events")Emitter<DBWriteRequest> dbWriteRequestEmitter,
                            @Channel("accounting-resp-events")Emitter<AccountingResponseEvent> accountingResponseEmitter,
                            @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter,
+                           @Channel("quota-notification-events") Emitter<QuotaNotificationEvent> quotaNotificationEmitter,
                            CacheClient cacheClient,
                            SessionLifecycleManager sessionLifecycleManager
                           ) {
         this.dbWriteRequestEmitter = dbWriteRequestEmitter;
         this.accountingResponseEmitter = accountingResponseEmitter;
         this.accountingCDREventEmitter = accountingCDREventEmitter;
+        this.quotaNotificationEmitter = quotaNotificationEmitter;
         this.cacheClient = cacheClient;
         this.sessionLifecycleManager = sessionLifecycleManager;
     }
@@ -243,6 +247,62 @@ public class AccountProducer {
                 ? event.getPayload().getSession().getSessionId()
                 : "unknown";
         FailoverPathLogger.logFallbackPath(LOG, "produceAccountingCDREvent", sessionId, throwable);
+        return Uni.createFrom().voidItem();
+    }
+
+    /**
+     * Publish quota notification event to Kafka.
+     *
+     * @param event the quota notification event
+     * @return Uni that completes when event is published
+     */
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 3,
+            delay = 100,
+            maxDuration = 10000
+    )
+    @Timeout(value = 10000)
+    @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
+    public Uni<Void> produceQuotaNotificationEvent(QuotaNotificationEvent event) {
+        long startTime = System.currentTimeMillis();
+        LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
+                event.username(), event.type());
+        return Uni.createFrom().emitter(em -> {
+            Message<QuotaNotificationEvent> message = Message.of(event)
+                    .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
+                            .withKey(event.username())
+                            .build())
+                    .withAck(() -> {
+                        em.complete(null);
+                        LOG.infof("Successfully sent quota notification event for user: %s, %d ms",
+                                event.username(), System.currentTimeMillis() - startTime);
+                        return CompletableFuture.completedFuture(null);
+                    })
+                    .withNack(throwable -> {
+                        LOG.errorf("Quota notification send failed: %s", throwable.getMessage());
+                        em.fail(throwable);
+                        return CompletableFuture.completedFuture(null);
+                    });
+
+            quotaNotificationEmitter.send(message);
+        });
+    }
+
+    /**
+     * Fallback method for produceQuotaNotificationEvent.
+     *
+     * @param event the quota notification event
+     * @param throwable the failure cause
+     * @return empty Uni (operation failed)
+     */
+    private Uni<Void> fallbackProduceQuotaNotificationEvent(QuotaNotificationEvent event, Throwable throwable) {
+        FailoverPathLogger.logFallbackPath(LOG, "produceQuotaNotificationEvent", event.username(), throwable);
         return Uni.createFrom().voidItem();
     }
 

@@ -29,12 +29,15 @@ public class AccountingUtil {
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
     private final COAService coaService;
+    private final QuotaNotificationService quotaNotificationService;
 
 
-    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService) {
+    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
+                          QuotaNotificationService quotaNotificationService) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;
         this.coaService = coaService;
+        this.quotaNotificationService = quotaNotificationService;
     }
 
     private LocalDateTime getNow() {
@@ -879,12 +882,21 @@ public class AccountingUtil {
             return 0;
         }
 
+        long oldQuota = previousBalance.getQuota();
         long newQuota = getNewQuota(sessionData, previousBalance, totalUsage);
         previousBalance.setQuota(Math.max(newQuota, 0));
         replaceInCollection(userData.getBalance(), previousBalance);
 
         log.infof("Updated previous bucket %s quota to %d",
                 previousBalance.getBucketId(), previousBalance.getQuota());
+
+        // Check and notify quota thresholds asynchronously
+        quotaNotificationService.checkAndNotifyThresholds(userData, previousBalance, oldQuota, newQuota)
+                .subscribe().with(
+                        unused -> {},
+                        failure -> log.errorf(failure, "Failed to check thresholds for bucket %s",
+                                previousBalance.getBucketId())
+                );
 
         return newQuota;
     }
@@ -895,6 +907,7 @@ public class AccountingUtil {
             Balance foundBalance,
             long totalUsage) {
 
+        long oldQuota = foundBalance.getQuota();
         long newQuota = getNewQuota(sessionData, foundBalance, totalUsage);
 
         if (newQuota <= 0) {
@@ -904,6 +917,14 @@ public class AccountingUtil {
         foundBalance.setQuota(Math.max(newQuota, 0));
         replaceInCollection(userData.getBalance(), foundBalance);
         replaceInCollection(userData.getSessions(), sessionData);
+
+        // Check and notify quota thresholds asynchronously
+        quotaNotificationService.checkAndNotifyThresholds(userData, foundBalance, oldQuota, newQuota)
+                .subscribe().with(
+                        unused -> {},
+                        failure -> log.errorf(failure, "Failed to check thresholds for bucket %s",
+                                foundBalance.getBucketId())
+                );
 
         return newQuota;
     }
