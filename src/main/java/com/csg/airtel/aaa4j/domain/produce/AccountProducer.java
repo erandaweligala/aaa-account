@@ -2,7 +2,6 @@ package com.csg.airtel.aaa4j.domain.produce;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
-import com.csg.airtel.aaa4j.domain.model.QuotaThresholdNotification;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
@@ -30,21 +29,18 @@ public class AccountProducer {
     private final Emitter<DBWriteRequest> dbWriteRequestEmitter;
     private final Emitter<AccountingResponseEvent> accountingResponseEmitter;
     private final Emitter<AccountingCDREvent> accountingCDREventEmitter;
-    private final Emitter<QuotaThresholdNotification> quotaThresholdNotificationEmitter;
     private final CacheClient cacheClient;
     private final SessionLifecycleManager sessionLifecycleManager;
 
     public AccountProducer(@Channel("db-write-events")Emitter<DBWriteRequest> dbWriteRequestEmitter,
                            @Channel("accounting-resp-events")Emitter<AccountingResponseEvent> accountingResponseEmitter,
                            @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter,
-                           @Channel("quota-threshold-notifications") Emitter<QuotaThresholdNotification> quotaThresholdNotificationEmitter,
                            CacheClient cacheClient,
                            SessionLifecycleManager sessionLifecycleManager
                           ) {
         this.dbWriteRequestEmitter = dbWriteRequestEmitter;
         this.accountingResponseEmitter = accountingResponseEmitter;
         this.accountingCDREventEmitter = accountingCDREventEmitter;
-        this.quotaThresholdNotificationEmitter = quotaThresholdNotificationEmitter;
         this.cacheClient = cacheClient;
         this.sessionLifecycleManager = sessionLifecycleManager;
     }
@@ -247,55 +243,6 @@ public class AccountProducer {
                 ? event.getPayload().getSession().getSessionId()
                 : "unknown";
         FailoverPathLogger.logFallbackPath(LOG, "produceAccountingCDREvent", sessionId, throwable);
-        return Uni.createFrom().voidItem();
-    }
-
-    @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
-    )
-    @Retry(
-            maxRetries = 3,
-            delay = 100,
-            maxDuration = 10000
-    )
-    @Timeout(value = 10000)
-    @Fallback(fallbackMethod = "fallbackProduceQuotaThresholdNotification")
-    public Uni<Void> produceQuotaThresholdNotification(QuotaThresholdNotification notification) {
-        long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Quota Threshold Notification process for user: %s", notification.getUsername());
-        return Uni.createFrom().emitter(em -> {
-            Message<QuotaThresholdNotification> message = Message.of(notification)
-                    .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
-                            .withKey(notification.getUsername())
-                            .build())
-                    .withAck(() -> {
-                        em.complete(null);
-                        LOG.infof("Successfully sent quota threshold notification for user: %s, type: %s, %d ms",
-                                notification.getUsername(), notification.getType(), System.currentTimeMillis()-startTime);
-                        return CompletableFuture.completedFuture(null);
-                    })
-                    .withNack(throwable -> {
-                        LOG.errorf("Quota threshold notification send failed: %s", throwable.getMessage());
-                        em.fail(throwable);
-                        return CompletableFuture.completedFuture(null);
-                    });
-
-            quotaThresholdNotificationEmitter.send(message);
-        });
-    }
-
-    /**
-     * Fallback method for produceQuotaThresholdNotification.
-     *
-     * @param notification the quota threshold notification
-     * @param throwable the failure cause
-     * @return empty Uni (operation failed)
-     */
-    private Uni<Void> fallbackProduceQuotaThresholdNotification(QuotaThresholdNotification notification, Throwable throwable) {
-        FailoverPathLogger.logFallbackPath(LOG, "produceQuotaThresholdNotification", notification.getUsername(), throwable);
         return Uni.createFrom().voidItem();
     }
 

@@ -27,8 +27,5 @@ public class Balance {
     private List<ConsumptionRecord> consumptionHistory = new ArrayList<>();
     private boolean isGroup;
     private long usage;
-    private boolean threshold60Notified;
-    private boolean threshold70Notified;
-    private boolean threshold80Notified;
 
 }

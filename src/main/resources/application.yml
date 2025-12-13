@@ -98,14 +98,6 @@ idle-session:
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
 
-# Quota Threshold Configuration - Dynamic thresholds with cache
-quota-threshold:
-  enabled: true             # Enable/disable quota threshold notifications
-  cache-ttl-seconds: 300    # Cache TTL for threshold values (5 minutes)
-  thresholds: 60,70,80      # Threshold percentages to monitor (comma-separated)
-  async: true               # Run threshold checks asynchronously
-  async-timeout-ms: 5000    # Timeout for async operations (5 seconds)
-
 # Kafka Producer/Consumer Configuration - Optimized for 1000 TPS
 mp:
   messaging:
@@ -139,19 +131,6 @@ mp:
       accounting-cdr-events:
         connector: smallrye-kafka
         topic: cdr-event
-        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
-        key.serializer: org.apache.kafka.common.serialization.StringSerializer
-        acks: all
-        retries: 3
-        max.in.flight.requests.per.connection: 5
-        compression.type: snappy
-        batch.size: 32768
-        linger.ms: 5
-        buffer.memory: 67108864
-
-      quota-threshold-notifications:
-        connector: smallrye-kafka
-        topic: quota-threshold-notifications
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
