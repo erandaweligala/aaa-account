@@ -105,6 +105,11 @@
       <artifactId>quarkus-scheduler</artifactId>
     </dependency>
       <dependency>
+          <groupId>io.micrometer</groupId>
+          <artifactId>micrometer-core</artifactId>
+          <version>1.13.0</version>
+      </dependency>
+      <dependency>
           <groupId>org.projectlombok</groupId>
           <artifactId>lombok</artifactId>
           <version>1.18.30</version>
