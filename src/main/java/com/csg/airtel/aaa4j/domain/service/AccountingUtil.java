@@ -32,16 +32,19 @@ public class AccountingUtil {
     private final CacheClient cacheClient;
     private final COAService coaService;
     private final QuotaThresholdCache thresholdCache;
+    private final UserThresholdNotificationHelper notificationHelper;
 
-    // Track notified thresholds per balance to avoid duplicate notifications
+    // Track notified thresholds per balance to avoid duplicate notifications (legacy in-memory tracking)
     private final Map<String, Map<Integer, Boolean>> notifiedThresholds = new ConcurrentHashMap<>();
 
 
-    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService, QuotaThresholdCache thresholdCache) {
+    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
+                          QuotaThresholdCache thresholdCache, UserThresholdNotificationHelper notificationHelper) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;
         this.coaService = coaService;
         this.thresholdCache = thresholdCache;
+        this.notificationHelper = notificationHelper;
     }
 
     private LocalDateTime getNow() {
@@ -1435,12 +1438,12 @@ public class AccountingUtil {
 
         // Check if percentage remaining is below threshold
         if (percentageRemaining <= threshold) {
-            // Check Redis cache for notification state
-            return thresholdCache.isThresholdNotified(username, balance.getBucketId(), threshold)
+            // Check Redis cache for notification state using notification helper
+            return notificationHelper.isThresholdNotified(username, balance.getBucketId(), threshold)
                     .onItem().transformToUni(isNotified -> {
                         if (!isNotified) {
-                            // Mark as notified in Redis
-                            return thresholdCache.markThresholdNotified(username, balance.getBucketId(), threshold)
+                            // Mark as notified in Redis using notification helper
+                            return notificationHelper.markThresholdNotified(username, balance.getBucketId(), threshold)
                                     .onItem().transformToUni(v -> {
                                         log.infof("Quota %d%% threshold notification sent for user: %s, remaining quota: %d",
                                                 threshold, username, currentQuota);
