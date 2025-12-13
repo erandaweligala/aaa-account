@@ -32,16 +32,19 @@ public class AccountingUtil {
     private final CacheClient cacheClient;
     private final COAService coaService;
     private final QuotaThresholdCache thresholdCache;
+    private final UserThresholdNotificationHelper notificationHelper;
 
-    // Track notified thresholds per balance to avoid duplicate notifications
+    // Track notified thresholds per balance to avoid duplicate notifications (legacy in-memory tracking)
     private final Map<String, Map<Integer, Boolean>> notifiedThresholds = new ConcurrentHashMap<>();
 
 
-    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService, QuotaThresholdCache thresholdCache) {
+    public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
+                          QuotaThresholdCache thresholdCache, UserThresholdNotificationHelper notificationHelper) {
         this.accountProducer = accountProducer;
         this.cacheClient = utilCache;
         this.coaService = coaService;
         this.thresholdCache = thresholdCache;
+        this.notificationHelper = notificationHelper;
     }
 
     private LocalDateTime getNow() {
@@ -1340,13 +1343,15 @@ public class AccountingUtil {
 
     /**
      * Async implementation of quota threshold checking with dynamic thresholds from cache.
+     * Uses user-specific thresholds from Redis cache if available, otherwise falls back to global defaults.
      *
      * @param balance the balance to check
      * @param username the username for notification
      * @return Uni<Void> completing when checks are done
      */
     private Uni<Void> checkAndNotifyQuotaThresholdsAsync(Balance balance, String username) {
-        return thresholdCache.getThresholds()
+        // Get user-specific thresholds from Redis (or fallback to global defaults)
+        return thresholdCache.getUserThresholds(username, balance.getBucketId())
                 .onItem().transformToUni(thresholds -> {
                     long initialBalance = balance.getInitialBalance();
                     long currentQuota = balance.getQuota();
@@ -1360,7 +1365,7 @@ public class AccountingUtil {
                     }
 
                     // Check each threshold (sorted in descending order)
-                    return checkThresholdsAndNotify(balance, username, currentQuota, percentageRemaining, thresholds);
+                    return checkThresholdsAndNotifyAsync(balance, username, currentQuota, percentageRemaining, thresholds);
                 });
     }
 
@@ -1397,6 +1402,7 @@ public class AccountingUtil {
 
     /**
      * Check thresholds and send notifications (async version).
+     * Uses Redis cache to track notification state.
      *
      * @param balance the balance to check
      * @param username the username
@@ -1405,24 +1411,65 @@ public class AccountingUtil {
      * @param thresholds list of thresholds to check
      * @return Uni<Void>
      */
-    private Uni<Void> checkThresholdsAndNotify(Balance balance, String username, long currentQuota,
+    private Uni<Void> checkThresholdsAndNotifyAsync(Balance balance, String username, long currentQuota,
                                                 double percentageRemaining, List<Integer> thresholds) {
         // Check each threshold (sorted in descending order)
-        for (Integer threshold : thresholds) {
-            if (percentageRemaining <= threshold && !isThresholdNotified(balance, threshold)) {
-                markThresholdNotified(balance, threshold);
-                log.infof("Quota %d%% threshold notification sent for user: %s, remaining quota: %d",
-                        threshold, username, currentQuota);
-
-                // Send notification and return (only one notification per check)
-                return sendQuotaThresholdNotificationAsync(username, currentQuota, "QUOTA_" + threshold + "_PERCENT_REMAINING");
-            }
-        }
-        return Uni.createFrom().voidItem();
+        return checkThresholdsRecursively(balance, username, currentQuota, percentageRemaining, thresholds, 0);
     }
 
     /**
-     * Check if a threshold has been notified for a balance.
+     * Recursively check thresholds and send notifications using Redis cache.
+     *
+     * @param balance the balance to check
+     * @param username the username
+     * @param currentQuota current quota value
+     * @param percentageRemaining percentage remaining
+     * @param thresholds list of thresholds to check
+     * @param index current threshold index
+     * @return Uni<Void>
+     */
+    private Uni<Void> checkThresholdsRecursively(Balance balance, String username, long currentQuota,
+                                                  double percentageRemaining, List<Integer> thresholds, int index) {
+        if (index >= thresholds.size()) {
+            return Uni.createFrom().voidItem();
+        }
+
+        Integer threshold = thresholds.get(index);
+
+        // Check if percentage remaining is below threshold
+        if (percentageRemaining <= threshold) {
+            // Check Redis cache for notification state using notification helper
+            return notificationHelper.isThresholdNotified(username, balance.getBucketId(), threshold)
+                    .onItem().transformToUni(isNotified -> {
+                        if (!isNotified) {
+                            // Mark as notified in Redis using notification helper
+                            return notificationHelper.markThresholdNotified(username, balance.getBucketId(), threshold)
+                                    .onItem().transformToUni(v -> {
+                                        log.infof("Quota %d%% threshold notification sent for user: %s, remaining quota: %d",
+                                                threshold, username, currentQuota);
+
+                                        // Update legacy flags for backward compatibility
+                                        markThresholdNotifiedLegacy(balance, threshold);
+
+                                        // Send notification and return (only one notification per check)
+                                        return sendQuotaThresholdNotificationAsync(username, currentQuota,
+                                                "QUOTA_" + threshold + "_PERCENT_REMAINING");
+                                    });
+                        } else {
+                            // Already notified, check next threshold
+                            return checkThresholdsRecursively(balance, username, currentQuota, percentageRemaining, thresholds, index + 1);
+                        }
+                    });
+        } else {
+            // Threshold not reached, check next one
+            return checkThresholdsRecursively(balance, username, currentQuota, percentageRemaining, thresholds, index + 1);
+        }
+    }
+
+    /**
+     * Check if a threshold has been notified for a balance (legacy in-memory version).
+     * This is kept for backward compatibility with synchronous code paths.
+     * For new code, use thresholdCache.isThresholdNotified() which uses Redis.
      *
      * @param balance the balance
      * @param threshold the threshold percentage
@@ -1435,7 +1482,9 @@ public class AccountingUtil {
     }
 
     /**
-     * Mark a threshold as notified for a balance.
+     * Mark a threshold as notified for a balance (legacy in-memory version).
+     * This is kept for backward compatibility with synchronous code paths.
+     * For new code, use thresholdCache.markThresholdNotified() which uses Redis.
      *
      * @param balance the balance
      * @param threshold the threshold percentage
@@ -1445,6 +1494,17 @@ public class AccountingUtil {
         notifiedThresholds.computeIfAbsent(key, k -> new ConcurrentHashMap<>()).put(threshold, true);
 
         // Also update legacy flags for backward compatibility
+        markThresholdNotifiedLegacy(balance, threshold);
+    }
+
+    /**
+     * Update legacy threshold notification flags on the balance object.
+     * This maintains backward compatibility with code that checks these flags directly.
+     *
+     * @param balance the balance
+     * @param threshold the threshold percentage
+     */
+    private void markThresholdNotifiedLegacy(Balance balance, Integer threshold) {
         if (threshold == 80) {
             balance.setThreshold80Notified(true);
         } else if (threshold == 70) {
