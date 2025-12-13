@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Cache for quota threshold values with TTL support.
  * Provides fast access to threshold configurations without repeated configuration lookups.
  */
+//todo need to implement to get redis cache  userVise change to the threshold
 @ApplicationScoped
 public class QuotaThresholdCache {
     private static final Logger log = Logger.getLogger(QuotaThresholdCache.class);

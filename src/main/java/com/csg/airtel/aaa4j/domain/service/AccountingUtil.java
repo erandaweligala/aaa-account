@@ -1324,9 +1324,7 @@ public class AccountingUtil {
                     .recoverWithItem(() -> null)
                     .subscribe().with(
                             result -> {
-                                if (log.isTraceEnabled() && result != null) {
-                                    log.tracef("Async quota threshold check completed for user: %s", username);
-                                }
+                                log.isTraceEnabled();
                             },
                             failure -> {
                                 if (log.isDebugEnabled()) {
