@@ -11,6 +11,7 @@ import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -28,7 +29,46 @@ public class BucketService {
         this.coaService = coaService;
     }
 
-    //todo need to implement serviceExpiry or bucketExpiryDate if need to remove related balance element
+    /**
+     * Remove expired balances based on serviceExpiry or bucketExpiryDate.
+     * A balance is considered expired if either serviceExpiry or bucketExpiryDate is before the current time.
+     *
+     * @param balances list of balances to filter
+     * @return filtered list containing only non-expired balances
+     */
+    private List<Balance> removeExpiredBalances(List<Balance> balances) {
+        if (balances == null || balances.isEmpty()) {
+            return balances;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Balance> nonExpiredBalances = new ArrayList<>();
+
+        for (Balance balance : balances) {
+            boolean isExpired = false;
+
+            // Check serviceExpiry
+            if (balance.getServiceExpiry() != null && balance.getServiceExpiry().isBefore(now)) {
+                isExpired = true;
+                log.infof("Removing expired balance: bucketId=%s, serviceExpiry=%s",
+                        balance.getBucketId(), balance.getServiceExpiry());
+            }
+
+            // Check bucketExpiryDate
+            if (!isExpired && balance.getBucketExpiryDate() != null && balance.getBucketExpiryDate().isBefore(now)) {
+                isExpired = true;
+                log.infof("Removing expired balance: bucketId=%s, bucketExpiryDate=%s",
+                        balance.getBucketId(), balance.getBucketExpiryDate());
+            }
+
+            if (!isExpired) {
+                nonExpiredBalances.add(balance);
+            }
+        }
+
+        return nonExpiredBalances;
+    }
+
     public Uni<ApiResponse<Balance>> addBucketBalance(String userName, BalanceWrapper balance) {
         // Input validation
         if (userName == null || userName.isBlank()) {
@@ -62,9 +102,12 @@ public class BucketService {
                                 .build();
                     } else {
                         // Create defensive copy with null-safe handling for existing user
-                        List<Balance> newBalances = new ArrayList<>(
-                                Objects.requireNonNullElse(userData.getBalance(), List.of())
-                        );
+                        List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
+
+                        // Remove expired balances before adding new one
+                        List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
+
+                        List<Balance> newBalances = new ArrayList<>(nonExpiredBalances);
                         newBalances.add(balance.getBalance());
 
                         // Use immutable builder/wither pattern
@@ -110,9 +153,12 @@ public class BucketService {
                         return Uni.createFrom().item(createErrorResponse("User not found"));
                     }
 
-                    List<Balance> balanceList = userData.getBalance() != null
+                    List<Balance> existingBalances = userData.getBalance() != null
                             ? new ArrayList<>(userData.getBalance())
                             : new ArrayList<>();
+
+                    // Remove expired balances
+                    List<Balance> balanceList = removeExpiredBalances(existingBalances);
 
                     balanceList.removeIf(b -> b.getServiceId().equals(serviceId));
 
