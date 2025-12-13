@@ -15,6 +15,7 @@ public class UserSessionData {
     private String userName;
     private String groupId;
     private long concurrency;
+    private String templateIds; // "ex-: 1,3,5"
     private List<Balance> balance = new ArrayList<>();
     private List<Session> sessions = new ArrayList<>();
     private QosParam qosParam;
