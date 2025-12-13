@@ -881,6 +881,10 @@ public class AccountingUtil {
 
         long newQuota = getNewQuota(sessionData, previousBalance, totalUsage);
         previousBalance.setQuota(Math.max(newQuota, 0));
+
+        // Check and notify quota thresholds
+        checkAndNotifyQuotaThresholds(previousBalance, previousBalance.getBucketUsername());
+
         replaceInCollection(userData.getBalance(), previousBalance);
 
         log.infof("Updated previous bucket %s quota to %d",
@@ -902,6 +906,10 @@ public class AccountingUtil {
         }
 
         foundBalance.setQuota(Math.max(newQuota, 0));
+
+        // Check and notify quota thresholds
+        checkAndNotifyQuotaThresholds(foundBalance, foundBalance.getBucketUsername());
+
         replaceInCollection(userData.getBalance(), foundBalance);
         replaceInCollection(userData.getSessions(), sessionData);
 
@@ -1161,6 +1169,9 @@ public class AccountingUtil {
         // Update balance with new quota
         balance.setQuota(Math.max(newQuota, 0));
 
+        // Check and notify quota thresholds
+        checkAndNotifyQuotaThresholds(balance, balance.getBucketUsername());
+
         DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(balance,userName,sessionId,EventType.UPDATE_EVENT);
 
         return updateGroupBalanceBucket(balance, bucketUser, userName)
@@ -1281,6 +1292,79 @@ public class AccountingUtil {
                     }
                 })
                 .onFailure().recoverWithNull();
+    }
+
+    /**
+     * Check quota thresholds and send notifications if thresholds are crossed.
+     * Monitors when remaining quota falls below 60%, 70%, or 80% of initial balance.
+     *
+     * @param balance the balance to check
+     * @param username the username for notification
+     */
+    private void checkAndNotifyQuotaThresholds(Balance balance, String username) {
+        if (balance == null || balance.isUnlimited() || balance.getInitialBalance() == null || balance.getInitialBalance() <= 0) {
+            return;
+        }
+
+        long initialBalance = balance.getInitialBalance();
+        long currentQuota = balance.getQuota();
+
+        // Calculate percentage remaining
+        double percentageRemaining = (currentQuota * 100.0) / initialBalance;
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Checking quota thresholds for user %s: remaining=%.2f%%, quota=%d, initial=%d",
+                    username, percentageRemaining, currentQuota, initialBalance);
+        }
+
+        // Check 80% threshold (20% consumed)
+        if (percentageRemaining <= 80 && !balance.isThreshold80Notified()) {
+            sendQuotaThresholdNotification(username, currentQuota, "QUOTA_80_PERCENT_REMAINING");
+            balance.setThreshold80Notified(true);
+            log.infof("Quota 80%% threshold notification sent for user: %s, remaining quota: %d", username, currentQuota);
+        }
+        // Check 70% threshold (30% consumed)
+        else if (percentageRemaining <= 70 && !balance.isThreshold70Notified()) {
+            sendQuotaThresholdNotification(username, currentQuota, "QUOTA_70_PERCENT_REMAINING");
+            balance.setThreshold70Notified(true);
+            log.infof("Quota 70%% threshold notification sent for user: %s, remaining quota: %d", username, currentQuota);
+        }
+        // Check 60% threshold (40% consumed)
+        else if (percentageRemaining <= 60 && !balance.isThreshold60Notified()) {
+            sendQuotaThresholdNotification(username, currentQuota, "QUOTA_60_PERCENT_REMAINING");
+            balance.setThreshold60Notified(true);
+            log.infof("Quota 60%% threshold notification sent for user: %s, remaining quota: %d", username, currentQuota);
+        }
+    }
+
+    /**
+     * Send quota threshold notification via Kafka.
+     *
+     * @param username the username
+     * @param availableQuota the available quota remaining
+     * @param type the notification type
+     */
+    private void sendQuotaThresholdNotification(String username, long availableQuota, String type) {
+        String message = String.format("Your quota has reached %s threshold. Available quota: %d bytes",
+                type.replace("QUOTA_", "").replace("_REMAINING", "").replace("_", " "),
+                availableQuota);
+
+        QuotaThresholdNotification notification = new QuotaThresholdNotification(
+                message,
+                username,
+                type,
+                availableQuota
+        );
+
+        accountProducer.produceQuotaThresholdNotification(notification)
+                .subscribe().with(
+                        success -> {
+                            if (log.isDebugEnabled()) {
+                                log.debugf("Quota threshold notification sent successfully for user: %s, type: %s", username, type);
+                            }
+                        },
+                        failure -> log.errorf(failure, "Failed to send quota threshold notification for user: %s, type: %s", username, type)
+                );
     }
 
 
