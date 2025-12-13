@@ -1,6 +1,8 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.config.QuotaThresholdConfig;
+import com.csg.airtel.aaa4j.domain.model.UserThresholdConfig;
+import com.csg.airtel.aaa4j.domain.repository.UserThresholdRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -14,19 +16,21 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Cache for quota threshold values with TTL support.
  * Provides fast access to threshold configurations without repeated configuration lookups.
+ * Supports user-wise threshold overrides from Redis cache.
  */
-//todo need to implement to get redis cache  userVise change to the threshold
 @ApplicationScoped
 public class QuotaThresholdCache {
     private static final Logger log = Logger.getLogger(QuotaThresholdCache.class);
 
     private final QuotaThresholdConfig config;
+    private final UserThresholdRepository userThresholdRepository;
     private final ConcurrentHashMap<String, CachedThresholds> cache;
     private final AtomicLong lastRefreshTime;
 
     @Inject
-    public QuotaThresholdCache(QuotaThresholdConfig config) {
+    public QuotaThresholdCache(QuotaThresholdConfig config, UserThresholdRepository userThresholdRepository) {
         this.config = config;
+        this.userThresholdRepository = userThresholdRepository;
         this.cache = new ConcurrentHashMap<>();
         this.lastRefreshTime = new AtomicLong(0);
 
@@ -36,6 +40,7 @@ public class QuotaThresholdCache {
 
     /**
      * Get threshold values, refreshing from config if cache is expired.
+     * This returns global default thresholds.
      *
      * @return Uni with list of threshold percentages
      */
@@ -59,7 +64,40 @@ public class QuotaThresholdCache {
     }
 
     /**
+     * Get threshold values for a specific user and bucket from Redis cache.
+     * Falls back to global defaults if user-specific thresholds are not configured.
+     *
+     * @param userId the user ID
+     * @param bucketId the bucket/balance ID
+     * @return Uni with list of threshold percentages
+     */
+    public Uni<List<Integer>> getUserThresholds(String userId, String bucketId) {
+        return userThresholdRepository.getUserThresholdConfig(userId, bucketId)
+            .onItem().transformToUni(userConfig -> {
+                if (userConfig != null && userConfig.getThresholds() != null && !userConfig.getThresholds().isEmpty()) {
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Using user-specific thresholds for userId: %s, bucketId: %s, thresholds: %s",
+                            userId, bucketId, userConfig.getThresholds());
+                    }
+                    return Uni.createFrom().item(userConfig.getThresholds());
+                }
+                // Fallback to global defaults
+                if (log.isDebugEnabled()) {
+                    log.debugf("No user-specific thresholds found for userId: %s, bucketId: %s, using global defaults",
+                        userId, bucketId);
+                }
+                return getThresholds();
+            })
+            .onFailure().recoverWithUni(throwable -> {
+                log.warnf(throwable, "Failed to retrieve user thresholds for userId: %s, bucketId: %s, falling back to global defaults",
+                    userId, bucketId);
+                return getThresholds();
+            });
+    }
+
+    /**
      * Get threshold values synchronously (for non-reactive contexts).
+     * This returns global default thresholds.
      *
      * @return list of threshold percentages
      */
@@ -75,6 +113,76 @@ public class QuotaThresholdCache {
 
         CachedThresholds cached = cache.get("thresholds");
         return cached != null ? cached.thresholds() : config.thresholds();
+    }
+
+    /**
+     * Check if a threshold has been notified for a specific user and bucket.
+     * This checks Redis cache for the notification state.
+     *
+     * @param userId the user ID
+     * @param bucketId the bucket/balance ID
+     * @param threshold the threshold percentage
+     * @return Uni with true if notified, false otherwise
+     */
+    public Uni<Boolean> isThresholdNotified(String userId, String bucketId, int threshold) {
+        return userThresholdRepository.isThresholdNotified(userId, bucketId, threshold);
+    }
+
+    /**
+     * Mark a threshold as notified for a specific user and bucket.
+     * This updates the notification state in Redis cache.
+     *
+     * @param userId the user ID
+     * @param bucketId the bucket/balance ID
+     * @param threshold the threshold percentage
+     * @return Uni signaling completion
+     */
+    public Uni<Void> markThresholdNotified(String userId, String bucketId, int threshold) {
+        if (log.isDebugEnabled()) {
+            log.debugf("Marking threshold %d as notified for userId: %s, bucketId: %s",
+                threshold, userId, bucketId);
+        }
+        return userThresholdRepository.markThresholdNotified(userId, bucketId, threshold);
+    }
+
+    /**
+     * Reset notification state for a specific threshold.
+     *
+     * @param userId the user ID
+     * @param bucketId the bucket/balance ID
+     * @param threshold the threshold percentage
+     * @return Uni signaling completion
+     */
+    public Uni<Void> resetThresholdNotification(String userId, String bucketId, int threshold) {
+        return userThresholdRepository.resetThresholdNotification(userId, bucketId, threshold);
+    }
+
+    /**
+     * Reset all notification states for a user/bucket.
+     *
+     * @param userId the user ID
+     * @param bucketId the bucket/balance ID
+     * @return Uni signaling completion
+     */
+    public Uni<Void> resetAllNotifications(String userId, String bucketId) {
+        return userThresholdRepository.resetAllNotifications(userId, bucketId);
+    }
+
+    /**
+     * Update custom thresholds for a specific user and bucket.
+     * This creates or updates the user-specific threshold configuration in Redis.
+     *
+     * @param userId the user ID
+     * @param bucketId the bucket/balance ID
+     * @param thresholds the custom threshold values
+     * @return Uni signaling completion
+     */
+    public Uni<Void> updateUserThresholds(String userId, String bucketId, List<Integer> thresholds) {
+        if (log.isInfoEnabled()) {
+            log.infof("Updating custom thresholds for userId: %s, bucketId: %s, thresholds: %s",
+                userId, bucketId, thresholds);
+        }
+        return userThresholdRepository.updateUserThresholds(userId, bucketId, thresholds);
     }
 
     /**
