@@ -98,6 +98,14 @@ idle-session:
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
 
+# Quota Threshold Configuration - Dynamic thresholds with cache
+quota-threshold:
+  enabled: true             # Enable/disable quota threshold notifications
+  cache-ttl-seconds: 300    # Cache TTL for threshold values (5 minutes)
+  thresholds: 60,70,80      # Threshold percentages to monitor (comma-separated)
+  async: true               # Run threshold checks asynchronously
+  async-timeout-ms: 5000    # Timeout for async operations (5 seconds)
+
 # Kafka Producer/Consumer Configuration - Optimized for 1000 TPS
 mp:
   messaging:
