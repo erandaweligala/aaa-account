@@ -30,7 +30,6 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class CacheClient {
 
-
     private static final Logger log = Logger.getLogger(CacheClient.class);
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;

@@ -32,6 +32,8 @@ public class QuotaNotificationService {
     /**
      * Initialize default threshold templates for 50%, 80%, and 100% quota consumption.
      */
+
+    //todo need get DB FROM MESSAGE_TEMPLATE application statup add to chache using kay =  TEMPLATE_ID , value ThresholdGlobalTemplates
     private Map<Long, ThresholdGlobalTemplates> initializeDefaultThresholds() {
         Map<Long, ThresholdGlobalTemplates> templates = new HashMap<>();
 
