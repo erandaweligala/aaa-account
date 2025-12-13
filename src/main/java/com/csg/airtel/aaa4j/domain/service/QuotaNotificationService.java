@@ -15,6 +15,7 @@ import java.util.*;
 /**
  * Service for checking quota thresholds and publishing notification events.
  * Monitors quota consumption and triggers notifications when thresholds are exceeded.
+ * Templates are loaded from MESSAGE_TEMPLATE table and cached at application startup.
  */
 @ApplicationScoped
 public class QuotaNotificationService {
@@ -22,41 +23,13 @@ public class QuotaNotificationService {
     private static final Logger LOG = Logger.getLogger(QuotaNotificationService.class);
 
     private final AccountProducer accountProducer;
-    private final Map<Long, ThresholdGlobalTemplates> thresholdTemplates;
+    private final MessageTemplateCacheService templateCacheService;
 
-    public QuotaNotificationService(AccountProducer accountProducer) {
+    public QuotaNotificationService(
+            AccountProducer accountProducer,
+            MessageTemplateCacheService templateCacheService) {
         this.accountProducer = accountProducer;
-        this.thresholdTemplates = initializeDefaultThresholds();
-    }
-
-    /**
-     * Initialize default threshold templates for 50%, 80%, and 100% quota consumption.
-     */
-
-    //todo need get DB FROM MESSAGE_TEMPLATE application statup add to chache using kay =  TEMPLATE_ID , value ThresholdGlobalTemplates
-    private Map<Long, ThresholdGlobalTemplates> initializeDefaultThresholds() {
-        Map<Long, ThresholdGlobalTemplates> templates = new HashMap<>();
-
-        ThresholdGlobalTemplates threshold50 = new ThresholdGlobalTemplates();
-        threshold50.setThreshold(50L);
-        threshold50.setMassage("User {username} has consumed 50% of data quota. Remaining: {availableQuota} bytes in bucket {bucketId}");
-        threshold50.setParams(new String[]{"username", "availableQuota", "bucketId"});
-        templates.put(1L, threshold50);
-
-        ThresholdGlobalTemplates threshold80 = new ThresholdGlobalTemplates();
-        threshold80.setThreshold(80L);
-        threshold80.setMassage("User {username} has consumed 80% of data quota. Remaining: {availableQuota} bytes in bucket {bucketId}");
-        threshold80.setParams(new String[]{"username", "availableQuota", "bucketId"});
-        templates.put(3L, threshold80);
-
-        ThresholdGlobalTemplates threshold100 = new ThresholdGlobalTemplates();
-        threshold100.setThreshold(100L);
-        threshold100.setMassage("User {username} has exhausted 100% of data quota in bucket {bucketId}");
-        threshold100.setParams(new String[]{"username", "bucketId"});
-        templates.put(5L, threshold100);
-
-        LOG.info("Initialized default threshold templates: 50%, 80%, 100%");
-        return templates;
+        this.templateCacheService = templateCacheService;
     }
 
     /**
@@ -109,15 +82,16 @@ public class QuotaNotificationService {
         // Check each configured threshold
         List<Uni<Void>> notifications = new ArrayList<>();
         for (Long templateId : activeTemplateIds) {
-            ThresholdGlobalTemplates template = thresholdTemplates.get(templateId);
-            if (template != null) {
-                Uni<Void> notification = checkThreshold(
-                        userData, balance, template, oldUsagePercentage, newUsagePercentage, newQuota
-                );
-                if (notification != null) {
-                    notifications.add(notification);
-                }
-            }
+            Uni<Void> notification = templateCacheService.getTemplate(templateId)
+                    .onItem().transformToUni(template -> {
+                        if (template != null) {
+                            return checkThreshold(
+                                    userData, balance, template, oldUsagePercentage, newUsagePercentage, newQuota
+                            );
+                        }
+                        return Uni.createFrom().nullItem();
+                    });
+            notifications.add(notification);
         }
 
         if (notifications.isEmpty()) {
@@ -236,17 +210,21 @@ public class QuotaNotificationService {
 
     /**
      * Get threshold template by ID (for external configuration/management).
+     * Retrieves from cache service.
+     *
+     * @deprecated Use templateCacheService.getTemplate() directly for reactive access
      */
-    public ThresholdGlobalTemplates getTemplate(Long templateId) {
-        return thresholdTemplates.get(templateId);
+    @Deprecated
+    public Uni<ThresholdGlobalTemplates> getTemplate(Long templateId) {
+        return templateCacheService.getTemplate(templateId);
     }
 
     /**
-     * Update or add threshold template (for external configuration/management).
+     * Refresh template cache from database.
+     * Useful for runtime updates without restart.
      */
-    public void updateTemplate(Long templateId, ThresholdGlobalTemplates template) {
-        thresholdTemplates.put(templateId, template);
-        LOG.infof("Updated threshold template %d: %d%% - %s",
-                templateId, template.getThreshold(), template.getMassage());
+    public Uni<Void> refreshTemplateCache() {
+        LOG.info("Triggering template cache refresh");
+        return templateCacheService.refreshCache();
     }
 }
