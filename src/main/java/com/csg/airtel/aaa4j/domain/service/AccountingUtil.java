@@ -1320,8 +1320,8 @@ public class AccountingUtil {
         // Run asynchronously if configured
         if (thresholdCache.isAsync()) {
             checkAndNotifyQuotaThresholdsAsync(balance, username)
-                    .ifNoItem().after(thresholdCache.getAsyncTimeout())
-                    .recoverWithNull() //todo Cannot resolve method 'recoverWithNull' in 'UniOnTimeout'
+                    .ifNoItem().after(thresholdCache.getAsyncTimeout()).fail()
+                    .onFailure().recoverWithNull()
                     .subscribe().with(
                             result -> {
                                 if (log.isTraceEnabled() && result != null) {
