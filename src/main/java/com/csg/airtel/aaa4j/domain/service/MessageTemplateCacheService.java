@@ -135,9 +135,9 @@ public class MessageTemplateCacheService {
     @Retry(
             maxRetries = 2,
             delay = 100,
-            maxDuration = 5000
+            maxDuration = 10000
     )
-    @Timeout(value = 3000)
+    @Timeout(value = 10000)
     public Uni<ThresholdGlobalTemplates> getTemplate(Long templateId) {
         if (templateId == null) {
             return Uni.createFrom().nullItem();
