@@ -127,7 +127,7 @@ public class QuotaNotificationService {
 
         Long threshold = template.getThreshold();
         if (threshold == null) {
-            return null;
+            return Uni.createFrom().voidItem();
         }
 
         // Check if threshold was just crossed (old < threshold <= new)
@@ -164,7 +164,7 @@ public class QuotaNotificationService {
             });
         }
 
-        return null;
+        return Uni.createFrom().voidItem();
     }
 
     /**
