@@ -25,6 +25,7 @@ import java.util.Map;
  * Cache key format: "template:{TEMPLATE_ID}"
  */
 @ApplicationScoped
+@Startup
 public class MessageTemplateCacheService {
 
     private static final Logger LOG = Logger.getLogger(MessageTemplateCacheService.class);
@@ -52,7 +53,6 @@ public class MessageTemplateCacheService {
      * Loads all active templates from database and caches them in Redis and in-memory.
      */
     @PostConstruct
-    @Startup
     void initializeTemplateCache() {
         LOG.info("Initializing message template cache at application startup...");
 
@@ -88,6 +88,7 @@ public class MessageTemplateCacheService {
      * Cache a single message template in both Redis and in-memory.
      * Only caches USAGE type templates for quota notifications.
      */
+    //todo onother type  is bucket expire need to notify expire before notify kafka ex:- { 1 day , 2 day , 3 day etc}
     private void cacheTemplate(MessageTemplate template) {
         if (template == null || template.getTemplateId() == null) {
             LOG.warn("Skipping null or invalid template");

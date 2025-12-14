@@ -9,11 +9,6 @@ import org.jboss.logging.Logger;
 
 import java.time.Duration;
 
-/**
- * Service for tracking sent notifications to prevent duplicate notifications.
- * Uses Redis to track notifications by username, template ID, bucket ID, and threshold level.
- * Implements a time-based window to prevent sending the same notification multiple times.
- */
 @ApplicationScoped
 public class NotificationTrackingService {
 
@@ -62,7 +57,6 @@ public class NotificationTrackingService {
     }
 
     /**
-     * Mark a notification as sent to prevent duplicates within the time window.
      *
      * @param username the username
      * @param templateId the template ID

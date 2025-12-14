@@ -12,11 +12,6 @@ import org.jboss.logging.Logger;
 import java.time.LocalDateTime;
 import java.util.*;
 
-/**
- * Service for checking quota thresholds and publishing notification events.
- * Monitors quota consumption and triggers notifications when thresholds are exceeded.
- * Templates are loaded from MESSAGE_TEMPLATE table and cached at application startup.
- */
 @ApplicationScoped
 public class QuotaNotificationService {
 
@@ -36,8 +31,6 @@ public class QuotaNotificationService {
     }
 
     /**
-     * Check quota thresholds and publish notifications if thresholds are exceeded.
-     * Prevents duplicate notifications by tracking sent notifications in Redis.
      *
      * @param userData User session data containing template IDs
      * @param balance Balance/bucket being checked
@@ -143,7 +136,7 @@ public class QuotaNotificationService {
                     balance.getBucketId(),
                     threshold
             ).onItem().transformToUni(isDuplicate -> {
-                if (isDuplicate) {
+                if (Boolean.TRUE.equals(isDuplicate)) {
                     LOG.infof("Skipping duplicate notification for user=%s, templateId=%d, bucket=%s, threshold=%d%%",
                             userData.getUserName(), templateId, balance.getBucketId(), threshold);
                     return Uni.createFrom().voidItem();
@@ -235,17 +228,6 @@ public class QuotaNotificationService {
         }
 
         return ids;
-    }
-
-    /**
-     * Get threshold template by ID (for external configuration/management).
-     * Retrieves from cache service.
-     *
-     * @deprecated Use templateCacheService.getTemplate() directly for reactive access
-     */
-    @Deprecated
-    public Uni<ThresholdGlobalTemplates> getTemplate(Long templateId) {
-        return templateCacheService.getTemplate(templateId);
     }
 
     /**

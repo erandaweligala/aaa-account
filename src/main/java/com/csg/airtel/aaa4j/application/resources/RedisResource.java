@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.application.resources;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
+import com.csg.airtel.aaa4j.domain.service.NotificationTrackingService;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
@@ -29,10 +30,13 @@ public class RedisResource {
 
     final AccountingHandlerFactory accountingHandlerFactory;
 
-    public RedisResource(UserBucketRepository userRepository, CacheClient cacheClient, AccountingHandlerFactory accountingHandlerFactory) {
+    final NotificationTrackingService notificationTrackingService;
+
+    public RedisResource(UserBucketRepository userRepository, CacheClient cacheClient, AccountingHandlerFactory accountingHandlerFactory, NotificationTrackingService notificationTrackingService) {
         this.userRepository = userRepository;
         this.cacheClient = cacheClient;
         this.accountingHandlerFactory = accountingHandlerFactory;
+        this.notificationTrackingService = notificationTrackingService;
     }
 
     @GET
@@ -95,5 +99,22 @@ public class RedisResource {
                 .onItem().transform(result ->
                      result
                 );
+    }
+
+    @GET
+    @Path("/redis/notification-clear")
+    @Timed(name = "process_time", description = "Time to process request")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<Map<String, Object>> deleteNotification(@QueryParam("username") String username,@QueryParam("templateId") long templateId,
+                                                   @QueryParam("bucketId") String bucketId, @QueryParam("thresholdLevel") long thresholdLevel) {
+
+        return notificationTrackingService
+                .clearNotificationTracking(username,templateId,bucketId,thresholdLevel)
+                .onItem().transform(result -> {
+                    Map<String, Object> res = new HashMap<>();
+                    res.put("Notification-clear", result);
+                    return res;
+                });
     }
 }

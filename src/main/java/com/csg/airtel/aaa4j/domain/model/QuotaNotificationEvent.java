@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 
 /**
  * Kafka event for quota threshold notifications.
- * Published when user's data quota exceeds configured thresholds (e.g., 50%, 80%, 100%).
  */
 public record QuotaNotificationEvent(
         @JsonProperty("eventTime") LocalDateTime eventTime,
