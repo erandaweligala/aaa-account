@@ -171,9 +171,9 @@ public class QuotaNotificationService {
             long availableQuota) {
 
         String message = formatMessage(
-                template.getMassage(),
-                userData.getUserName(),
-                balance.getBucketId(),
+                template,
+                userData,
+                balance,
                 availableQuota
         );
 
@@ -193,19 +193,43 @@ public class QuotaNotificationService {
     }
 
     /**
-     * Format message template with actual values.
+     * Format message template with actual values dynamically based on template params.
      */
+    private String formatMessage(
+            ThresholdGlobalTemplates template,
+            UserSessionData userData,
+            Balance balance,
+            long availableQuota) {
 
-    //todo massage format change ThresholdGlobalTemplates.params replace the template need dyanmic
-    private String formatMessage(String template, String username, String bucketId, long availableQuota) {
-        if (template == null) {
-            return String.format("Quota threshold exceeded for user %s", username);
+        if (template == null || template.getMassage() == null) {
+            return String.format("Quota threshold exceeded for user %s",
+                    userData != null ? userData.getUserName() : "unknown");
         }
 
-        return template
-                .replace("{username}", username)
-                .replace("{bucketId}", bucketId)
-                .replace("{availableQuota}", String.valueOf(availableQuota));
+        String message = template.getMassage();
+        String[] params = template.getParams();
+
+        // If no params defined, return message as-is
+        if (params == null || params.length == 0) {
+            return message;
+        }
+
+        // Create a map of available parameter values
+        Map<String, String> paramValues = new HashMap<>();
+        paramValues.put("username", userData != null ? userData.getUserName() : "");
+        paramValues.put("bucketId", balance != null ? balance.getBucketId() : "");
+        paramValues.put("availableQuota", String.valueOf(availableQuota));
+        paramValues.put("threshold", template.getThreshold() != null ? template.getThreshold().toString() : "");
+        paramValues.put("initialBalance", balance != null && balance.getInitialBalance() != null
+                ? balance.getInitialBalance().toString() : "");
+
+        // Dynamically replace each parameter in the template
+        for (String param : params) {
+            String value = paramValues.getOrDefault(param, "");
+            message = message.replace("{" + param + "}", value);
+        }
+
+        return message;
     }
 
     /**
