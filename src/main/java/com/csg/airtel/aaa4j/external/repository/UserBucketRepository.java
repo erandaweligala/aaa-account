@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.external.repository;
 
 
+import com.csg.airtel.aaa4j.domain.model.ExpiringBucketInfo;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
+import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BUCKETS_EXPIRING_SOON;
 
 @ApplicationScoped
 public class UserBucketRepository {
@@ -138,6 +140,65 @@ public class UserBucketRepository {
 
             results.add(info);
         }
+        return results;
+    }
+
+    /**
+     * Fetches buckets that are expiring within the specified number of days.
+     *
+     * @param maxDaysToExpire maximum number of days in the future to check for expiration
+     * @return Uni containing list of ExpiringBucketInfo
+     */
+    @CircuitBreaker(
+            requestVolumeThreshold = 10,
+            failureRatio = 0.5,
+            delay = 10000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 2,
+            delay = 100,
+            maxDuration = 10000
+    )
+    public Uni<List<ExpiringBucketInfo>> getBucketsExpiringSoon(int maxDaysToExpire) {
+        if (log.isDebugEnabled()) {
+            log.debugf("Fetching buckets expiring within %d days", maxDaysToExpire);
+        }
+        return client
+                .preparedQuery(QUERY_BUCKETS_EXPIRING_SOON)
+                .execute(Tuple.of(maxDaysToExpire))
+                .onItem().transform(this::mapRowsToExpiringBuckets)
+                .onFailure().invoke(error ->
+                        log.errorf(error, "Error fetching buckets expiring within %d days", maxDaysToExpire))
+                .onItem().invoke(results -> {
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Fetched %d buckets expiring within %d days", results.size(), maxDaysToExpire);
+                    }
+                });
+    }
+
+    /**
+     * Maps database rows to ExpiringBucketInfo records.
+     *
+     * @param rows the database result set
+     * @return list of ExpiringBucketInfo records
+     */
+    private List<ExpiringBucketInfo> mapRowsToExpiringBuckets(RowSet<Row> rows) {
+        List<ExpiringBucketInfo> results = new ArrayList<>(rows.size());
+
+        for (Row row : rows) {
+            ExpiringBucketInfo info = new ExpiringBucketInfo(
+                    row.getLong(COL_ID),
+                    row.getLong(COL_BUCKET_ID),
+                    row.getString(COL_BUCKET_USER),
+                    row.getLocalDateTime(COL_EXPIRATION),
+                    row.getLong(COL_INITIAL_BALANCE) != null ? row.getLong(COL_INITIAL_BALANCE) : 0L,
+                    row.getLong(COL_CURRENT_BALANCE) != null ? row.getLong(COL_CURRENT_BALANCE) : 0L,
+                    row.getString(NOTIFICATION_TEMPLATES)
+            );
+            results.add(info);
+        }
+
         return results;
     }
 

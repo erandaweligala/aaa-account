@@ -52,4 +52,25 @@ public class SQLConstant {
                         WHERE STATUS = 'ACTIVE'
                         ORDER BY TEMPLATE_ID
             """;
+
+    public static final String QUERY_BUCKETS_EXPIRING_SOON = """
+                        SELECT
+                           s.ID,
+                           b.ID AS BUCKET_ID,
+                           s.USERNAME AS BUCKET_USER,
+                           b.EXPIRATION,
+                           b.INITIAL_BALANCE,
+                           b.CURRENT_BALANCE,
+                           u.NOTIFICATION_TEMPLATES
+                        FROM SERVICE_INSTANCE s
+                        JOIN AAA_USER u
+                          ON s.USERNAME = u.USER_NAME
+                          OR (u.group_id IS NOT NULL AND s.USERNAME = u.group_id)
+                        JOIN BUCKET_INSTANCE b
+                          ON s.ID = b.service_id
+                        WHERE b.EXPIRATION IS NOT NULL
+                          AND b.EXPIRATION > CURRENT_TIMESTAMP
+                          AND b.EXPIRATION <= TIMESTAMPADD(DAY, :1, CURRENT_TIMESTAMP)
+                        ORDER BY b.EXPIRATION ASC
+            """;
 }

@@ -98,6 +98,11 @@ idle-session:
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
 
+bucket-expiration:
+  enabled: true
+  max-days-ahead: 30        # Check buckets expiring within next 30 days
+  scheduler-interval: 1h    # Run every 1 hour
+
 # Kafka Producer/Consumer Configuration - Optimized for 1000 TPS
 mp:
   messaging:

@@ -86,18 +86,17 @@ public class MessageTemplateCacheService {
 
     /**
      * Cache a single message template in both Redis and in-memory.
-     * Only caches USAGE type templates for quota notifications.
+     * Caches USAGE type templates for quota notifications and EXPIRY type templates for bucket expiration notifications.
      */
-    //todo onother type  is bucket expire need to notify expire before notify kafka ex:- { 1 day , 2 day , 3 day etc}
     private void cacheTemplate(MessageTemplate template) {
         if (template == null || template.getTemplateId() == null) {
             LOG.warn("Skipping null or invalid template");
             return;
         }
 
-        // Currently only USAGE type templates are used for quota notifications
-        if (!"USAGE".equals(template.getMessageType())) {
-            LOG.debugf("Skipping non-USAGE template ID %d (type: %s)",
+        // Cache USAGE type templates for quota notifications and EXPIRY type templates for bucket expiration
+        if (!"USAGE".equals(template.getMessageType()) && !"EXPIRY".equals(template.getMessageType())) {
+            LOG.debugf("Skipping template ID %d (type: %s) - only USAGE and EXPIRY types are supported",
                     template.getTemplateId(), template.getMessageType());
             return;
         }
@@ -108,8 +107,15 @@ public class MessageTemplateCacheService {
         // Cache in Redis (fire and forget for startup performance)
         valueCommands.set(cacheKey, thresholdTemplate)
                 .subscribe().with(
-                        success -> LOG.debugf("Cached template ID %d in Redis: %s (%d%%)",
-                                template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage()),
+                        success -> {
+                            if ("USAGE".equals(template.getMessageType())) {
+                                LOG.debugf("Cached template ID %d in Redis: %s (%d%%)",
+                                        template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
+                            } else {
+                                LOG.debugf("Cached template ID %d in Redis: %s (%d days)",
+                                        template.getTemplateId(), template.getTemplateName(), template.getDaysToExpire());
+                            }
+                        },
                         error -> LOG.warnf("Failed to cache template ID %d in Redis: %s",
                                 template.getTemplateId(), error.getMessage())
                 );
@@ -117,8 +123,13 @@ public class MessageTemplateCacheService {
         // Cache in memory for fast access
         inMemoryCache.put(template.getTemplateId(), thresholdTemplate);
 
-        LOG.debugf("Cached template ID %d in-memory: %s (%d%%)",
-                template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
+        if ("USAGE".equals(template.getMessageType())) {
+            LOG.debugf("Cached template ID %d in-memory: %s (%d%%)",
+                    template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
+        } else {
+            LOG.debugf("Cached template ID %d in-memory: %s (%d days)",
+                    template.getTemplateId(), template.getTemplateName(), template.getDaysToExpire());
+        }
     }
 
     /**
