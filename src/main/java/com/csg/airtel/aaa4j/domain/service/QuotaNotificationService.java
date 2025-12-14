@@ -195,6 +195,8 @@ public class QuotaNotificationService {
     /**
      * Format message template with actual values.
      */
+
+    //todo massage format change ThresholdGlobalTemplates.params replace the template need dyanmic
     private String formatMessage(String template, String username, String bucketId, long availableQuota) {
         if (template == null) {
             return String.format("Quota threshold exceeded for user %s", username);
@@ -208,7 +210,6 @@ public class QuotaNotificationService {
 
     /**
      * Parse comma-separated template IDs from string.
-     * Expected format: "1,3,5"
      */
     private List<Long> parseTemplateIds(String templateIds) {
         if (templateIds == null || templateIds.trim().isEmpty()) {

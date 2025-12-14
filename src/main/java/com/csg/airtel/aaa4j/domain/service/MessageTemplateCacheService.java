@@ -16,14 +16,8 @@ import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
-/**
- * Service for caching message templates at application startup.
- * Loads templates from MESSAGE_TEMPLATE table and stores them in Redis cache.
- * Cache key format: "template:{TEMPLATE_ID}"
- */
 @ApplicationScoped
 @Startup
 public class MessageTemplateCacheService {
@@ -32,10 +26,9 @@ public class MessageTemplateCacheService {
     private static final String CACHE_KEY_PREFIX = "template:";
 
     private final MessageTemplateRepository templateRepository;
-    private final ReactiveRedisDataSource reactiveRedisDataSource;
+
     private final ReactiveValueCommands<String, ThresholdGlobalTemplates> valueCommands;
 
-    // In-memory fallback cache for better performance
     private final Map<Long, ThresholdGlobalTemplates> inMemoryCache;
 
     @Inject
@@ -43,7 +36,6 @@ public class MessageTemplateCacheService {
             MessageTemplateRepository templateRepository,
             ReactiveRedisDataSource reactiveRedisDataSource) {
         this.templateRepository = templateRepository;
-        this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.valueCommands = reactiveRedisDataSource.value(String.class, ThresholdGlobalTemplates.class);
         this.inMemoryCache = new HashMap<>();
     }
@@ -88,7 +80,6 @@ public class MessageTemplateCacheService {
      * Cache a single message template in both Redis and in-memory.
      * Only caches USAGE type templates for quota notifications.
      */
-    //todo onother type  is bucket expire need to notify expire before notify kafka ex:- { 1 day , 2 day , 3 day etc}
     private void cacheTemplate(MessageTemplate template) {
         if (template == null || template.getTemplateId() == null) {
             LOG.warn("Skipping null or invalid template");
@@ -122,7 +113,6 @@ public class MessageTemplateCacheService {
     }
 
     /**
-     * Get a template by ID from cache (tries in-memory first, then Redis).
      *
      * @param templateId the template ID
      * @return Uni containing ThresholdGlobalTemplates or null if not found
