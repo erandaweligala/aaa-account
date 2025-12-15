@@ -141,6 +141,19 @@ mp:
         linger.ms: 5
         buffer.memory: 67108864
 
+      quota-notification-events:
+        connector: smallrye-kafka
+        topic: quota-notifications
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        acks: all
+        retries: 3
+        max.in.flight.requests.per.connection: 5
+        compression.type: snappy
+        batch.size: 32768
+        linger.ms: 5
+        buffer.memory: 67108864
+
     incoming:
       accounting-events:
         connector: smallrye-kafka

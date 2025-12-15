@@ -32,7 +32,6 @@ public class COAService {
         // Use merge instead of concatenate for parallel execution (better throughput)
         return Multi.createFrom().iterable(sessions)
                 .onItem().transformToUni(session ->
-                        // Send COA disconnect response event
                         accountProducer.produceAccountingResponseEvent(
                                         MappingUtil.createResponse(
                                                 session.getSessionId(),
@@ -52,32 +51,11 @@ public class COAService {
                                     }
                                 })
                                 .onFailure().recoverWithNull()
-                                // Generate and send COA Disconnect CDR event
-                                .call(() -> generateCoaDisconnectCDR(session, username))
                 )
                 .merge() // Parallel execution instead of sequential
                 .collect().asList()
                 .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
                 .replaceWithVoid();
-    }
-
-    /**
-     * Generates and sends a CDR event for COA Disconnect
-     */
-    private Uni<Void> generateCoaDisconnectCDR(Session session, String username) {
-        try {
-            var cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
-
-            // Send CDR event asynchronously
-            return accountProducer.produceAccountingCDREvent(cdrEvent)
-                    .onItem().invoke(() -> log.infof("COA Disconnect CDR event sent successfully for session: %s", session.getSessionId()))
-                    .onFailure().invoke(failure -> log.errorf(failure, "Failed to send COA Disconnect CDR event for session: %s", session.getSessionId()))
-                    .onFailure().recoverWithNull()
-                    .replaceWithVoid();
-        } catch (Exception e) {
-            log.errorf(e, "Error building COA Disconnect CDR event for session: %s", session.getSessionId());
-            return Uni.createFrom().voidItem();
-        }
     }
 
 }

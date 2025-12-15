@@ -670,6 +670,7 @@ public class AccountingUtil {
 
 
 
+
         BalanceUpdateContext context = prepareBalanceUpdateContext(
                 sessionData, foundBalance, combinedBalances, totalUsage);
 

@@ -5,7 +5,6 @@ import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.QuotaNotificationEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
-import com.csg.airtel.aaa4j.domain.service.CdrMappingUtil;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
@@ -87,8 +86,6 @@ public class AccountProducer {
     }
 
     /**
-     * Produces an accounting response event (COA Disconnect)
-     *
      * @param event request
      */
     @CircuitBreaker(
@@ -305,25 +302,6 @@ public class AccountProducer {
     private Uni<Void> fallbackProduceQuotaNotificationEvent(QuotaNotificationEvent event, Throwable throwable) {
         FailoverPathLogger.logFallbackPath(LOG, "produceQuotaNotificationEvent", event.username(), throwable);
         return Uni.createFrom().voidItem();
-    }
-
-    /**
-     * Generates and sends a CDR event for COA Disconnect
-     */
-    private Uni<Void> generateCoaDisconnectCDR(Session session, String username) {
-        try {
-            var cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
-
-            // Send CDR event asynchronously
-            return produceAccountingCDREvent(cdrEvent)
-                    .onItem().invoke(() -> LOG.infof("COA Disconnect CDR event sent successfully for session: %s", session.getSessionId()))
-                    .onFailure().invoke(failure -> LOG.errorf("Failed to send COA Disconnect CDR event for session: %s", session.getSessionId()))
-                    .onFailure().recoverWithNull()
-                    .replaceWithVoid();
-        } catch (Exception e) {
-            LOG.errorf(e, "Error building COA Disconnect CDR event for session: %s", session.getSessionId());
-            return Uni.createFrom().voidItem();
-        }
     }
 
 }

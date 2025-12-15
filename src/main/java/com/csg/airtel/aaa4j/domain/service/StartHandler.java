@@ -98,16 +98,10 @@ public class StartHandler {
         if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
 
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
-            // Send disconnect event asynchronously
-            accountProducer.produceAccountingResponseEvent(
+            return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT))
-                    .subscribe().with(
-                            success -> log.debugf("Disconnect event sent for user: %s (concurrency exceeded)", request.username()),
-                            failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                    );
-            return Uni.createFrom().voidItem();
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
         }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
@@ -137,16 +131,10 @@ public class StartHandler {
         double availableBalance = calculateAvailableBalance(combinedBalances);
         if (availableBalance <= 0) {
             log.warnf("User: %s has exhausted their data balance. Cannot start new session.", request.username());
-            // Send disconnect event asynchronously
-            accountProducer.produceAccountingResponseEvent(
+            return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Data balance exhausted",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT))
-                    .subscribe().with(
-                            success -> log.debugf("Disconnect event sent for user: %s (balance exhausted)", request.username()),
-                            failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                    );
-            return Uni.createFrom().voidItem();
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
         }
 
         if (sessionAlreadyExists(userSessionData, request.sessionId())) {
@@ -171,16 +159,10 @@ public class StartHandler {
 
         if (highestPriorityBalance == null) {
             log.warnf("No valid balance found for user: %s. Cannot start new session.", request.username());
-            // Send disconnect event asynchronously
-            accountProducer.produceAccountingResponseEvent(
+            return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "No valid balance found",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT))
-                    .subscribe().with(
-                            success -> log.debugf("Disconnect event sent for user: %s (no valid balance)", request.username()),
-                            failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                    );
-            return Uni.createFrom().voidItem();
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
         }
 
         Session newSession = createSessionWithBalance(request, highestPriorityBalance);
@@ -311,30 +293,20 @@ public class StartHandler {
 
     private Uni<Void> handleNoServiceBuckets(AccountingRequestDto request) {
         log.warnf("No service buckets found for user: %s. Cannot create session data.", request.username());
-        // Send disconnect event asynchronously
-        accountProducer.produceAccountingResponseEvent(
+        return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "No service buckets found",
                                 AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT))
-                .subscribe().with(
-                        success -> log.debugf("Disconnect event sent for user: %s (no service buckets)", request.username()),
-                        failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                );
-        return Uni.createFrom().voidItem();
+                .replaceWithVoid();
     }
 
     private Uni<Void> handleZeroQuota(AccountingRequestDto request) {
         log.warnf("User: %s has zero total data quota. Cannot create session data.", request.username());
-        // Send disconnect event asynchronously
-        accountProducer.produceAccountingResponseEvent(
+        return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "Data quota is zero",
                                 AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT))
-                .subscribe().with(
-                        success -> log.debugf("Disconnect event sent for user: %s (zero quota)", request.username()),
-                        failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                );
-        return Uni.createFrom().voidItem();
+                .replaceWithVoid();
     }
 
     private BucketProcessingResult processBucketsAndCreateBalances(
@@ -391,16 +363,11 @@ public class StartHandler {
 
     private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {
         log.warnf("No valid balance found for user: %s. Cannot create session data.", request.username());
-        // Send disconnect event asynchronously
-        accountProducer.produceAccountingResponseEvent(
+        return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "No valid balance found",
                                 AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT))
-                .subscribe().with(
-                        success -> log.debugf("Disconnect event sent for user: %s (no valid balance)", request.username()),
-                        failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                );
-        return Uni.createFrom().voidItem();
+                .replaceWithVoid();
     }
 
     private UserSessionData buildUserSessionData(

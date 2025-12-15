@@ -72,14 +72,8 @@ public class InterimHandler {
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
                         log.warnf("No service buckets found for user: %s", request.username());
-                        // Send disconnect event asynchronously
-                        accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT))
-                                .subscribe().with(
-                                        success -> log.debugf("Disconnect event sent for user: %s (no service buckets)", request.username()),
-                                        failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                                );
-                        return Uni.createFrom().voidItem();
+                       return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT));
                     }
                     int bucketCount = serviceBuckets.size();
                     List<Balance> balanceList = new ArrayList<>(bucketCount);
@@ -101,14 +95,8 @@ public class InterimHandler {
 
                     if (totalQuota <= 0) {
                         log.warnf("User: %s has zero total data quota", request.username());
-                        // Send disconnect event asynchronously
-                        accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT))
-                                .subscribe().with(
-                                        success -> log.debugf("Disconnect event sent for user: %s (zero quota)", request.username()),
-                                        failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                                );
-                        return Uni.createFrom().voidItem();
+                        return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT));
                     }
 
                      UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)
@@ -134,16 +122,10 @@ public class InterimHandler {
 
         if(userData.getConcurrency() < userData.getSessions().size()+i) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
-            // Send disconnect event asynchronously
-            accountProducer.produceAccountingResponseEvent(
+            return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT))
-                    .subscribe().with(
-                            success -> log.debugf("Disconnect event sent for user: %s (concurrency exceeded)", request.username()),
-                            failure -> log.errorf(failure, "Failed to send disconnect event for user: %s", request.username())
-                    );
-            return Uni.createFrom().voidItem();
+                            AccountingResponseEvent.ResponseAction.DISCONNECT));
         }
         // Early return if session time hasn't increased
         if (request.sessionTime() <= session.getSessionTime()) {

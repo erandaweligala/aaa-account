@@ -115,44 +115,6 @@ public class CdrMappingUtil {
     }
 
     /**
-     * Builds a complete AccountingCDREvent for COA Disconnect events
-     */
-    public static AccountingCDREvent buildCoaDisconnectCDREvent(Session session, String username,String reason) {
-        log.infof("Building COA Disconnect CDR Event for session: %s", session.getSessionId());
-
-        SessionCdr cdrSession = buildCoaSessionCdr(session);
-        User cdrUser = User.builder()
-                .userName(username)
-                .build();
-        Network cdrNetwork = Network.builder()
-                .framedIpAddress(session.getFramedId())
-                .calledStationId(session.getNasIp())
-                .build();
-        Coa coa = Coa.builder()
-                .coaType("Disconnect-Request")
-                .coaCode(40)
-                .destinationPort(3799)
-                .description(reason)
-                .build();
-
-        Payload payload = Payload.builder()
-                .session(cdrSession)
-                .user(cdrUser)
-                .network(cdrNetwork)
-                .coa(coa)
-                .build();
-
-        return AccountingCDREvent.builder()
-                .eventId(UUID.randomUUID().toString())
-                .eventType(EventTypes.ACCOUNTING_COA.name())
-                .eventVersion("1.0")
-                .eventTimestamp(Instant.now())
-                .source("AAA-Service")
-                .payload(payload)
-                .build();
-    }
-
-    /**
      * Internal method to build a complete AccountingCDREvent with all components
      */
     private static AccountingCDREvent buildCDREvent(
@@ -205,30 +167,6 @@ public class CdrMappingUtil {
                 .nasPort(request.nasPortId())
                 .nasPortType(request.nasPortId())
                 .sessionStopTime(eventEndTime)
-                .build();
-    }
-
-    /**
-     * Builds a Session CDR object from Session entity for COA Disconnect events
-     */
-    public static SessionCdr buildCoaSessionCdr(Session session) {
-        // Convert LocalDateTime to Instant
-        Instant startTime = session.getSessionInitiatedTime() != null
-                ? session.getSessionInitiatedTime().atZone(java.time.ZoneId.systemDefault()).toInstant()
-                : null;
-
-        String sessionTimeStr = session.getSessionTime() != null ? String.valueOf(session.getSessionTime()) : "0";
-
-        return SessionCdr.builder()
-                .sessionId(session.getSessionId())
-                .sessionTime(sessionTimeStr)
-                .startTime(startTime)
-                .updateTime(Instant.now())
-                .nasIdentifier(null)
-                .nasIpAddress(session.getNasIp())
-                .nasPort(session.getNasPortId())
-                .nasPortType(session.getNasPortId())
-                .sessionStopTime(null)
                 .build();
     }
 
