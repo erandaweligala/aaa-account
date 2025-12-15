@@ -88,6 +88,7 @@ public class AccountProducer {
     /**
      * @param event request
      */
+    //todo need to implement CDR for COA Disconnect
     @CircuitBreaker(
             requestVolumeThreshold = 10,
             failureRatio = 0.5,
@@ -162,8 +163,6 @@ public class AccountProducer {
     }
 
     /**
-     * Fallback method for produceDBWriteEvent.
-     * Revokes the session and clears it from cache when DB write fails after retries.
      *
      * @param request the DB write request
      * @param throwable the failure cause

@@ -216,11 +216,11 @@ public class QuotaNotificationService {
 
         // Create a map of available parameter values
         Map<String, String> paramValues = new HashMap<>();
-        paramValues.put("username", userData != null ? userData.getUserName() : "");
-        paramValues.put("bucketId", balance != null ? balance.getBucketId() : "");
-        paramValues.put("availableQuota", String.valueOf(availableQuota));
-        paramValues.put("threshold", template.getThreshold() != null ? template.getThreshold().toString() : "");
-        paramValues.put("initialBalance", balance != null && balance.getInitialBalance() != null
+        paramValues.put("MOCN", userData != null ? userData.getUserName() : "");
+        paramValues.put("PLAN_NAME", balance != null ? balance.getBucketId() : "");
+        paramValues.put("UTILIZED_QUOTA", String.valueOf(availableQuota));
+        paramValues.put("QUOTA_PERCENTAGE", template.getThreshold() != null ? template.getThreshold().toString() : "");
+        paramValues.put("INITIAL_QUOTA", balance != null && balance.getInitialBalance() != null
                 ? balance.getInitialBalance().toString() : "");
 
         // Dynamically replace each parameter in the template
