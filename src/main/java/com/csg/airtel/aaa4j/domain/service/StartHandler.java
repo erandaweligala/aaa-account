@@ -29,15 +29,18 @@ public class StartHandler {
     private final AccountProducer  accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final COAService coaService;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
+        this.coaService = coaService;
     }
+
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
@@ -96,12 +99,12 @@ public class StartHandler {
             List<Balance> balanceList) {
 
         if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
-
+//todo need to move this produceAccountingResponseEvent move COAService
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+                            AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() -> coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()));
         }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
@@ -134,7 +137,7 @@ public class StartHandler {
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Data balance exhausted",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+                            AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() ->coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()));
         }
 
         if (sessionAlreadyExists(userSessionData, request.sessionId())) {
@@ -162,7 +165,7 @@ public class StartHandler {
             return accountProducer.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "No valid balance found",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+                            AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(()->coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()));
         }
 
         Session newSession = createSessionWithBalance(request, highestPriorityBalance);
@@ -296,7 +299,7 @@ public class StartHandler {
         return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "No service buckets found",
                                 AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT))
+                                AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() -> coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()))
                 .replaceWithVoid();
     }
 
@@ -305,7 +308,7 @@ public class StartHandler {
         return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "Data quota is zero",
                                 AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT))
+                                AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() -> coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()))
                 .replaceWithVoid();
     }
 
@@ -366,7 +369,7 @@ public class StartHandler {
         return accountProducer.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "No valid balance found",
                                 AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT))
+                                AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(()->coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()))
                 .replaceWithVoid();
     }
 
