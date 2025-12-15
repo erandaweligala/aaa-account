@@ -27,6 +27,8 @@ public class AccountingCDREvent {
     @JsonProperty("source")
     private String source;
 
+    @JsonProperty("partitionKey")
+    private String partitionKey;
 
     @JsonProperty("payload")
     private Payload payload;

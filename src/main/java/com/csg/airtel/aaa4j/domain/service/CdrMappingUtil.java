@@ -7,6 +7,8 @@ import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -202,6 +204,106 @@ public class CdrMappingUtil {
                 .acctOutputPackets(0)
                 .acctInputGigawords(metrics.getInputGigawords() != null ? metrics.getInputGigawords() : 0)
                 .acctOutputGigawords(metrics.getOutputGigawords() != null ? metrics.getOutputGigawords() : 0)
+                .build();
+    }
+
+    /**
+     * Builds a complete AccountingCDREvent for COA Disconnect events
+     *
+     * @param session The session being disconnected
+     * @param username The username associated with the session
+     * @return COA Disconnect CDR event
+     */
+    public static AccountingCDREvent buildCoaDisconnectCDREvent(Session session, String username) {
+        log.infof("Building COA Disconnect CDR event for session: %s, user: %s", session.getSessionId(), username);
+
+        // Build session CDR
+        SessionCdr cdrSession = SessionCdr.builder()
+                .sessionId(session.getSessionId())
+                .nasIdentifier(null)
+                .nasIpAddress(session.getNasIp())
+                .nasPort(session.getNasPortId())
+                .nasPortType(null)
+                .sessionTime(String.valueOf(session.getSessionTime() != null ? session.getSessionTime() : 0))
+                .startTime(session.getSessionInitiatedTime() != null
+                    ? session.getSessionInitiatedTime().atZone(java.time.ZoneId.systemDefault()).toInstant()
+                    : Instant.now())
+                .updateTime(Instant.now())
+                .build();
+
+        // Build user CDR
+        User cdrUser = User.builder()
+                .userName(username)
+                .build();
+
+        // Build network CDR
+        Network cdrNetwork = Network.builder()
+                .framedIpAddress(session.getFramedId())
+                .framedProtocol(null)
+                .serviceType(null)
+                .calledStationId(null)
+                .build();
+
+        // Build COA section
+        COA coa = COA.builder()
+                .coaType("Disconnect-Request")
+                .coaCode(40)
+                .destinationPort(3799)
+                .build();
+
+        // Build RADIUS attributes
+        List<RadiusAttribute> attributes = new ArrayList<>();
+
+        attributes.add(RadiusAttribute.builder()
+                .type(1)
+                .name("User-Name")
+                .value(username)
+                .build());
+
+        if (session.getNasIp() != null) {
+            attributes.add(RadiusAttribute.builder()
+                    .type(4)
+                    .name("NAS-IP-Address")
+                    .value(session.getNasIp())
+                    .build());
+        }
+
+        if (session.getFramedId() != null) {
+            attributes.add(RadiusAttribute.builder()
+                    .type(8)
+                    .name("Framed-IP-Address")
+                    .value(session.getFramedId())
+                    .build());
+        }
+
+        attributes.add(RadiusAttribute.builder()
+                .type(44)
+                .name("Acct-Session-Id")
+                .value(session.getSessionId())
+                .build());
+
+        Radius radius = Radius.builder()
+                .attributes(attributes)
+                .build();
+
+        // Build payload
+        Payload payload = Payload.builder()
+                .session(cdrSession)
+                .user(cdrUser)
+                .network(cdrNetwork)
+                .coa(coa)
+                .radius(radius)
+                .build();
+
+        // Build and return the complete CDR event
+        return AccountingCDREvent.builder()
+                .eventId("evt_coa_disconnect_" + System.currentTimeMillis() / 1000 + "_" + (int)(Math.random() * 100))
+                .eventType(EventTypes.COA_DISCONNECT_REQUEST.name())
+                .eventVersion("1.0")
+                .eventTimestamp(Instant.now())
+                .source("radius-server-01")
+                .partitionKey(session.getSessionId())
+                .payload(payload)
                 .build();
     }
 

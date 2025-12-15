@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
+import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
@@ -41,6 +42,23 @@ public class COAService {
                                                 username
                                         )
                                 )
+                                .invoke(() -> {
+                                    // Generate and send COA Disconnect CDR event asynchronously
+                                    try {
+                                        AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
+                                        accountProducer.produceAccountingCDREvent(cdrEvent)
+                                                .subscribe()
+                                                .with(
+                                                        success -> log.infof("COA Disconnect CDR event sent successfully for session: %s, user: %s",
+                                                                session.getSessionId(), username),
+                                                        failure -> log.errorf(failure, "Failed to send COA Disconnect CDR event for session: %s, user: %s",
+                                                                session.getSessionId(), username)
+                                                );
+                                    } catch (Exception e) {
+                                        log.errorf(e, "Error building COA Disconnect CDR event for session: %s, user: %s",
+                                                session.getSessionId(), username);
+                                    }
+                                })
                                 .onFailure().retry()
                                 .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
                                 .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
