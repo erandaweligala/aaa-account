@@ -42,24 +42,7 @@ public class COAService {
                                                 username
                                         )
                                 )
-                                .invoke(() -> {
-                                    // Generate and send COA Disconnect CDR event asynchronously
-                                    //todo need introduce this method separate public
-                                    try {
-                                        AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
-                                        accountProducer.produceAccountingCDREvent(cdrEvent)
-                                                .subscribe()
-                                                .with(
-                                                        success -> log.infof("COA Disconnect CDR event sent successfully for session: %s, user: %s",
-                                                                session.getSessionId(), username),
-                                                        failure -> log.errorf(failure, "Failed to send COA Disconnect CDR event for session: %s, user: %s",
-                                                                session.getSessionId(), username)
-                                                );
-                                    } catch (Exception e) {
-                                        log.errorf(e, "Error building COA Disconnect CDR event for session: %s, user: %s",
-                                                session.getSessionId(), username);
-                                    }
-                                })
+                                .invoke(() -> generateAndSendCoaDisconnectCDR(session, username))
                                 .onFailure().retry()
                                 .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
                                 .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
@@ -75,6 +58,30 @@ public class COAService {
                 .collect().asList()
                 .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
                 .replaceWithVoid();
+    }
+
+    /**
+     * Generate and send COA Disconnect CDR event asynchronously.
+     * This method builds a CDR event for a COA disconnect operation and sends it to the accounting system.
+     *
+     * @param session the session being disconnected
+     * @param username the username associated with the session
+     */
+    public void generateAndSendCoaDisconnectCDR(Session session, String username) {
+        try {
+            AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
+            accountProducer.produceAccountingCDREvent(cdrEvent)
+                    .subscribe()
+                    .with(
+                            success -> log.infof("COA Disconnect CDR event sent successfully for session: %s, user: %s",
+                                    session.getSessionId(), username),
+                            failure -> log.errorf(failure, "Failed to send COA Disconnect CDR event for session: %s, user: %s",
+                                    session.getSessionId(), username)
+                    );
+        } catch (Exception e) {
+            log.errorf(e, "Error building COA Disconnect CDR event for session: %s, user: %s",
+                    session.getSessionId(), username);
+        }
     }
 
 }
