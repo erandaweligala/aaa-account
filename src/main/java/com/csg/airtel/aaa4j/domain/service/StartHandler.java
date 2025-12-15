@@ -99,12 +99,13 @@ public class StartHandler {
             List<Balance> balanceList) {
 
         if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
-//todo need to move this produceAccountingResponseEvent move COAService
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
-            return accountProducer.produceAccountingResponseEvent(
+            return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() -> coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()));
+                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                    createSession(request),
+                    request.username());
         }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
@@ -134,10 +135,12 @@ public class StartHandler {
         double availableBalance = calculateAvailableBalance(combinedBalances);
         if (availableBalance <= 0) {
             log.warnf("User: %s has exhausted their data balance. Cannot start new session.", request.username());
-            return accountProducer.produceAccountingResponseEvent(
+            return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Data balance exhausted",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() ->coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()));
+                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                    createSession(request),
+                    request.username());
         }
 
         if (sessionAlreadyExists(userSessionData, request.sessionId())) {
@@ -162,10 +165,12 @@ public class StartHandler {
 
         if (highestPriorityBalance == null) {
             log.warnf("No valid balance found for user: %s. Cannot start new session.", request.username());
-            return accountProducer.produceAccountingResponseEvent(
+            return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "No valid balance found",
                             AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(()->coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()));
+                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                    createSession(request),
+                    request.username());
         }
 
         Session newSession = createSessionWithBalance(request, highestPriorityBalance);
@@ -296,20 +301,22 @@ public class StartHandler {
 
     private Uni<Void> handleNoServiceBuckets(AccountingRequestDto request) {
         log.warnf("No service buckets found for user: %s. Cannot create session data.", request.username());
-        return accountProducer.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "No service buckets found",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() -> coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()))
-                .replaceWithVoid();
+        return coaService.produceAccountingResponseEvent(
+                MappingUtil.createResponse(request, "No service buckets found",
+                        AccountingResponseEvent.EventType.COA,
+                        AccountingResponseEvent.ResponseAction.DISCONNECT),
+                createSession(request),
+                request.username());
     }
 
     private Uni<Void> handleZeroQuota(AccountingRequestDto request) {
         log.warnf("User: %s has zero total data quota. Cannot create session data.", request.username());
-        return accountProducer.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "Data quota is zero",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(() -> coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()))
-                .replaceWithVoid();
+        return coaService.produceAccountingResponseEvent(
+                MappingUtil.createResponse(request, "Data quota is zero",
+                        AccountingResponseEvent.EventType.COA,
+                        AccountingResponseEvent.ResponseAction.DISCONNECT),
+                createSession(request),
+                request.username());
     }
 
     private BucketProcessingResult processBucketsAndCreateBalances(
@@ -366,11 +373,12 @@ public class StartHandler {
 
     private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {
         log.warnf("No valid balance found for user: %s. Cannot create session data.", request.username());
-        return accountProducer.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "No valid balance found",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT)).invoke(()->coaService.generateAndSendCoaDisconnectCDR(createSession(request),request.username()))
-                .replaceWithVoid();
+        return coaService.produceAccountingResponseEvent(
+                MappingUtil.createResponse(request, "No valid balance found",
+                        AccountingResponseEvent.EventType.COA,
+                        AccountingResponseEvent.ResponseAction.DISCONNECT),
+                createSession(request),
+                request.username());
     }
 
     private UserSessionData buildUserSessionData(
