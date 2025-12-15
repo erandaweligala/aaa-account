@@ -22,5 +22,8 @@ public  class Payload {
 
     @JsonProperty("accounting")
     private Accounting accounting;
+
+    @JsonProperty("coa")
+    private Coa coa;
 }
 

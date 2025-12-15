@@ -86,9 +86,10 @@ public class AccountProducer {
     }
 
     /**
+     * Produces an accounting response event (COA Disconnect)
+     *
      * @param event request
      */
-    //todo need to implement CDR for COA Disconnect
     @CircuitBreaker(
             requestVolumeThreshold = 10,
             failureRatio = 0.5,
