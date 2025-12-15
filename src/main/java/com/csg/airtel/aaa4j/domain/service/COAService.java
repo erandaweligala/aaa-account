@@ -44,7 +44,7 @@ public class COAService {
                                 )
                                 .invoke(() -> {
                                     // Generate and send COA Disconnect CDR event asynchronously
-
+                                    //todo need introduce this method separate public
                                     try {
                                         AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
                                         accountProducer.produceAccountingCDREvent(cdrEvent)
