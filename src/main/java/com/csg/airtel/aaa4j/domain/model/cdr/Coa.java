@@ -18,4 +18,6 @@ public class Coa {
 
     @JsonProperty("destinationPort")
     private Integer destinationPort;
+
+    private String description;
 }

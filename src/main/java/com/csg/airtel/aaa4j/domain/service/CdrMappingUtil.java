@@ -117,7 +117,7 @@ public class CdrMappingUtil {
     /**
      * Builds a complete AccountingCDREvent for COA Disconnect events
      */
-    public static AccountingCDREvent buildCoaDisconnectCDREvent(Session session, String username) {
+    public static AccountingCDREvent buildCoaDisconnectCDREvent(Session session, String username,String reason) {
         log.infof("Building COA Disconnect CDR Event for session: %s", session.getSessionId());
 
         SessionCdr cdrSession = buildCoaSessionCdr(session);
@@ -132,6 +132,7 @@ public class CdrMappingUtil {
                 .coaType("Disconnect-Request")
                 .coaCode(40)
                 .destinationPort(3799)
+                .description(reason)
                 .build();
 
         Payload payload = Payload.builder()
