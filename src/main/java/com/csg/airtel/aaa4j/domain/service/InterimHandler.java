@@ -101,9 +101,11 @@ public class InterimHandler {
                                 AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
                     }
 
+                     Session newSession = createSession(request);
+                     newSession.setGroupId(groupId);
                      UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)
                              .groupId(groupId).userName(request.username()).concurrency(concurrency)
-                    .balance(balanceList).sessions(new ArrayList<>(List.of(createSession(request)))).build();
+                    .balance(balanceList).sessions(new ArrayList<>(List.of(newSession))).build();
 
                      return processAccountingRequest(newUserSessionData, request,traceId);
 
@@ -119,6 +121,7 @@ public class InterimHandler {
         int i = 0;
         if (session == null) {
             session = createSession(request);
+            session.setGroupId(userData.getGroupId());
             i = 1;
         }
 
@@ -174,8 +177,8 @@ public class InterimHandler {
                 request.nasIP(),
                 request.nasPortId(),
                 true,
-                0
-
+                0,
+                null
         );
     }
 
