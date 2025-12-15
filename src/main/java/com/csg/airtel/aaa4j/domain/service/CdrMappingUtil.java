@@ -17,6 +17,7 @@ import java.util.function.BiFunction;
  * Utility class for mapping AccountingRequestDto and Session data to CDR events.
  * Provides common mapping logic used across all accounting handlers (Start, Interim, Stop).
  */
+//todo need to implemnt user section add groupid and accounting section add totalusage
 public class CdrMappingUtil {
 
     private static final Logger log = Logger.getLogger(CdrMappingUtil.class);

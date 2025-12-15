@@ -31,14 +31,16 @@ public class InterimHandler {
     private final AccountingUtil accountingUtil;
     private final AccountProducer accountProducer;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final COAService coaService;
 
     @Inject
-    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager) {
+    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
         this.accountingUtil = accountingUtil;
         this.accountProducer = accountProducer;
         this.sessionLifecycleManager = sessionLifecycleManager;
+        this.coaService = coaService;
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
@@ -72,8 +74,8 @@ public class InterimHandler {
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
                         log.warnf("No service buckets found for user: %s", request.username());
-                       return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT));
+                     return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
                     }
                     int bucketCount = serviceBuckets.size();
                     List<Balance> balanceList = new ArrayList<>(bucketCount);
@@ -95,8 +97,8 @@ public class InterimHandler {
 
                     if (totalQuota <= 0) {
                         log.warnf("User: %s has zero total data quota", request.username());
-                        return accountProducer.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT));
+                        return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
                     }
 
                      UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)
@@ -122,10 +124,9 @@ public class InterimHandler {
 
         if(userData.getConcurrency() < userData.getSessions().size()+i) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
-            return accountProducer.produceAccountingResponseEvent(
-                    MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
-                            AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT));
+            return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
+                    AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
+
         }
         // Early return if session time hasn't increased
         if (request.sessionTime() <= session.getSessionTime()) {

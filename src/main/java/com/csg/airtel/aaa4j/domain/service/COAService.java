@@ -68,7 +68,7 @@ public class COAService {
      * @param session the session being disconnected
      * @param username the username associated with the session
      */
-    public void generateAndSendCoaDisconnectCDR(Session session, String username) {
+    private void generateAndSendCoaDisconnectCDR(Session session, String username) {
         try {
             AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
             accountProducer.produceAccountingCDREvent(cdrEvent)
