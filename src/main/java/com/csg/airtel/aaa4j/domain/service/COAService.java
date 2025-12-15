@@ -41,6 +41,20 @@ public class COAService {
                                                 username
                                         )
                                 )
+                                .invoke(() -> {
+                                    // Generate and send CDR event for COA Disconnect
+                                    try {
+                                        var cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
+                                        accountProducer.produceAccountingCDREvent(cdrEvent)
+                                                .subscribe()
+                                                .with(
+                                                        success -> log.infof("COA Disconnect CDR event sent successfully for session: %s", session.getSessionId()),
+                                                        failure -> log.errorf(failure, "Failed to send COA Disconnect CDR event for session: %s", session.getSessionId())
+                                                );
+                                    } catch (Exception e) {
+                                        log.errorf(e, "Error building COA Disconnect CDR event for session: %s", session.getSessionId());
+                                    }
+                                })
                                 .onFailure().retry()
                                 .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
                                 .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
