@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
+import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -82,6 +83,20 @@ public class COAService {
             log.errorf(e, "Error building COA Disconnect CDR event for session: %s, user: %s",
                     session.getSessionId(), username);
         }
+    }
+
+    /**
+     * Produce accounting response event and generate COA disconnect CDR.
+     * This method sends an accounting response event and then generates a COA disconnect CDR for the session.
+     *
+     * @param event the accounting response event to send
+     * @param session the session being disconnected
+     * @param username the username associated with the session
+     * @return Uni that completes when the event is sent
+     */
+    public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
+        return accountProducer.produceAccountingResponseEvent(event)
+                .invoke(() -> generateAndSendCoaDisconnectCDR(session, username));
     }
 
 }
