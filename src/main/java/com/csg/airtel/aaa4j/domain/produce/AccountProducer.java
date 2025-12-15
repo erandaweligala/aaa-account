@@ -310,7 +310,6 @@ public class AccountProducer {
     /**
      * Generates and sends a CDR event for COA Disconnect
      */
-    //todo implment call produceAccountingResponseEvent this method and call asynchronously modify related areas
     private Uni<Void> generateCoaDisconnectCDR(Session session, String username) {
         try {
             var cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
