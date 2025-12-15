@@ -46,7 +46,7 @@ public class COAService {
                                     try {
                                         var cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
                                         accountProducer.produceAccountingCDREvent(cdrEvent)
-                                                .subscribe()
+                                                .subscribe()//todo Calling 'subscribe' in non-blocking context is not recommended
                                                 .with(
                                                         success -> log.infof("COA Disconnect CDR event sent successfully for session: %s", session.getSessionId()),
                                                         failure -> log.errorf(failure, "Failed to send COA Disconnect CDR event for session: %s", session.getSessionId())
