@@ -65,7 +65,7 @@ public class AccountingConsumer {
                                         request.sessionId(), duration);
                             })
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
-                            .subscribe().with(
+                            .subscribe().with( //todo Calling 'subscribe' in non-blocking context is not recommended
                                     item -> {}, // Success callback (already logged in onItem)
                                     failure -> {} // Failure callback (already logged in onFailure)
                             );
