@@ -65,7 +65,7 @@ public class AccountingConsumer {
                                         request.sessionId(), duration);
                             })
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
-                            .subscribe().asCompletionStage();
+                            .subscribe().asCompletionStage(); //todo Calling 'subscribe' in non-blocking context is not recommended
 
                     return Uni.createFrom().voidItem();
                 });
