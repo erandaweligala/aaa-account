@@ -64,7 +64,8 @@ public class AccountingConsumer {
                                 LOG.errorf(failure, "Failed processing session: %s after %d ms",
                                         request.sessionId(), duration);
                             })
-                            .subscribeAsCompletionStage(); // todo Result of 'Uni.subscribeAsCompletionStage()' is ignored
+                            .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+                            .subscribe().asCompletionStage();
 
                     return Uni.createFrom().voidItem();
                 });
