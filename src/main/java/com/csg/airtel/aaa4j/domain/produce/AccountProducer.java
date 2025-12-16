@@ -101,6 +101,7 @@ public class AccountProducer {
     )
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
+    //todo Acknowledge immediately, then process asynchronously
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
         LOG.infof("Start produceAccountingResponseEvent process");
