@@ -17,7 +17,6 @@ import java.util.function.BiFunction;
  * Utility class for mapping AccountingRequestDto and Session data to CDR events.
  * Provides common mapping logic used across all accounting handlers (Start, Interim, Stop).
  */
-//todo need to implemnt user section add groupid and accounting section add totalusage
 public class CdrMappingUtil {
 
     private static final Logger log = Logger.getLogger(CdrMappingUtil.class);
@@ -128,7 +127,7 @@ public class CdrMappingUtil {
         log.infof("starting CDREvent for request: %s", session.getSessionId());
 
         SessionCdr cdrSession = buildSessionCdr(request, metrics.getSessionTime(), metrics.getEventType());
-        User cdrUser = buildUserCdr(request);
+        User cdrUser = buildUserCdr(request,session.getGroupId());
         Network cdrNetwork = buildNetworkCdr(request);
         Accounting cdrAccounting = buildAccountingCdr(metrics);
 
@@ -176,9 +175,10 @@ public class CdrMappingUtil {
     /**
      * Builds a User CDR object from request data
      */
-    public static User buildUserCdr(AccountingRequestDto request) {
+    public static User buildUserCdr(AccountingRequestDto request,String groupId) {
         return User.builder()
                 .userName(request.username())
+                .groupId(groupId)
                 .build();
     }
 
@@ -196,6 +196,8 @@ public class CdrMappingUtil {
      * Builds an Accounting CDR object from metrics
      */
     public static Accounting buildAccountingCdr(AccountingMetrics metrics) {
+        long totalUsage = calculateTotalUsage(metrics.getInputOctets(), metrics.getOutputOctets(),
+                metrics.getInputGigawords(), metrics.getOutputGigawords());
         return Accounting.builder()
                 .acctStatusType(metrics.getAcctStatusType())
                 .acctSessionTime(metrics.getSessionTime() != null ? metrics.getSessionTime() : 0)
@@ -203,6 +205,7 @@ public class CdrMappingUtil {
                 .acctOutputOctets(metrics.getOutputOctets())
                 .acctInputPackets(0)
                 .acctOutputPackets(0)
+                .totalUsage(totalUsage)
                 .acctInputGigawords(metrics.getInputGigawords() != null ? metrics.getInputGigawords() : 0)
                 .acctOutputGigawords(metrics.getOutputGigawords() != null ? metrics.getOutputGigawords() : 0)
                 .build();
@@ -235,6 +238,7 @@ public class CdrMappingUtil {
         // Build user CDR
         User cdrUser = User.builder()
                 .userName(username)
+                .groupId(session.getGroupId())
                 .build();
 
         // Build network CDR
@@ -298,11 +302,11 @@ public class CdrMappingUtil {
 
         // Build and return the complete CDR event
         return AccountingCDREvent.builder()
-                .eventId("evt_coa_disconnect_" + System.currentTimeMillis() / 1000 + "_" + (int)(Math.random() * 100))
+                .eventId(UUID.randomUUID().toString())
                 .eventType(EventTypes.COA_DISCONNECT_REQUEST.name())
                 .eventVersion("1.0")
                 .eventTimestamp(Instant.now())
-                .source("radius-server-01")
+                .source("radius-server")
                 .partitionKey(session.getSessionId())
                 .payload(payload)
                 .build();
@@ -335,5 +339,23 @@ public class CdrMappingUtil {
         } catch (Exception e) {
             log.errorf(e, "Error building CDR event for session: %s", request.sessionId());
         }
+    }
+
+    private static long calculateTotalUsage(Long inputOctets, Long outputOctets,
+
+                                            Integer inputGigawords, Integer outputGigawords) {
+
+        long gigawordMultiplier = 4294967296L; // 2^32
+
+        long totalGigawords = (long) (inputGigawords != null ? inputGigawords : 0) +
+
+                (long) (outputGigawords != null ? outputGigawords : 0);
+
+        long totalOctets = (inputOctets != null ? inputOctets : 0L) +
+
+                (outputOctets != null ? outputOctets : 0L);
+
+        return (totalGigawords * gigawordMultiplier) + totalOctets;
+
     }
 }

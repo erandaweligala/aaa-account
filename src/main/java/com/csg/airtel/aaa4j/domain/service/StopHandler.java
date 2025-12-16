@@ -65,6 +65,7 @@ public class StopHandler {
         if (session == null) {
             log.infof( "[traceId: %s] Session not found for sessionId: %s", request.username(), request.sessionId());
                 session = createSession(request);
+                session.setGroupId(userSessionData.getGroupId());
         }
 
 
@@ -141,7 +142,7 @@ public class StopHandler {
                 request.nasIP(),
                 request.nasPortId(),
                 false,
-                0
+                0,null
         );
     }
 

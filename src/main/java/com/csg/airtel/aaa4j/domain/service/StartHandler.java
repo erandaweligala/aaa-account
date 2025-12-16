@@ -175,7 +175,7 @@ public class StartHandler {
 
         Session newSession = createSessionWithBalance(request, highestPriorityBalance);
         boolean isGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
-
+        newSession.setGroupId(userSessionData.getGroupId());
         if (!isGroupBalance) {
             userSessionData.getSessions().add(newSession);
         }
@@ -352,6 +352,7 @@ public class StartHandler {
         }
 
         Session session = createSessionWithBalance(request, highestPriorityBalance);
+        session.setGroupId(result.groupId());
         UserSessionData newUserSessionData = buildUserSessionData(
                 request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates);
 
@@ -522,7 +523,7 @@ public class StartHandler {
                 request.nasIP(),
                 request.nasPortId(),
                 false,
-                0
+                0,null
         );
     }
 

@@ -22,5 +22,6 @@ public class Session {
     private String nasPortId;
     private boolean isNewSession;
     private long availableBalance;
+    private String groupId;
 
 }
