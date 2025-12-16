@@ -101,27 +101,32 @@ public class AccountProducer {
     )
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
-    //todo Acknowledge immediately, then process asynchronously
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceAccountingResponseEvent process");
+        LOG.infof("Start produceAccountingResponseEvent process - will acknowledge immediately");
+
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
                             .withKey(event.sessionId())
                             .build())
                     .withAck(() -> {
-                        em.complete(null);
-                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
+                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms",
+                                event.sessionId(), System.currentTimeMillis() - startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
-                        em.fail(throwable);
+                        LOG.errorf(throwable, "Send failed for session: %s after %d ms",
+                                event.sessionId(), System.currentTimeMillis() - startTime);
                         return CompletableFuture.completedFuture(null);
                     });
 
+            // Send message and complete immediately (acknowledge)
             accountingResponseEmitter.send(message);
+            em.complete(null);
+
+            LOG.infof("Message sent and acknowledged immediately for session: %s, async processing started",
+                    event.sessionId());
         });
     }
 
