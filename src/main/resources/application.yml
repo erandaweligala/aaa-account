@@ -70,7 +70,12 @@ quarkus:
 
   # Redis Configuration - Optimized for 1000 TPS
   redis:
-    hosts: redis://localhost:6379
+    devservices:
+      enabled: false
+    password: "AAAtest_Redis_Pass_w0rd!"
+    sentinel:
+      master: mymaster
+      nodes: redis-cluster.cluster-redis.svc.cluster.local:26379
     timeout: 10s
     max-pool-size: 100
     max-pool-waiting: 200
