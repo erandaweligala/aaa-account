@@ -138,18 +138,7 @@ public class CacheClient {
     }
 
 
-    /**
-     * Update user data and related caches.
-     *
-     * HIGH TPS OPTIMIZED: Removed unnecessary Uni wrapper and added fault tolerance
-     * - Direct Redis call without intermediate chain overhead
-     * - Circuit breaker for write reliability
-     *
-     * MEMORY OPTIMIZED for 5M records:
-     * - Reduced TTL from 1000h (41 days) to 4h
-     * - Prevents memory buildup from inactive sessions
-     * - Active sessions are refreshed regularly, inactive ones expire
-     */
+    //todo need remove duration no limit for cache is requirement
     @CircuitBreaker(
             requestVolumeThreshold = 100,
             failureRatio = 0.7,
