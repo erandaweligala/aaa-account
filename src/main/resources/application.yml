@@ -25,11 +25,12 @@ quarkus:
   # Vertx Configuration - Optimized for 1000 TPS
   vertx:
     event-loops-pool-size: 32
+    internal-blocking-pool-size: 100
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
     prefer-native-transport: true
-    caching: true
+    caching: false
 
 
   thread-pool:
@@ -68,12 +69,12 @@ quarkus:
     traces:
       exporter: none
 
-  # Redis Configuration - Optimized for 1000 TPS
+  #todo need to set password for redis
   redis:
-    hosts: redis://localhost:6379
-    timeout: 10s
-    max-pool-size: 100
-    max-pool-waiting: 200
+    client-type: sentinel
+    hosts: redis://sentinel1:26379,redis://sentinel2:26379,redis://sentinel3:26379
+    master-name: mymaster  # Your sentinel master name
+    role: master
 
 # Pool Configuration
 pool:

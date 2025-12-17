@@ -67,10 +67,10 @@ quarkus:
 
   # Redis Configuration - Optimized for 1000 TPS
   redis:
-    hosts: redis://redis.redis.svc.cluster.local:6379
-    timeout: 10s
-    max-pool-size: 100
-    max-pool-waiting: 200
+    client-type: sentinel
+    hosts: redis://sentinel1:26379,redis://sentinel2:26379,redis://sentinel3:26379
+    master-name: mymaster  # Your sentinel master name
+    role: master
 
 # Pool Configuration
 pool:

@@ -49,8 +49,11 @@ public class AccountingConsumer {
         // Acknowledge immediately, then process asynchronously
         return Uni.createFrom().completionStage(message.ack())
                 .onItem().invoke(v -> {
-                    LOG.infof("Message acknowledged for session: %s, starting async processing",
-                            request.sessionId());
+                    if (LOG.isDebugEnabled()) {
+                        LOG.debugf("Message acknowledged for session: %s, starting async processing",
+                                request.sessionId());
+                    }
+
 
                     // Process in background - fire and forget using subscribeAsCompletionStage
                     accountingHandlerFactory.getHandler(request, request.eventId())
