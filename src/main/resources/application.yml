@@ -7,10 +7,6 @@ quarkus:
       max-body-size: 10M
       max-connections: 2000
 
-  java:
-    locale:
-      timezone: "Asia/Colombo"
-
   # Database Configuration - Optimized for 1000 TPS
   datasource:
     db-kind: oracle
