@@ -72,19 +72,24 @@ public class CacheClient {
      * Retrieve user data from Redis.
      *
      * OPTIMIZED: Logging guards and conditional timing prevent overhead.
+     * HIGH TPS OPTIMIZED: Circuit breaker tuned for 2500 TPS with 5M records
+     * - requestVolumeThreshold=100: Requires 100 requests before evaluating (avoid premature opening)
+     * - failureRatio=0.7: Opens only if 70% fail (more tolerant during load spikes)
+     * - Timeout=2000ms: Fast fail to prevent request queuing
+     * - maxRetries=1: Single retry to minimize latency
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
             delay = 5000,
             successThreshold = 2
     )
     @Retry(
-            maxRetries = 2,
+            maxRetries = 1,
             delay = 100,
-            maxDuration = 5000
+            maxDuration = 2000
     )
-    @Timeout(value = 5000)
+    @Timeout(value = 2000)
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
@@ -149,22 +154,23 @@ public class CacheClient {
 
     /**
      * Get user session data as a map for a batch of user IDs using MGET.
+     * HIGH TPS OPTIMIZED: Batch operations tuned for high throughput
      *
      * @param userIds list of user IDs to retrieve
      * @return Uni with Map of userId -> UserSessionData
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
             delay = 5000,
             successThreshold = 2
     )
     @Retry(
-            maxRetries = 2,
+            maxRetries = 1,
             delay = 100,
-            maxDuration = 5000
+            maxDuration = 3000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 5000)
     public Uni<Map<String, UserSessionData>> getUserDataBatchAsMap(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Uni.createFrom().item(Map.of());
@@ -205,18 +211,21 @@ public class CacheClient {
     }
 
 
+    /**
+     * HIGH TPS OPTIMIZED: Expired session retrieval with optimized fault tolerance
+     */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
             delay = 5000,
             successThreshold = 2
     )
     @Retry(
-            maxRetries = 2,
+            maxRetries = 1,
             delay = 100,
-            maxDuration = 5000
+            maxDuration = 4000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 8000)
     public Uni<ExpiredSessionsWithData> getExpiredSessionsWithData(long expiryThresholdMillis, int limit) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
