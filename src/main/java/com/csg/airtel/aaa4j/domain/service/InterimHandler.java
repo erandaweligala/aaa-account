@@ -63,14 +63,15 @@ public class InterimHandler {
                 .onFailure().recoverWithUni(throwable -> {
                     // Handle circuit breaker open specifically - cache service temporarily unavailable
                     if (throwable instanceof CircuitBreakerOpenException) {
-                        log.errorf("[traceId: %s] Cache service circuit breaker is OPEN for user: %s. " +
-                                        "Service temporarily unavailable due to high tps or Redis connectivity issues. " +
-                                        "Falling back to database lookup.",
+                        log.warnf("[traceId: %s] Cache service circuit breaker is OPEN for user: %s. " +
+                                        "Service temporarily unavailable due to high TPS or Redis connectivity issues. " +
+                                        "Skipping interim update to prevent cascading database failure. " +
+                                        "Next interim update will resume when circuit closes.",
                                 traceId, request.username());
-                        // Gracefully degrade by fetching from database when cache is unavailable
-                        return handleNewSessionUsage(request, traceId)
-                                .invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting with database fallback for %s ms",
-                                        traceId, System.currentTimeMillis() - startTime));
+                        // Fail fast without database fallback to prevent overwhelming database
+                        // Interim updates are periodic - missing one isn't critical
+                        // Next interim (typically 60s) will catch up when cache recovers
+                        return Uni.createFrom().voidItem();
                     }
                     // Handle other errors
                     log.errorf(throwable, "[traceId: %s] Error processing accounting for user: %s",
