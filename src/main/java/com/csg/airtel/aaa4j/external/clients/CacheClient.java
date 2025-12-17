@@ -57,6 +57,11 @@ public class CacheClient {
      * HIGH TPS OPTIMIZED: Added fault tolerance for write reliability
      * - Circuit breaker prevents cascading failures on write path
      * - Timeout prevents hung writes blocking thread pool
+     *
+     * MEMORY OPTIMIZED for 5M records:
+     * - 4 hour TTL prevents indefinite memory growth
+     * - Auto-cleanup of inactive sessions
+     * - At 2500 TPS with 4h TTL: max 36M keys (5M active users is well within limit)
      */
     @CircuitBreaker(
             requestVolumeThreshold = 100,
@@ -75,8 +80,9 @@ public class CacheClient {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
+        // CRITICAL: 4 hour TTL to prevent memory exhaustion with 5M records
         return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(key, userData);
+                .set(key, userData, new SetArgs().ex(Duration.ofHours(4)));
     }
 
     /**
@@ -138,6 +144,11 @@ public class CacheClient {
      * HIGH TPS OPTIMIZED: Removed unnecessary Uni wrapper and added fault tolerance
      * - Direct Redis call without intermediate chain overhead
      * - Circuit breaker for write reliability
+     *
+     * MEMORY OPTIMIZED for 5M records:
+     * - Reduced TTL from 1000h (41 days) to 4h
+     * - Prevents memory buildup from inactive sessions
+     * - Active sessions are refreshed regularly, inactive ones expire
      */
     @CircuitBreaker(
             requestVolumeThreshold = 100,
@@ -157,8 +168,9 @@ public class CacheClient {
         }
         String userKey = KEY_PREFIX + userId;
 
+        // CRITICAL: Reduced from 1000h to 4h TTL for 5M record memory management
         return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(1000)))
+                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(4)))
                 .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
                 .replaceWithVoid();
     }

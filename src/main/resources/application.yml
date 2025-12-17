@@ -83,6 +83,15 @@ quarkus:
     tcp-keep-alive: true            # Detect dead connections
     tcp-no-delay: true              # Reduce network latency
 
+# Redis Server Configuration (configure on Redis server side)
+# MEMORY MANAGEMENT for 5M records:
+# Estimated: 5M records × 1KB avg = 5GB + 30% overhead = 6.5GB
+# Recommended Redis server config (redis.conf):
+#   maxmemory 8gb                          # Set limit with buffer
+#   maxmemory-policy allkeys-lru           # Evict least recently used keys
+#   maxmemory-samples 5                    # LRU approximation quality
+# Note: Application uses 4h TTL for auto-cleanup, but LRU provides additional safety
+
 
 # Pool Configuration
 pool:
