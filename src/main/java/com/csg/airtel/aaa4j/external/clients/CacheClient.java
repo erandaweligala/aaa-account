@@ -58,10 +58,8 @@ public class CacheClient {
      * - Circuit breaker prevents cascading failures on write path
      * - Timeout prevents hung writes blocking thread pool
      *
-     * MEMORY OPTIMIZED for 5M records:
-     * - 4 hour TTL prevents indefinite memory growth
-     * - Auto-cleanup of inactive sessions
-     * - At 2500 TPS with 4h TTL: max 36M keys (5M active users is well within limit)
+     * Cache entries persist indefinitely without TTL expiration.
+     * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
      */
     @CircuitBreaker(
             requestVolumeThreshold = 100,
@@ -80,9 +78,8 @@ public class CacheClient {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        // CRITICAL: 4 hour TTL to prevent memory exhaustion with 5M records
         return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(key, userData, new SetArgs().ex(Duration.ofHours(4)));
+                .set(key, userData);
     }
 
     /**
@@ -138,7 +135,12 @@ public class CacheClient {
     }
 
 
-    //todo need remove duration no limit for cache is requirement
+    /**
+     * Update user data and related caches in Redis.
+     *
+     * Cache entries persist indefinitely without TTL expiration.
+     * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
+     */
     @CircuitBreaker(
             requestVolumeThreshold = 100,
             failureRatio = 0.7,
@@ -157,9 +159,8 @@ public class CacheClient {
         }
         String userKey = KEY_PREFIX + userId;
 
-        // CRITICAL: Reduced from 1000h to 4h TTL for 5M record memory management
         return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(4)))
+                .set(userKey, userData)
                 .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
                 .replaceWithVoid();
     }
