@@ -44,7 +44,7 @@ quarkus:
   log:
     level: INFO
     file:
-      path: logs/aaa-account.log
+      path: var/logs/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
         max-file-size: 100M
@@ -68,13 +68,12 @@ quarkus:
     traces:
       exporter: none
 
-  #todo need to set password for redis
   redis:
     client-type: sentinel
-    hosts: redis://sentinel1:26379,redis://sentinel2:26379,redis://sentinel3:26379
+    hosts: redis://localhost:6379
     master-name: mymaster
     role: master
-    password:
+
 
 # Pool Configuration
 pool:
