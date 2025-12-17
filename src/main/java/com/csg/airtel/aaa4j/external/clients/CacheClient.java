@@ -37,6 +37,9 @@ public class CacheClient {
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
 
+    // HIGH TPS OPTIMIZATION: Cache command objects to avoid creating new instances on every call
+    private final ReactiveKeyCommands<String> keyCommands;
+
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,
@@ -44,28 +47,36 @@ public class CacheClient {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
+        this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
     }
 
     /**
      * Store user data in Redis.
      *
-     * OPTIMIZED: Logging guards prevent overhead on high-frequency operations.
-     * Timing calculations only performed when debug logging is enabled.
+     * HIGH TPS OPTIMIZED: Added fault tolerance for write reliability
+     * - Circuit breaker prevents cascading failures on write path
+     * - Timeout prevents hung writes blocking thread pool
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 1,
+            delay = 50,
+            maxDuration = 2000
+    )
+    @Timeout(value = 2000)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
-        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
         return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(key, userData)
-                .invoke(() -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("User data stored for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
-                    }
-                });
+                .set(key, userData);
     }
 
     /**
@@ -108,7 +119,13 @@ public class CacheClient {
                         }
                         return jsonValue;
                     } catch (Exception e) {
-                        throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR, ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
+                        // HIGH TPS OPTIMIZATION: Avoid creating full stack trace in hot path
+                        log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
+                        throw new BaseException("Failed to deserialize user data",
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                                Response.Status.INTERNAL_SERVER_ERROR,
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                                null);
                     }
                 }))
                 .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
@@ -118,33 +135,39 @@ public class CacheClient {
     /**
      * Update user data and related caches.
      *
-     * OPTIMIZED: Logging guards and conditional timing prevent overhead.
-     * Removed unnecessary intermediate logging of serialized JSON.
+     * HIGH TPS OPTIMIZED: Removed unnecessary Uni wrapper and added fault tolerance
+     * - Direct Redis call without intermediate chain overhead
+     * - Circuit breaker for write reliability
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 1,
+            delay = 50,
+            maxDuration = 2000
+    )
+    @Timeout(value = 2000)
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
-        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
         }
         String userKey = KEY_PREFIX + userId;
 
-        return Uni.createFrom().voidItem()
-                .onItem().transformToUni(serializedData ->
-                        reactiveRedisDataSource.value(UserSessionData.class)
-                                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(1000)))
-                )
-                .invoke(() -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("Cache update complete for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
-                    }
-                })
+        return reactiveRedisDataSource.value(UserSessionData.class)
+                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(1000)))
                 .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
                 .replaceWithVoid();
     }
 
+    /**
+     * HIGH TPS OPTIMIZED: Use cached keyCommands instead of creating new instance
+     */
     public Uni<String> deleteKey(String key) {
         String userKey = KEY_PREFIX + key;
-        ReactiveKeyCommands<String> keyCommands = reactiveRedisDataSource.key();
 
         return keyCommands.del(userKey)
                 .map(deleted -> deleted > 0
