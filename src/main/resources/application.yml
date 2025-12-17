@@ -76,7 +76,7 @@ quarkus:
     # HIGH TPS OPTIMIZATION: Connection pool tuned for 2500 TPS with 5M records
     max-pool-size: 200              # Increased from default 64 for high concurrency
     max-waiting-handlers: 2000      # Queue for waiting requests
-    max-pool-waiting: 50            # Max time to wait for connection (ms)
+    max-pool-waiting: 500           # Max waiting requests (must be >= max-pool-size)
     pool-recycle-timeout: 300000    # Recycle connections after 5 minutes
     reconnect-attempts: 3           # Retry connection on failure
     reconnect-interval: 1000        # Wait 1s between reconnect attempts
