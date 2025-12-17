@@ -39,13 +39,12 @@ quarkus:
     queue-size: 5000
     growth-resistance: 0
     shutdown-timeout: 30s
-#todo file not create this path pls currect
   console:
     color: true
   log:
     level: INFO
     file:
-      path: /var/log/aaa-account/aaa-account.log
+      path: logs/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
         max-file-size: 100M
