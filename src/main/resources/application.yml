@@ -39,7 +39,7 @@ quarkus:
     queue-size: 5000
     growth-resistance: 0
     shutdown-timeout: 30s
-
+#todo file not create this path pls currect
   console:
     color: true
   log:
@@ -73,8 +73,9 @@ quarkus:
   redis:
     client-type: sentinel
     hosts: redis://sentinel1:26379,redis://sentinel2:26379,redis://sentinel3:26379
-    master-name: mymaster  # Your sentinel master name
+    master-name: mymaster
     role: master
+    password:
 
 # Pool Configuration
 pool:
