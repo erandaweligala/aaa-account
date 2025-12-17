@@ -37,6 +37,9 @@ public class CacheClient {
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
 
+    // HIGH TPS OPTIMIZATION: Cache command objects to avoid creating new instances on every call
+    private final ReactiveKeyCommands<String> keyCommands;
+
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,
@@ -44,47 +47,66 @@ public class CacheClient {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
+        this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
     }
 
     /**
      * Store user data in Redis.
      *
-     * OPTIMIZED: Logging guards prevent overhead on high-frequency operations.
-     * Timing calculations only performed when debug logging is enabled.
+     * HIGH TPS OPTIMIZED: Added fault tolerance for write reliability
+     * - Circuit breaker prevents cascading failures on write path
+     * - Timeout prevents hung writes blocking thread pool
+     *
+     * MEMORY OPTIMIZED for 5M records:
+     * - 4 hour TTL prevents indefinite memory growth
+     * - Auto-cleanup of inactive sessions
+     * - At 2500 TPS with 4h TTL: max 36M keys (5M active users is well within limit)
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 1,
+            delay = 50,
+            maxDuration = 2000
+    )
+    @Timeout(value = 2000)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
-        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
+        // CRITICAL: 4 hour TTL to prevent memory exhaustion with 5M records
         return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(key, userData)
-                .invoke(() -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("User data stored for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
-                    }
-                });
+                .set(key, userData, new SetArgs().ex(Duration.ofHours(4)));
     }
 
     /**
      * Retrieve user data from Redis.
      *
      * OPTIMIZED: Logging guards and conditional timing prevent overhead.
+     * HIGH TPS OPTIMIZED: Circuit breaker tuned for 2500 TPS with 5M records
+     * - requestVolumeThreshold=100: Requires 100 requests before evaluating (avoid premature opening)
+     * - failureRatio=0.7: Opens only if 70% fail (more tolerant during load spikes)
+     * - Timeout=2000ms: Fast fail to prevent request queuing
+     * - maxRetries=1: Single retry to minimize latency
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
             delay = 5000,
             successThreshold = 2
     )
     @Retry(
-            maxRetries = 2,
+            maxRetries = 1,
             delay = 100,
-            maxDuration = 5000
+            maxDuration = 2000
     )
-    @Timeout(value = 5000)
+    @Timeout(value = 2000)
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
@@ -103,7 +125,13 @@ public class CacheClient {
                         }
                         return jsonValue;
                     } catch (Exception e) {
-                        throw new BaseException("Failed to deserialize user data", ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(), Response.Status.INTERNAL_SERVER_ERROR, ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(), e.getStackTrace());
+                        // HIGH TPS OPTIMIZATION: Avoid creating full stack trace in hot path
+                        log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
+                        throw new BaseException("Failed to deserialize user data",
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                                Response.Status.INTERNAL_SERVER_ERROR,
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                                null);
                     }
                 }))
                 .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
@@ -113,33 +141,45 @@ public class CacheClient {
     /**
      * Update user data and related caches.
      *
-     * OPTIMIZED: Logging guards and conditional timing prevent overhead.
-     * Removed unnecessary intermediate logging of serialized JSON.
+     * HIGH TPS OPTIMIZED: Removed unnecessary Uni wrapper and added fault tolerance
+     * - Direct Redis call without intermediate chain overhead
+     * - Circuit breaker for write reliability
+     *
+     * MEMORY OPTIMIZED for 5M records:
+     * - Reduced TTL from 1000h (41 days) to 4h
+     * - Prevents memory buildup from inactive sessions
+     * - Active sessions are refreshed regularly, inactive ones expire
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Retry(
+            maxRetries = 1,
+            delay = 50,
+            maxDuration = 2000
+    )
+    @Timeout(value = 2000)
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
-        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
         }
         String userKey = KEY_PREFIX + userId;
 
-        return Uni.createFrom().voidItem()
-                .onItem().transformToUni(serializedData ->
-                        reactiveRedisDataSource.value(UserSessionData.class)
-                                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(1000)))
-                )
-                .invoke(() -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("Cache update complete for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
-                    }
-                })
+        // CRITICAL: Reduced from 1000h to 4h TTL for 5M record memory management
+        return reactiveRedisDataSource.value(UserSessionData.class)
+                .set(userKey, userData, new SetArgs().ex(Duration.ofHours(4)))
                 .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
                 .replaceWithVoid();
     }
 
+    /**
+     * HIGH TPS OPTIMIZED: Use cached keyCommands instead of creating new instance
+     */
     public Uni<String> deleteKey(String key) {
         String userKey = KEY_PREFIX + key;
-        ReactiveKeyCommands<String> keyCommands = reactiveRedisDataSource.key();
 
         return keyCommands.del(userKey)
                 .map(deleted -> deleted > 0
@@ -149,22 +189,23 @@ public class CacheClient {
 
     /**
      * Get user session data as a map for a batch of user IDs using MGET.
+     * HIGH TPS OPTIMIZED: Batch operations tuned for high throughput
      *
      * @param userIds list of user IDs to retrieve
      * @return Uni with Map of userId -> UserSessionData
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
             delay = 5000,
             successThreshold = 2
     )
     @Retry(
-            maxRetries = 2,
+            maxRetries = 1,
             delay = 100,
-            maxDuration = 5000
+            maxDuration = 3000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 5000)
     public Uni<Map<String, UserSessionData>> getUserDataBatchAsMap(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Uni.createFrom().item(Map.of());
@@ -205,18 +246,21 @@ public class CacheClient {
     }
 
 
+    /**
+     * HIGH TPS OPTIMIZED: Expired session retrieval with optimized fault tolerance
+     */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
             delay = 5000,
             successThreshold = 2
     )
     @Retry(
-            maxRetries = 2,
+            maxRetries = 1,
             delay = 100,
-            maxDuration = 5000
+            maxDuration = 4000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 8000)
     public Uni<ExpiredSessionsWithData> getExpiredSessionsWithData(long expiryThresholdMillis, int limit) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {

@@ -13,6 +13,7 @@ import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
@@ -69,8 +70,40 @@ public class StartHandler {
                 }
             })
             .onFailure().recoverWithUni(throwable -> {
-                log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s", traceId, request.username());
-                return Uni.createFrom().voidItem();
+                // Handle circuit breaker open specifically - service temporarily unavailable
+                if (throwable instanceof CircuitBreakerOpenException) {
+                    log.errorf("[traceId: %s] Cache service circuit breaker is OPEN for user: %s. " +
+                                    "Service temporarily unavailable due to high load or Redis connectivity issues.",
+                            traceId, request.username());
+
+                    // Send INTERNAL_ERROR response to notify downstream systems
+                    return accountProducer.produceAccountingResponseEvent(
+                            MappingUtil.createResponse(
+                                    request,
+                                    "Service temporarily unavailable - circuit breaker open",
+                                    AccountingResponseEvent.EventType.COA,
+                                    AccountingResponseEvent.ResponseAction.INTERNAL_ERROR
+                            )
+                    );
+                }
+
+                // Handle other errors
+                log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s",
+                        traceId, request.username());
+
+                // Send INTERNAL_ERROR for unexpected failures as well
+                return accountProducer.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(
+                                request,
+                                "Internal error during accounting start processing",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.INTERNAL_ERROR
+                        )
+                ).onFailure().recoverWithItem(() -> {
+                    log.errorf("[traceId: %s] Failed to send error response event for user: %s",
+                            traceId, request.username());
+                    return null;
+                });
             });
 }
 

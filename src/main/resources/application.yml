@@ -11,7 +11,7 @@ quarkus:
     locale:
       timezone: "Asia/Colombo"
 
-  # Database Configuration - Optimized for 1000 TPS
+  # Database Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   datasource:
     db-kind: oracle
     username: aaa
@@ -22,7 +22,7 @@ quarkus:
       idle-timeout: PT10M
       acquisition-timeout: PT5S
 
-  # Vertx Configuration - Optimized for 1000 TPS
+  # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   vertx:
     event-loops-pool-size: 32
     internal-blocking-pool-size: 100
@@ -73,6 +73,24 @@ quarkus:
     hosts: redis://localhost:6379
     master-name: mymaster
     role: master
+    # HIGH TPS OPTIMIZATION: Connection pool tuned for 2500 TPS with 5M records
+    max-pool-size: 200              # Increased from default 64 for high concurrency
+    max-waiting-handlers: 2000      # Queue for waiting requests
+    max-pool-waiting: 50            # Max time to wait for connection (ms)
+    pool-recycle-timeout: 300000    # Recycle connections after 5 minutes
+    reconnect-attempts: 3           # Retry connection on failure
+    reconnect-interval: 1000        # Wait 1s between reconnect attempts
+    tcp-keep-alive: true            # Detect dead connections
+    tcp-no-delay: true              # Reduce network latency
+
+# Redis Server Configuration (configure on Redis server side)
+# MEMORY MANAGEMENT for 5M records:
+# Estimated: 5M records × 1KB avg = 5GB + 30% overhead = 6.5GB
+# Recommended Redis server config (redis.conf):
+#   maxmemory 8gb                          # Set limit with buffer
+#   maxmemory-policy allkeys-lru           # Evict least recently used keys
+#   maxmemory-samples 5                    # LRU approximation quality
+# Note: Application uses 4h TTL for auto-cleanup, but LRU provides additional safety
 
 
 # Pool Configuration
@@ -98,7 +116,7 @@ idle-session:
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
 
-# Kafka Producer/Consumer Configuration - Optimized for 1000 TPS
+# Kafka Producer/Consumer Configuration - HIGH TPS OPTIMIZED for 2500 TPS
 mp:
   messaging:
     outgoing:
@@ -163,13 +181,15 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500
+        # HIGH TPS OPTIMIZATION: Increased from 500 to 1000 for better throughput
+        max.poll.records: 1000
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         fetch.min.bytes: 128
         fetch.max.bytes: 52428800
         max.partition.fetch.bytes: 10485760
-        receive.buffer.bytes: 65536
+        # Increased receive buffer for higher throughput
+        receive.buffer.bytes: 131072
         failure-strategy: ignore
 
 
