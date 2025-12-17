@@ -71,6 +71,7 @@ quarkus:
     hosts: redis://sentinel1:26379,redis://sentinel2:26379,redis://sentinel3:26379
     master-name: mymaster  # Your sentinel master name
     role: master
+    password: ${REDIS_PASSWORD:}
 
 # Pool Configuration
 pool:
