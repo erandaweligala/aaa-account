@@ -12,6 +12,7 @@ import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
@@ -60,7 +61,21 @@ public class InterimHandler {
 
                 )
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Error processing accounting for user: %s", request.username());
+                    // Handle circuit breaker open specifically - cache service temporarily unavailable
+                    if (throwable instanceof CircuitBreakerOpenException) {
+                        log.warnf("[traceId: %s] Cache service circuit breaker is OPEN for user: %s. " +
+                                        "Service temporarily unavailable due to high TPS or Redis connectivity issues. " +
+                                        "Skipping interim update to prevent cascading database failure. " +
+                                        "Next interim update will resume when circuit closes.",
+                                traceId, request.username());
+                        // Fail fast without database fallback to prevent overwhelming database
+                        // Interim updates are periodic - missing one isn't critical
+                        // Next interim (typically 60s) will catch up when cache recovers
+                        return Uni.createFrom().voidItem();
+                    }
+                    // Handle other errors
+                    log.errorf(throwable, "[traceId: %s] Error processing accounting for user: %s",
+                            traceId, request.username());
                     return Uni.createFrom().voidItem();
                 });
     }
