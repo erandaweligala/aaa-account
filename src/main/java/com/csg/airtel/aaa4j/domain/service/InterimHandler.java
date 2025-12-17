@@ -94,13 +94,6 @@ public class InterimHandler {
                         balanceList.add(MappingUtil.createBalance(bucket));
 
                     }
-
-                    if (totalQuota <= 0) {
-                        log.warnf("User: %s has zero total data quota", request.username());
-                        return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
-                    }
-
                     Session newSession = createSession(request);
                     newSession.setGroupId(groupId);
                     UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)

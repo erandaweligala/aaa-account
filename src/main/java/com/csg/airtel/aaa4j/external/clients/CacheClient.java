@@ -37,7 +37,6 @@ public class CacheClient {
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
 
-    // HIGH TPS OPTIMIZATION: Cache command objects to avoid creating new instances on every call
     private final ReactiveKeyCommands<String> keyCommands;
 
     @Inject
@@ -53,11 +52,6 @@ public class CacheClient {
 
     /**
      * Store user data in Redis.
-     *
-     * HIGH TPS OPTIMIZED: Added fault tolerance for write reliability
-     * - Circuit breaker prevents cascading failures on write path
-     * - Timeout prevents hung writes blocking thread pool
-     *
      * Cache entries persist indefinitely without TTL expiration.
      * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
      */
@@ -84,13 +78,6 @@ public class CacheClient {
 
     /**
      * Retrieve user data from Redis.
-     *
-     * OPTIMIZED: Logging guards and conditional timing prevent overhead.
-     * HIGH TPS OPTIMIZED: Circuit breaker tuned for 2500 TPS with 5M records
-     * - requestVolumeThreshold=100: Requires 100 requests before evaluating (avoid premature opening)
-     * - failureRatio=0.7: Opens only if 70% fail (more tolerant during load spikes)
-     * - Timeout=2000ms: Fast fail to prevent request queuing
-     * - maxRetries=1: Single retry to minimize latency
      */
     @CircuitBreaker(
             requestVolumeThreshold = 100,
@@ -122,7 +109,6 @@ public class CacheClient {
                         }
                         return jsonValue;
                     } catch (Exception e) {
-                        // HIGH TPS OPTIMIZATION: Avoid creating full stack trace in hot path
                         log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
                         throw new BaseException("Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -137,9 +123,6 @@ public class CacheClient {
 
     /**
      * Update user data and related caches in Redis.
-     *
-     * Cache entries persist indefinitely without TTL expiration.
-     * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
      */
     @CircuitBreaker(
             requestVolumeThreshold = 100,
@@ -166,7 +149,7 @@ public class CacheClient {
     }
 
     /**
-     * HIGH TPS OPTIMIZED: Use cached keyCommands instead of creating new instance
+     *  Use cached keyCommands instead of creating new instance
      */
     public Uni<String> deleteKey(String key) {
         String userKey = KEY_PREFIX + key;
@@ -178,8 +161,6 @@ public class CacheClient {
     }
 
     /**
-     * Get user session data as a map for a batch of user IDs using MGET.
-     * HIGH TPS OPTIMIZED: Batch operations tuned for high throughput
      *
      * @param userIds list of user IDs to retrieve
      * @return Uni with Map of userId -> UserSessionData
@@ -237,7 +218,7 @@ public class CacheClient {
 
 
     /**
-     * HIGH TPS OPTIMIZED: Expired session retrieval with optimized fault tolerance
+     * Expired session retrieval with optimized fault tolerance
      */
     @CircuitBreaker(
             requestVolumeThreshold = 100,

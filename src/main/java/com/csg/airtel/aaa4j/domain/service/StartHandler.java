@@ -45,26 +45,26 @@ public class StartHandler {
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
-        log.infof("[traceId: %s] Processing accounting start for user: %s, sessionId: %s",
+        log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
 
     return utilCache.getUserData(request.username())
             .onItem().invoke(userData ->
-                    log.infof("[traceId: %s]User data retrieved for user: %s",traceId, request.username()))
+                    log.infof("traceId: %s User data retrieved for user: %s",traceId, request.username()))
             .onItem().transformToUni(userSessionData -> {
                 if (userSessionData == null) {
-                    log.infof("[traceId: %s] No cache entry found for user: %s", traceId,request.username());
+                    log.infof("traceId: %s No cache entry found for user: %s", traceId,request.username());
                     Uni<Void> accountingResponseEventUni = handleNewUserSession(request);
 
                     long duration = System.currentTimeMillis() - startTime;
-                    log.infof("[traceId: %s] Completed processing accounting start for user: %s in %d ms",
+                    log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
                             traceId, request.username(), duration);
                     return accountingResponseEventUni;
                 } else {
-                    log.infof("[traceId: %s] Existing session found for user: %s",traceId, request.username());
+                    log.infof("traceId: %s Existing session found for user: %s",traceId, request.username());
                     Uni<Void> accountingResponseEventUni = handleExistingUserSession(request, userSessionData);
                     long duration = System.currentTimeMillis() - startTime;
-                    log.infof("[traceId: %s] Completed processing accounting start for user: %s in %d ms",
+                    log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
                             traceId, request.username(), duration);
                     return accountingResponseEventUni;
                 }
@@ -72,38 +72,15 @@ public class StartHandler {
             .onFailure().recoverWithUni(throwable -> {
                 // Handle circuit breaker open specifically - service temporarily unavailable
                 if (throwable instanceof CircuitBreakerOpenException) {
-                    log.errorf("[traceId: %s] Cache service circuit breaker is OPEN for user: %s. " +
-                                    "Service temporarily unavailable due to high load or Redis connectivity issues.",
+                    log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
+                                    "Service temporarily unavailable due to high tps or Redis connectivity issues.",
                             traceId, request.username());
 
-                    // Send INTERNAL_ERROR response to notify downstream systems
-                    return accountProducer.produceAccountingResponseEvent(
-                            MappingUtil.createResponse(
-                                    request,
-                                    "Service temporarily unavailable - circuit breaker open",
-                                    AccountingResponseEvent.EventType.COA,
-                                    AccountingResponseEvent.ResponseAction.INTERNAL_ERROR
-                            )
-                    );
                 }
-
                 // Handle other errors
                 log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s",
                         traceId, request.username());
-
-                // Send INTERNAL_ERROR for unexpected failures as well
-                return accountProducer.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(
-                                request,
-                                "Internal error during accounting start processing",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.INTERNAL_ERROR
-                        )
-                ).onFailure().recoverWithItem(() -> {
-                    log.errorf("[traceId: %s] Failed to send error response event for user: %s",
-                            traceId, request.username());
-                    return null;
-                });
+                return Uni.createFrom().voidItem();
             });
 }
 
@@ -321,9 +298,6 @@ public class StartHandler {
 
         BucketProcessingResult result = processBucketsAndCreateBalances(request, serviceBuckets);
 
-        if (result.totalQuota() <= 0) {
-            return handleZeroQuota(request);
-        }
 
         List<Balance> combinedBalances = combineBalances(result.balanceList(), result.balanceGroupList());
 
@@ -379,6 +353,10 @@ public class StartHandler {
             AccountingRequestDto request,
             BucketProcessingResult result,
             Balance highestPriorityBalance) {
+
+        if (result.totalQuota() <= 0 && !highestPriorityBalance.isUnlimited()) {
+            return handleZeroQuota(request);
+        }
 
         if (highestPriorityBalance == null) {
             return handleNoValidBalance(request);
