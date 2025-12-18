@@ -103,30 +103,24 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceAccountingResponseEvent process - will acknowledge immediately");
-
+        LOG.infof("Start produceAccountingResponseEvent process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
                             .withKey(event.sessionId())
                             .build())
                     .withAck(() -> {
-                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms",
-                                event.sessionId(), System.currentTimeMillis() - startTime);
+                        em.complete(null);
+                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf(throwable, "Send failed for session: %s after %d ms",
-                                event.sessionId(), System.currentTimeMillis() - startTime);
+                        LOG.errorf("Send failed: %s", throwable.getMessage());
+                        em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
 
-            // Send message and complete immediately (acknowledge)
             accountingResponseEmitter.send(message);
-            em.complete(null);
-
-            LOG.infof("Message sent and acknowledged immediately for session: %s, async processing started",
-                    event.sessionId());
         });
     }
 

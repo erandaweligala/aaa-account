@@ -48,14 +48,11 @@ public class AccountingConsumer {
 
         // Acknowledge immediately, then process asynchronously
         return Uni.createFrom().completionStage(message.ack())
-                .onItem().invoke(v -> {
-                    if (LOG.isDebugEnabled()) {
-                        LOG.debugf("Message acknowledged for session: %s, starting async processing",
-                                request.sessionId());
-                    }
+                .onItem().transformToUni(v -> {
+                    LOG.infof("Message acknowledged for session: %s, starting async processing",
+                            request.sessionId());
 
-
-                    // Process in background - fire and forget using subscribeAsCompletionStage
+                    // Process in background - don't wait for completion
                     accountingHandlerFactory.getHandler(request, request.eventId())
                             .onItem().invoke(success -> {
                                 long duration = System.currentTimeMillis() - startTime;
@@ -68,9 +65,10 @@ public class AccountingConsumer {
                                         request.sessionId(), duration);
                             })
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
-                            .subscribeAsCompletionStage();
-                })
-                .replaceWithVoid();
+                            .subscribe().asCompletionStage();
+
+                    return Uni.createFrom().voidItem();
+                });
     }
 }
 

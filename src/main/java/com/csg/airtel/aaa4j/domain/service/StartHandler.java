@@ -48,48 +48,48 @@ public class StartHandler {
         log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
 
-    return utilCache.getUserData(request.username())
-            .onItem().invoke(userData ->
-                    log.infof("traceId: %s User data retrieved for user: %s",traceId, request.username()))
-            .onItem().transformToUni(userSessionData -> {
-                if (userSessionData == null) {
-                    log.infof("traceId: %s No cache entry found for user: %s", traceId,request.username());
-                    Uni<Void> accountingResponseEventUni = handleNewUserSession(request);
+        return utilCache.getUserData(request.username())
+                .onItem().invoke(userData ->
+                        log.infof("traceId: %s User data retrieved for user: %s",traceId, request.username()))
+                .onItem().transformToUni(userSessionData -> {
+                    if (userSessionData == null) {
+                        log.infof("traceId: %s No cache entry found for user: %s", traceId,request.username());
+                        Uni<Void> accountingResponseEventUni = handleNewUserSession(request);
 
-                    long duration = System.currentTimeMillis() - startTime;
-                    log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
-                            traceId, request.username(), duration);
-                    return accountingResponseEventUni;
-                } else {
-                    log.infof("traceId: %s Existing session found for user: %s",traceId, request.username());
-                    Uni<Void> accountingResponseEventUni = handleExistingUserSession(request, userSessionData);
-                    long duration = System.currentTimeMillis() - startTime;
-                    log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
-                            traceId, request.username(), duration);
-                    return accountingResponseEventUni;
-                }
-            })
-            .onFailure().recoverWithUni(throwable -> {
-                // Handle circuit breaker open specifically - service temporarily unavailable
-                if (throwable instanceof CircuitBreakerOpenException) {
-                    log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
-                                    "Service temporarily unavailable due to high tps or Redis connectivity issues.",
+                        long duration = System.currentTimeMillis() - startTime;
+                        log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
+                                traceId, request.username(), duration);
+                        return accountingResponseEventUni;
+                    } else {
+                        log.infof("traceId: %s Existing session found for user: %s",traceId, request.username());
+                        Uni<Void> accountingResponseEventUni = handleExistingUserSession(request, userSessionData);
+                        long duration = System.currentTimeMillis() - startTime;
+                        log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
+                                traceId, request.username(), duration);
+                        return accountingResponseEventUni;
+                    }
+                })
+                .onFailure().recoverWithUni(throwable -> {
+                    // Handle circuit breaker open specifically - service temporarily unavailable
+                    if (throwable instanceof CircuitBreakerOpenException) {
+                        log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
+                                        "Service temporarily unavailable due to high tps or Redis connectivity issues.",
+                                traceId, request.username());
+
+                    }
+                    // Handle other errors
+                    log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s",
                             traceId, request.username());
-
-                }
-                // Handle other errors
-                log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s",
-                        traceId, request.username());
-                return Uni.createFrom().voidItem();
-            });
-}
+                    return Uni.createFrom().voidItem();
+                });
+    }
 
     private Uni<Void> handleExistingUserSession(
             AccountingRequestDto request,
             UserSessionData userSessionData) {
         return retrieveGroupBalances(userSessionData)
                 .onItem().transformToUni(balanceList ->
-                    processExistingSessionWithBalances(request, userSessionData, balanceList));
+                        processExistingSessionWithBalances(request, userSessionData, balanceList));
     }
 
     private Uni<List<Balance>> retrieveGroupBalances(UserSessionData userSessionData) {
@@ -126,7 +126,7 @@ public class StartHandler {
 
         return accountingUtil.findBalanceWithHighestPriority(combinedBalances, null)
                 .onItem().transformToUni(highestPriorityBalance ->
-                    processSessionWithHighestPriority(request, userSessionData, highestPriorityBalance));
+                        processSessionWithHighestPriority(request, userSessionData, highestPriorityBalance));
     }
 
     private List<Balance> combineBalances(List<Balance> userBalances, List<Balance> additionalBalances) {
@@ -258,9 +258,9 @@ public class StartHandler {
             UserSessionData groupSessionData) {
 
         return Uni.combine().all().unis(
-                utilCache.updateUserAndRelatedCaches(username, userSessionData),
-                utilCache.updateUserAndRelatedCaches(groupId, groupSessionData)
-        ).discardItems()
+                        utilCache.updateUserAndRelatedCaches(username, userSessionData),
+                        utilCache.updateUserAndRelatedCaches(groupId, groupSessionData)
+                ).discardItems()
                 .onItem().invoke(unused ->
                         log.infof("Session added to both user: %s and group: %s", username, groupId));
     }
@@ -354,13 +354,13 @@ public class StartHandler {
             BucketProcessingResult result,
             Balance highestPriorityBalance) {
 
+        if (highestPriorityBalance == null) {
+            return handleNoValidBalance(request);
+        }
         if (result.totalQuota() <= 0 && !highestPriorityBalance.isUnlimited()) {
             return handleZeroQuota(request);
         }
 
-        if (highestPriorityBalance == null) {
-            return handleNoValidBalance(request);
-        }
 
         Session session = createSessionWithBalance(request, highestPriorityBalance);
         session.setGroupId(result.groupId());
@@ -513,8 +513,8 @@ public class StartHandler {
      */
     private boolean isGroupBalance(Balance balance, String username) {
         return balance.isGroup() ||
-               (balance.getBucketUsername() != null &&
-                !balance.getBucketUsername().equals(username));
+                (balance.getBucketUsername() != null &&
+                        !balance.getBucketUsername().equals(username));
     }
 
     private double calculateAvailableBalance(List<Balance> balanceList) {
