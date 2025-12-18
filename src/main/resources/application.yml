@@ -6,10 +6,10 @@ quarkus:
     limits:
       max-body-size: 10M
       max-connections: 2000
+    idle-timeout: 10M
+    read-timeout: 30S
 
-  java:
-    locale:
-      timezone: "Asia/Colombo"
+
 
   # Database Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   datasource:
@@ -32,13 +32,13 @@ quarkus:
     prefer-native-transport: true
     caching: false
 
-
   thread-pool:
     core-threads: 100
     max-threads: 500
     queue-size: 5000
     growth-resistance: 0
     shutdown-timeout: 30s
+
   console:
     color: true
   log:
@@ -69,28 +69,17 @@ quarkus:
       exporter: none
 
   redis:
-    client-type: sentinel
+    #client-type: sentinel
     hosts: redis://localhost:6379
-    master-name: mymaster
-    role: master
-    # HIGH TPS OPTIMIZATION: Connection pool tuned for 2500 TPS with 5M records
-    max-pool-size: 200              # Increased from default 64 for high concurrency
-    max-waiting-handlers: 2000      # Queue for waiting requests
-    max-pool-waiting: 50            # Max time to wait for connection (ms)
-    pool-recycle-timeout: 300000    # Recycle connections after 5 minutes
-    reconnect-attempts: 3           # Retry connection on failure
-    reconnect-interval: 1000        # Wait 1s between reconnect attempts
-    tcp-keep-alive: true            # Detect dead connections
-    tcp-no-delay: true              # Reduce network latency
+    #master-name: mymaster
+    #role: master
+    max-pool-size: 200
+    max-waiting-handlers: 2000
+    max-pool-waiting: 500
+    pool-recycle-timeout: 300000
+    reconnect-attempts: 3
+    reconnect-interval: 1000
 
-# Redis Server Configuration (configure on Redis server side)
-# MEMORY MANAGEMENT for 5M records:
-# Estimated: 5M records × 1KB avg = 5GB + 30% overhead = 6.5GB
-# Recommended Redis server config (redis.conf):
-#   maxmemory 8gb                          # Set limit with buffer
-#   maxmemory-policy allkeys-lru           # Evict least recently used keys
-#   maxmemory-samples 5                    # LRU approximation quality
-# Note: Application uses 4h TTL for auto-cleanup, but LRU provides additional safety
 
 
 # Pool Configuration
@@ -181,14 +170,12 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        # HIGH TPS OPTIMIZATION: Increased from 500 to 1000 for better throughput
         max.poll.records: 1000
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         fetch.min.bytes: 128
         fetch.max.bytes: 52428800
         max.partition.fetch.bytes: 10485760
-        # Increased receive buffer for higher throughput
         receive.buffer.bytes: 131072
         failure-strategy: ignore
 

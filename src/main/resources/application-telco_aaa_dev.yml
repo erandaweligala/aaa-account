@@ -19,7 +19,7 @@ quarkus:
       idle-timeout: PT10M
       acquisition-timeout: PT5S
 
-  # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
+  # Vertx Configuration - Optimized for 1000 TPS
   vertx:
     event-loops-pool-size: 32
     warning-exception-time: 10s
@@ -65,30 +65,17 @@ quarkus:
     traces:
       exporter: none
 
-  # Redis Configuration - HIGH TPS OPTIMIZED for 2500 TPS with 5M records
+  # Redis Configuration - Optimized for 1000 TPS
   redis:
-    client-type: sentinel
-    hosts: redis://sentinel1:26379,redis://sentinel2:26379,redis://sentinel3:26379
-    master-name: mymaster  # Your sentinel master name
-    role: master
-    # Connection pool configuration for high throughput
-    max-pool-size: 200              # Increased from default 64 for high concurrency
-    max-waiting-handlers: 2000      # Queue for waiting requests
-    max-pool-waiting: 50            # Max time to wait for connection (ms)
-    pool-recycle-timeout: 300000    # Recycle connections after 5 minutes
-    reconnect-attempts: 3           # Retry connection on failure
-    reconnect-interval: 1000        # Wait 1s between reconnect attempts
-    tcp-keep-alive: true            # Detect dead connections
-    tcp-no-delay: true              # Reduce network latency
-
-# Redis Server Configuration (configure on Redis server side)
-# MEMORY MANAGEMENT for 5M records:
-# Estimated: 5M records × 1KB avg = 5GB + 30% overhead = 6.5GB
-# Recommended Redis server config (redis.conf):
-#   maxmemory 8gb                          # Set limit with buffer
-#   maxmemory-policy allkeys-lru           # Evict least recently used keys
-#   maxmemory-samples 5                    # LRU approximation quality
-# Note: Application uses 4h TTL for auto-cleanup, but LRU provides additional safety
+    database: 0
+    host: redis-cluster.cluster-redis.svc.cluster.local
+    port: 6379
+    timeout: 60000
+    password: AAAtest_Redis_Pass_w0rd!
+    jedis:
+      pool:
+      max-idle: 8
+      min-idle: 0
 
 # Pool Configuration
 pool:
@@ -181,14 +168,12 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        # HIGH TPS OPTIMIZATION: Increased from 500 to 1000 for better throughput
-        max.poll.records: 1000
+        max.poll.records: 500
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         fetch.min.bytes: 128
         fetch.max.bytes: 52428800
         max.partition.fetch.bytes: 10485760
-        # Increased receive buffer for higher throughput
-        receive.buffer.bytes: 131072
+        receive.buffer.bytes: 65536
         failure-strategy: ignore
 

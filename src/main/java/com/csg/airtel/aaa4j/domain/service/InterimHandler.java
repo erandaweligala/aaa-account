@@ -63,14 +63,9 @@ public class InterimHandler {
                 .onFailure().recoverWithUni(throwable -> {
                     // Handle circuit breaker open specifically - cache service temporarily unavailable
                     if (throwable instanceof CircuitBreakerOpenException) {
-                        log.warnf("[traceId: %s] Cache service circuit breaker is OPEN for user: %s. " +
-                                        "Service temporarily unavailable due to high TPS or Redis connectivity issues. " +
-                                        "Skipping interim update to prevent cascading database failure. " +
-                                        "Next interim update will resume when circuit closes.",
+                        log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
+                                        "Service temporarily unavailable due to high tps or Redis connectivity issues.",
                                 traceId, request.username());
-                        // Fail fast without database fallback to prevent overwhelming database
-                        // Interim updates are periodic - missing one isn't critical
-                        // Next interim (typically 60s) will catch up when cache recovers
                         return Uni.createFrom().voidItem();
                     }
                     // Handle other errors
@@ -89,12 +84,11 @@ public class InterimHandler {
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
                         log.warnf("No service buckets found for user: %s", request.username());
-                     return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
+                        return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
                     }
                     int bucketCount = serviceBuckets.size();
                     List<Balance> balanceList = new ArrayList<>(bucketCount);
-                    double totalQuota = 0.0;
                     String groupId = null;
                     long concurrency = 0;
                     String templates = null;
@@ -102,8 +96,6 @@ public class InterimHandler {
                         if(!Objects.equals(bucket.getBucketUser(), request.username())){
                             groupId = bucket.getBucketUser();
                         }
-                        double currentBalance = bucket.getCurrentBalance();
-                        totalQuota += currentBalance;
                         concurrency = bucket.getConcurrency();
                         templates = bucket.getNotificationTemplates();
                         balanceList.add(MappingUtil.createBalance(bucket));
@@ -114,7 +106,7 @@ public class InterimHandler {
                     UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)
                             .groupId(groupId).userName(request.username()).concurrency(concurrency)
                             .balance(balanceList).sessions(new ArrayList<>(List.of(newSession))).build();
-                     return processAccountingRequest(newUserSessionData, request,traceId);
+                    return processAccountingRequest(newUserSessionData, request,traceId);
 
                 });
     }
