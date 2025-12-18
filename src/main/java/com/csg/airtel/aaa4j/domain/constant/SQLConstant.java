@@ -4,6 +4,11 @@ public class SQLConstant {
     private SQLConstant() {
     }
     public static final String QUERY_BALANCE = """
+                        WITH target_user AS (
+                            SELECT USER_NAME, SESSION_TIMEOUT, CONCURRENCY, NOTIFICATION_TEMPLATES, group_id
+                            FROM AAA_USER
+                            WHERE USER_NAME = :1
+                        )
                         SELECT
                            s.ID ,
                            b.RULE,
@@ -26,13 +31,12 @@ public class SQLConstant {
                            s.IS_GROUP,
                            u.CONCURRENCY,
                            u.NOTIFICATION_TEMPLATES
-                        FROM SERVICE_INSTANCE s
-                        JOIN AAA_USER  u
-                          ON s.USERNAME  = u.USER_NAME
+                        FROM target_user u
+                        JOIN SERVICE_INSTANCE s
+                          ON s.USERNAME = u.USER_NAME
                           OR (u.group_id IS NOT NULL AND s.USERNAME = u.group_id)
                         LEFT JOIN BUCKET_INSTANCE b
-                          ON s.ID  = b.service_id
-                        WHERE u.USER_NAME = :1
+                          ON s.ID = b.service_id
             """;
 
     public static final String QUERY_MESSAGE_TEMPLATES = """
