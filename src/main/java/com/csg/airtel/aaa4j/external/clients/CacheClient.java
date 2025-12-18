@@ -146,6 +146,42 @@ public class CacheClient {
     }
 
     /**
+     * Batch update multiple user data entries in parallel.
+     * Executes all updates concurrently for optimal performance.
+     *
+     * @param userDataMap Map of userId to UserSessionData to update
+     * @return Uni that completes when all updates are done
+     */
+    @CircuitBreaker(
+            requestVolumeThreshold = 100,
+            failureRatio = 0.7,
+            delay = 5000,
+            successThreshold = 2
+    )
+    @Timeout(value = 5000)
+    public Uni<Void> updateUserDataBatch(java.util.Map<String, UserSessionData> userDataMap) {
+        if (userDataMap == null || userDataMap.isEmpty()) {
+            return Uni.createFrom().voidItem();
+        }
+
+        if (log.isDebugEnabled()) {
+            log.debugf("Batch updating %d user data entries", userDataMap.size());
+        }
+
+        // Create list of parallel update operations
+        java.util.List<Uni<Void>> updateOps = new java.util.ArrayList<>(userDataMap.size());
+        for (java.util.Map.Entry<String, UserSessionData> entry : userDataMap.entrySet()) {
+            updateOps.add(updateUserAndRelatedCaches(entry.getKey(), entry.getValue()));
+        }
+
+        // Execute all updates in parallel and collect failures
+        return Uni.join().all(updateOps).andCollectFailures()
+                .replaceWithVoid()
+                .onFailure().invoke(err ->
+                    log.errorf(err, "Batch update failed for some entries"));
+    }
+
+    /**
      *  Use cached keyCommands instead of creating new instance
      */
     public Uni<String> deleteKey(String key) {
