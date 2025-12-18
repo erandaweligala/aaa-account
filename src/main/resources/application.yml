@@ -69,10 +69,10 @@ quarkus:
       exporter: none
 
   redis:
-    #client-type: sentinel
-    hosts: redis://localhost:6379
-    #master-name: mymaster
-    #role: master
+    client-type: sentinel                # ENABLED: High availability with automatic failover
+    hosts: redis://localhost:26379       # Sentinel port (not Redis port 6379)
+    master-name: mymaster                # Redis Sentinel master name
+    role: master                         # Connect to master for read/write operations
     # OPTIMIZED FOR 2000 TPS - High-performance configuration
     # Cluster: 36GB RAM, 3.3 vCPUs, 3 pods (~12GB RAM, 1.1 vCPU per pod)
     # Per pod load: ~667 TPS requiring aggressive connection pooling
