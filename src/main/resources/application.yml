@@ -69,22 +69,16 @@ quarkus:
       exporter: none
 
   redis:
-    #client-type: sentinel
     hosts: redis://localhost:6379
-    #master-name: mymaster
-    #role: master
-    # OPTIMIZED FOR 2000 TPS - High-performance configuration
-    # Cluster: 36GB RAM, 3.3 vCPUs, 3 pods (~12GB RAM, 1.1 vCPU per pod)
-    # Per pod load: ~667 TPS requiring aggressive connection pooling
-    max-pool-size: 600              # Large pool for 667 TPS/pod (90 concurrent ops + safety)
-    max-waiting-handlers: 12000     # 20x pool size for extreme burst handling
-    max-pool-waiting: 3000          # Very high concurrent request capacity for spikes
-    pool-recycle-timeout: 240000    # 4 minutes - more frequent recycling for high load
-    reconnect-attempts: 3           # Reduced to fail faster (was 5)
-    reconnect-interval: 500         # 500ms - faster reconnection for high TPS
-    pool-cleaner-interval: 20000    # Clean pool every 20 seconds - aggressive for 2000 TPS
-    response-timeout: 3000          # 3 second timeout - fail faster under load
-    connection-timeout: 2000        # 2 second connection timeout - quick failure detection
+    max-pool-size: 600
+    max-waiting-handlers: 12000
+    max-pool-waiting: 3000
+    pool-recycle-timeout: 240000
+    reconnect-attempts: 3
+    reconnect-interval: 500
+    pool-cleaner-interval: 20000
+    response-timeout: 3000
+    connection-timeout: 2000
 
 
 
