@@ -65,20 +65,22 @@ quarkus:
     traces:
       exporter: none
 
-  # Redis Configuration - Optimized for 120+ TPS with high concurrency
+  # Redis Configuration - Optimized for 120 TPS with Redis cluster constraints
+  # Cluster resources: 12GB RAM, 1.1 vCPUs, 3 pods (~4GB RAM, 0.37 vCPU per pod)
   redis:
     hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:6379
     password: AAAtest_Redis_Pass_w0rd!
     database: 0
-    # Pool configuration optimized for 120 TPS
-    max-pool-size: 300              # Large pool to handle concurrent requests
-    max-waiting-handlers: 5000      # Wait queue 10x pool size for spike handling
-    max-pool-waiting: 1000          # Max concurrent waiting requests
-    pool-recycle-timeout: 300000    # 5 minutes - recycle idle connections
-    reconnect-attempts: 5           # Retry connection failures
-    reconnect-interval: 1000        # 1 second between reconnect attempts
-    pool-cleaner-interval: 30000    # Clean pool every 30 seconds
-    response-timeout: 5000          # 5 second timeout for Redis operations
+    # Pool configuration tuned for CPU-constrained cluster
+    max-pool-size: 120              # Balanced for limited CPU (~0.37 vCPU per pod)
+    max-waiting-handlers: 2400      # 20x pool size for burst handling
+    max-pool-waiting: 600           # Conservative limit for concurrent waiting requests
+    pool-recycle-timeout: 180000    # 3 minutes - frequent recycling for limited resources
+    reconnect-attempts: 5           # Quick recovery on connection failures
+    reconnect-interval: 500         # 500ms between attempts - faster reconnect
+    pool-cleaner-interval: 20000    # Clean pool every 20 seconds - aggressive cleanup
+    response-timeout: 3000          # 3 second timeout - fail faster on CPU constraints
+    connection-timeout: 2000        # 2 second connection timeout
     timeout: 60000                  # Overall connection timeout
 
 # Pool Configuration
