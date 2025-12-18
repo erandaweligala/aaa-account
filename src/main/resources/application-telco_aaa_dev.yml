@@ -139,6 +139,10 @@ mp:
         batch.size: 32768
         linger.ms: 5
         buffer.memory: 67108864
+        # Timeout configurations to handle broker slowness/unavailability
+        delivery.timeout.ms: 300000       # 5 minutes - total time for send + ack (was 120s default)
+        request.timeout.ms: 90000         # 90 seconds - individual request timeout (was 30s default)
+        max.block.ms: 120000              # 2 minutes - max time to block when buffer full (was 60s default)
 
       accounting-cdr-events:
         connector: smallrye-kafka
