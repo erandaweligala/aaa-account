@@ -65,17 +65,24 @@ quarkus:
     traces:
       exporter: none
 
-  # Redis Configuration - Optimized for 1000 TPS
+  # Redis Configuration - OPTIMIZED FOR 2000 TPS - High-performance configuration
+  # Cluster: 36GB RAM, 3.3 vCPUs, 3 pods (~12GB RAM, 1.1 vCPU per pod)
+  # Per pod load: ~667 TPS requiring aggressive connection pooling
   redis:
-    database: 0
-    host: redis-cluster.cluster-redis.svc.cluster.local
-    port: 6379
-    timeout: 60000
+    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:6379
     password: AAAtest_Redis_Pass_w0rd!
-    jedis:
-      pool:
-      max-idle: 8
-      min-idle: 0
+    database: 0
+    # Pool configuration for extreme high load (2000 TPS)
+    max-pool-size: 600              # Large pool for 667 TPS/pod (90 concurrent ops + safety)
+    max-waiting-handlers: 12000     # 20x pool size for extreme burst handling
+    max-pool-waiting: 3000          # Very high concurrent request capacity for spikes
+    pool-recycle-timeout: 240000    # 4 minutes - more frequent recycling for high load
+    reconnect-attempts: 3           # Reduced to fail faster (was 5)
+    reconnect-interval: 500         # 500ms - faster reconnection for high TPS
+    pool-cleaner-interval: 20000    # Clean pool every 20 seconds - aggressive for 2000 TPS
+    response-timeout: 3000          # 3 second timeout - fail faster under load
+    connection-timeout: 2000        # 2 second connection timeout - quick failure detection
+    timeout: 60000                  # Overall connection timeout
 
 # Pool Configuration
 pool:

@@ -1066,14 +1066,15 @@ public class AccountingUtil {
                         UserSessionData userSessionGroupData = prepareGroupDataWithSession(
                                 existingGroupData, foundBalance, currentSession,request);
 
-                        // Update both group and user caches
-                        return cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
-                                .onFailure().invoke(err ->
-                                        log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername()))
-                                .chain(() -> cacheClient.updateUserAndRelatedCaches(request.username(), userData)
+                        // Update both group and user caches in parallel for better performance
+                        return Uni.combine().all().unis(
+                                cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
                                         .onFailure().invoke(err ->
-                                                log.errorf(err, "Error updating cache for user: %s", request.username())))
-                                .replaceWith(success);
+                                                log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername())),
+                                cacheClient.updateUserAndRelatedCaches(request.username(), userData)
+                                        .onFailure().invoke(err ->
+                                                log.errorf(err, "Error updating cache for user: %s", request.username()))
+                        ).discardItems().replaceWith(success);
                     });
         }else {
             userData.getBalance().removeIf(Balance::isGroup);
@@ -1282,6 +1283,11 @@ public class AccountingUtil {
 
     /**
      * Get complete group bucket data including balances and sessions.
+     *
+     * Performance Note: This method fetches fresh group data on each call.
+     * For high TPS scenarios with repeated group data access in the same request,
+     * consider using .memoize().indefinitely() on the returned Uni to cache the
+     * result for the duration of the request chain.
      *
      * @param groupId the group ID to fetch data for
      * @return Uni of UserSessionData for the group, or null if no group or default group
