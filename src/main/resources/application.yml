@@ -73,12 +73,15 @@ quarkus:
     hosts: redis://localhost:6379
     #master-name: mymaster
     #role: master
-    max-pool-size: 200
-    max-waiting-handlers: 2000
-    max-pool-waiting: 500
-    pool-recycle-timeout: 300000
-    reconnect-attempts: 3
-    reconnect-interval: 1000
+    # Optimized for 120+ TPS with high concurrency
+    max-pool-size: 300              # Increased from 200 to handle 120 TPS with retries
+    max-waiting-handlers: 5000      # Increased from 2000 - wait queue 10x pool size
+    max-pool-waiting: 1000          # Increased from 500 - max concurrent waiting requests
+    pool-recycle-timeout: 300000    # 5 minutes - recycle idle connections
+    reconnect-attempts: 5           # Increased from 3 for better resilience
+    reconnect-interval: 1000        # 1 second between reconnect attempts
+    pool-cleaner-interval: 30000    # Clean pool every 30 seconds
+    response-timeout: 5000          # 5 second timeout for Redis operations
 
 
 
