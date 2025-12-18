@@ -15,11 +15,11 @@ quarkus:
     password: Aaa!89nky78D
     reactive:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
-      max-size: 50
+      max-size: 200
       idle-timeout: PT10M
       acquisition-timeout: PT5S
 
-  # Vertx Configuration - Optimized for 1000 TPS
+  # Vertx Configuration - Optimized for 2000 TPS
   vertx:
     event-loops-pool-size: 32
     warning-exception-time: 10s
@@ -86,7 +86,7 @@ quarkus:
 
 # Pool Configuration
 pool:
-  max-size: 50                      # Max connections
+  max-size: 200                     # Max connections - increased for 2000 TPS
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
