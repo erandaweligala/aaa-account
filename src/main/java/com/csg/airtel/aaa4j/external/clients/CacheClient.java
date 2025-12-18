@@ -53,17 +53,17 @@ public class CacheClient {
      * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 100,
-            failureRatio = 0.7,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
+            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
+            delay = 3000,                   // Reduced from 5000 - faster recovery
+            successThreshold = 3            // Increased from 2 - more stable
     )
     @Retry(
             maxRetries = 1,
-            delay = 50,
-            maxDuration = 2000
+            delay = 30,                     // Reduced from 50ms - faster retry
+            maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
-    @Timeout(value = 2000)
+    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
@@ -77,17 +77,17 @@ public class CacheClient {
      * Retrieve user data from Redis.
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 100,
-            failureRatio = 0.7,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
+            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
+            delay = 3000,                   // Reduced from 5000 - faster recovery
+            successThreshold = 3            // Increased from 2 - more stable
     )
     @Retry(
             maxRetries = 1,
-            delay = 100,
-            maxDuration = 2000
+            delay = 50,                     // Reduced from 100ms - faster retry
+            maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
-    @Timeout(value = 2000)
+    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
@@ -122,17 +122,17 @@ public class CacheClient {
      * Update user data and related caches in Redis.
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 100,
-            failureRatio = 0.7,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
+            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
+            delay = 3000,                   // Reduced from 5000 - faster recovery
+            successThreshold = 3            // Increased from 2 - more stable
     )
     @Retry(
             maxRetries = 1,
-            delay = 50,
-            maxDuration = 2000
+            delay = 30,                     // Reduced from 50ms - faster retry
+            maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
-    @Timeout(value = 2000)
+    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
@@ -153,12 +153,12 @@ public class CacheClient {
      * @return Uni that completes when all updates are done
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 100,
-            failureRatio = 0.7,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
+            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
+            delay = 3000,                   // Reduced from 5000 - faster recovery
+            successThreshold = 3            // Increased from 2 - more stable
     )
-    @Timeout(value = 5000)
+    @Timeout(value = 8000)                  // Keep higher for batch operations
     public Uni<Void> updateUserDataBatch(java.util.Map<String, UserSessionData> userDataMap) {
         if (userDataMap == null || userDataMap.isEmpty()) {
             return Uni.createFrom().voidItem();
@@ -199,14 +199,14 @@ public class CacheClient {
      * @return Uni with Map of userId -> UserSessionData
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 100,
-            failureRatio = 0.7,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
+            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
+            delay = 3000,                   // Reduced from 5000 - faster recovery
+            successThreshold = 3            // Increased from 2 - more stable
     )
     @Retry(
             maxRetries = 1,
-            delay = 100,
+            delay = 50,                     // Reduced from 100ms - faster retry
             maxDuration = 3000
     )
     @Timeout(value = 5000)
@@ -254,14 +254,14 @@ public class CacheClient {
      * Expired session retrieval with optimized fault tolerance
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 100,
-            failureRatio = 0.7,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
+            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
+            delay = 3000,                   // Reduced from 5000 - faster recovery
+            successThreshold = 3            // Increased from 2 - more stable
     )
     @Retry(
             maxRetries = 1,
-            delay = 100,
+            delay = 50,                     // Reduced from 100ms - faster retry
             maxDuration = 4000
     )
     @Timeout(value = 8000)

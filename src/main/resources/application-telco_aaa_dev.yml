@@ -65,22 +65,23 @@ quarkus:
     traces:
       exporter: none
 
-  # Redis Configuration - Optimized for 120 TPS with Redis cluster
-  # Cluster resources: 36GB RAM, 3.3 vCPUs, 3 pods (~12GB RAM, 1.1 vCPU per pod)
+  # Redis Configuration - OPTIMIZED FOR 2000 TPS - High-performance configuration
+  # Cluster: 36GB RAM, 3.3 vCPUs, 3 pods (~12GB RAM, 1.1 vCPU per pod)
+  # Per pod load: ~667 TPS requiring aggressive connection pooling
   redis:
     hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:6379
     password: AAAtest_Redis_Pass_w0rd!
     database: 0
-    # Pool configuration optimized for 1.1 vCPU per pod
-    max-pool-size: 250              # Optimal for 1.1 vCPU/pod with 120 TPS load
-    max-waiting-handlers: 5000      # 20x pool size for burst traffic handling
-    max-pool-waiting: 1000          # High concurrent request capacity
-    pool-recycle-timeout: 300000    # 5 minutes - balanced recycling interval
-    reconnect-attempts: 5           # Resilient reconnection on failures
-    reconnect-interval: 1000        # 1 second between reconnect attempts
-    pool-cleaner-interval: 30000    # Clean pool every 30 seconds
-    response-timeout: 5000          # 5 second timeout - adequate for cluster latency
-    connection-timeout: 3000        # 3 second connection timeout
+    # Pool configuration for extreme high load (2000 TPS)
+    max-pool-size: 600              # Large pool for 667 TPS/pod (90 concurrent ops + safety)
+    max-waiting-handlers: 12000     # 20x pool size for extreme burst handling
+    max-pool-waiting: 3000          # Very high concurrent request capacity for spikes
+    pool-recycle-timeout: 240000    # 4 minutes - more frequent recycling for high load
+    reconnect-attempts: 3           # Reduced to fail faster (was 5)
+    reconnect-interval: 500         # 500ms - faster reconnection for high TPS
+    pool-cleaner-interval: 20000    # Clean pool every 20 seconds - aggressive for 2000 TPS
+    response-timeout: 3000          # 3 second timeout - fail faster under load
+    connection-timeout: 2000        # 2 second connection timeout - quick failure detection
     timeout: 60000                  # Overall connection timeout
 
 # Pool Configuration
