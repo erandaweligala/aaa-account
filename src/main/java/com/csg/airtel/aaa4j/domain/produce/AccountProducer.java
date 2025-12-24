@@ -58,9 +58,9 @@ public class AccountProducer {
     @Retry(
             maxRetries = 3,
             delay = 100,
-            maxDuration = 10000
+            maxDuration = 50000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 60000)
     @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
         long startTime = System.currentTimeMillis();
@@ -97,9 +97,9 @@ public class AccountProducer {
     @Retry(
             maxRetries = 3,
             delay = 100,
-            maxDuration = 10000
+            maxDuration = 50000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 60000)
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
@@ -133,9 +133,9 @@ public class AccountProducer {
     @Retry(
             maxRetries = 3,
             delay = 100,
-            maxDuration = 10000
+            maxDuration = 50000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 60000)
     @Fallback(fallbackMethod = "fallbackProduceAccountingCDREvent")
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
@@ -263,9 +263,9 @@ public class AccountProducer {
     @Retry(
             maxRetries = 3,
             delay = 100,
-            maxDuration = 10000
+            maxDuration = 50000
     )
-    @Timeout(value = 10000)
+    @Timeout(value = 60000)
     @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
     public Uni<Void> produceQuotaNotificationEvent(QuotaNotificationEvent event) {
         long startTime = System.currentTimeMillis();
