@@ -60,10 +60,10 @@ public class CacheClient {
     )
     @Retry(
             maxRetries = 1,
-            delay = 30,                     // Reduced from 50ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
+            delay = 50,                     // Retry delay
+            maxDuration = 3000              // Allow 3s for retry duration
     )
-    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 4000)                  // Increased to 4s - must be > Redis response-timeout (3s)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
@@ -84,10 +84,10 @@ public class CacheClient {
     )
     @Retry(
             maxRetries = 1,
-            delay = 50,                     // Reduced from 100ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
+            delay = 50,                     // Retry delay
+            maxDuration = 3000              // Allow 3s for retry duration
     )
-    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 4000)                  // Increased to 4s - must be > Redis response-timeout (3s)
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
@@ -129,10 +129,10 @@ public class CacheClient {
     )
     @Retry(
             maxRetries = 1,
-            delay = 30,                     // Reduced from 50ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
+            delay = 50,                     // Retry delay
+            maxDuration = 3000              // Allow 3s for retry duration
     )
-    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 4000)                  // Increased to 4s - must be > Redis response-timeout (3s)
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
@@ -158,7 +158,7 @@ public class CacheClient {
             delay = 3000,                   // Reduced from 5000 - faster recovery
             successThreshold = 3            // Increased from 2 - more stable
     )
-    @Timeout(value = 8000)                  // Keep higher for batch operations
+    @Timeout(value = 10000)                 // Increased to 10s for batch operations
     public Uni<Void> updateUserDataBatch(java.util.Map<String, UserSessionData> userDataMap) {
         if (userDataMap == null || userDataMap.isEmpty()) {
             return Uni.createFrom().voidItem();
@@ -206,10 +206,10 @@ public class CacheClient {
     )
     @Retry(
             maxRetries = 1,
-            delay = 50,                     // Reduced from 100ms - faster retry
-            maxDuration = 3000
+            delay = 50,                     // Retry delay
+            maxDuration = 4000              // Allow 4s for retry duration
     )
-    @Timeout(value = 5000)
+    @Timeout(value = 6000)                  // Increased to 6s for batch operations
     public Uni<Map<String, UserSessionData>> getUserDataBatchAsMap(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Uni.createFrom().item(Map.of());
@@ -261,10 +261,10 @@ public class CacheClient {
     )
     @Retry(
             maxRetries = 1,
-            delay = 50,                     // Reduced from 100ms - faster retry
-            maxDuration = 4000
+            delay = 50,                     // Retry delay
+            maxDuration = 6000              // Allow 6s for retry duration
     )
-    @Timeout(value = 8000)
+    @Timeout(value = 10000)                 // Increased to 10s for complex batch operations
     public Uni<ExpiredSessionsWithData> getExpiredSessionsWithData(long expiryThresholdMillis, int limit) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
