@@ -15,6 +15,8 @@ import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Fallback;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
+import org.eclipse.microprofile.metrics.annotation.Counted;
+import org.eclipse.microprofile.metrics.annotation.Timed;
 import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Message;
@@ -49,6 +51,8 @@ public class AccountProducer {
         this.sessionLifecycleManager = sessionLifecycleManager;
     }
 
+    @Counted(name = "account.producer.db.write.events", description = "Total DB write events produced")
+    @Timed(name = "account.producer.db.write.time", description = "Time to produce DB write events")
     @CircuitBreaker(
             requestVolumeThreshold = 200,
             failureRatio = 0.75,
@@ -76,7 +80,8 @@ public class AccountProducer {
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
+                        LOG.errorf(throwable, "DB write event send failed for sessionId=%s, userName=%s: %s",
+                                request.getSessionId(), request.getUserName(), throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -88,6 +93,8 @@ public class AccountProducer {
     /**
      * @param event request
      */
+    @Counted(name = "account.producer.accounting.response.events", description = "Total accounting response events produced")
+    @Timed(name = "account.producer.accounting.response.time", description = "Time to produce accounting response events")
     @CircuitBreaker(
             requestVolumeThreshold = 200,
             failureRatio = 0.75,
@@ -103,7 +110,7 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceAccountingResponseEvent process");
+        LOG.infof("Start produceAccountingResponseEvent process for sessionId=%s", event.sessionId());
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -115,7 +122,8 @@ public class AccountProducer {
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
+                        LOG.errorf(throwable, "Accounting response event send failed for sessionId=%s: %s",
+                                event.sessionId(), throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -124,6 +132,8 @@ public class AccountProducer {
         });
     }
 
+    @Counted(name = "account.producer.accounting.cdr.events", description = "Total accounting CDR events produced")
+    @Timed(name = "account.producer.accounting.cdr.time", description = "Time to produce accounting CDR events")
     @CircuitBreaker(
             requestVolumeThreshold = 200,
             failureRatio = 0.75,
@@ -139,7 +149,10 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingCDREvent")
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Accounting CDR Event process");
+        String sessionId = event.getPayload() != null && event.getPayload().getSession() != null
+                ? event.getPayload().getSession().getSessionId()
+                : "unknown";
+        LOG.infof("Start produce Accounting CDR Event process for sessionId=%s", sessionId);
         return Uni.createFrom().emitter(em -> {
             Message<AccountingCDREvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -151,7 +164,11 @@ public class AccountProducer {
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("CDR Send failed: %s", throwable.getMessage());
+                        String sessionId = event.getPayload() != null && event.getPayload().getSession() != null
+                                ? event.getPayload().getSession().getSessionId()
+                                : "unknown";
+                        LOG.errorf(throwable, "Accounting CDR event send failed for sessionId=%s: %s",
+                                sessionId, throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -254,6 +271,8 @@ public class AccountProducer {
      * @param event the quota notification event
      * @return Uni that completes when event is published
      */
+    @Counted(name = "account.producer.quota.notification.events", description = "Total quota notification events produced")
+    @Timed(name = "account.producer.quota.notification.time", description = "Time to produce quota notification events")
     @CircuitBreaker(
             requestVolumeThreshold = 200,
             failureRatio = 0.75,
@@ -283,7 +302,8 @@ public class AccountProducer {
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Quota notification send failed: %s", throwable.getMessage());
+                        LOG.errorf(throwable, "Quota notification event send failed for user=%s, type=%s: %s",
+                                event.username(), event.type(), throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
