@@ -50,10 +50,10 @@ public class AccountProducer {
     }
 
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,
+            failureRatio = 0.75,
+            delay = 3000,
+            successThreshold = 3
     )
     @Retry(
             maxRetries = 3,
@@ -89,10 +89,10 @@ public class AccountProducer {
      * @param event request
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,
+            failureRatio = 0.75,
+            delay = 3000,
+            successThreshold = 3
     )
     @Retry(
             maxRetries = 3,
@@ -125,10 +125,10 @@ public class AccountProducer {
     }
 
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,
+            failureRatio = 0.75,
+            delay = 3000,
+            successThreshold = 3
     )
     @Retry(
             maxRetries = 3,
@@ -255,10 +255,10 @@ public class AccountProducer {
      * @return Uni that completes when event is published
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
+            requestVolumeThreshold = 200,
+            failureRatio = 0.75,
+            delay = 3000,
+            successThreshold = 3
     )
     @Retry(
             maxRetries = 3,
