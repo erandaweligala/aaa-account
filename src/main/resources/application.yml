@@ -76,7 +76,7 @@ quarkus:
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    response-timeout: 3000
+    response-timeout: 6000
     connection-timeout: 2000
 
 
