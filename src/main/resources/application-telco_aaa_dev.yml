@@ -3,10 +3,10 @@ quarkus:
   http:
     root-path: /api/v1
     port: 9905
-    io-threads: 8
+    io-threads: 16                  # Increased for 285 TPS/pod (~18 TPS per thread)
     limits:
       max-body-size: 10M
-      max-connections: 2000
+      max-connections: 1000         # Sufficient for 285 TPS/pod with margin
 
 
   datasource:
@@ -19,9 +19,9 @@ quarkus:
       idle-timeout: PT10M
       acquisition-timeout: PT5S
 
-  # Vertx Configuration - Optimized for 2000 TPS
+  # Vertx Configuration - Optimized for 2000 TPS across 7 pods (~285 TPS/pod)
   vertx:
-    event-loops-pool-size: 32
+    event-loops-pool-size: 32       # ~9 TPS per event loop - good balance
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -65,23 +65,23 @@ quarkus:
     traces:
       exporter: none
 
-  # Redis Configuration - OPTIMIZED FOR 2000 TPS - High-performance configuration
-  # Cluster: 36GB RAM, 3.3 vCPUs, 3 pods (~12GB RAM, 1.1 vCPU per pod)
-  # Per pod load: ~667 TPS requiring aggressive connection pooling
+  # Redis Configuration - OPTIMIZED FOR 2000 TPS across 7 pods
+  # Per pod load: ~285 TPS (2000 TPS / 7 pods)
+  # With 4s fault tolerance timeout, need ~200 connections/pod for safety
   redis:
     hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:6379
     password: AAAtest_Redis_Pass_w0rd!
     database: 0
-    # Pool configuration for extreme high load (2000 TPS)
-    max-pool-size: 600              # Large pool for 667 TPS/pod (90 concurrent ops + safety)
-    max-waiting-handlers: 12000     # 20x pool size for extreme burst handling
-    max-pool-waiting: 3000          # Very high concurrent request capacity for spikes
+    # Pool configuration optimized for 285 TPS/pod
+    max-pool-size: 200              # ~0.7 connections per TPS (285 TPS * 4s timeout / 1000ms * safety margin)
+    max-waiting-handlers: 4000      # 20x pool size for burst handling
+    max-pool-waiting: 1000          # Sufficient concurrent request capacity for spikes
     pool-recycle-timeout: 240000    # 4 minutes - more frequent recycling for high load
-    reconnect-attempts: 3           # Reduced to fail faster (was 5)
-    reconnect-interval: 500         # 500ms - faster reconnection for high TPS
-    pool-cleaner-interval: 20000    # Clean pool every 20 seconds - aggressive for 2000 TPS
-    response-timeout: 3000          # 3 second timeout - fail faster under load
-    connection-timeout: 2000        # 2 second connection timeout - quick failure detection
+    reconnect-attempts: 3           # Fail faster under load
+    reconnect-interval: 500         # 500ms - faster reconnection
+    pool-cleaner-interval: 20000    # Clean pool every 20 seconds
+    response-timeout: 3000          # 3s timeout - MUST be < CacheClient @Timeout (4000ms)
+    connection-timeout: 2000        # 2s connection timeout - quick failure detection
     timeout: 60000                  # Overall connection timeout
 
 # Pool Configuration
@@ -175,12 +175,12 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500
+        max.poll.records: 1000          # Increased for better throughput at 285 TPS/pod
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         fetch.min.bytes: 128
         fetch.max.bytes: 52428800
         max.partition.fetch.bytes: 10485760
-        receive.buffer.bytes: 65536
+        receive.buffer.bytes: 131072    # Doubled from 65536 for better network throughput
         failure-strategy: ignore
 
