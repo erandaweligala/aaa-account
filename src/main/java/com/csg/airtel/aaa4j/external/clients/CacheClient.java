@@ -17,6 +17,7 @@ import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -52,18 +53,12 @@ public class CacheClient {
      * Cache entries persist indefinitely without TTL expiration.
      * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
      */
-    @CircuitBreaker(
-            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
-            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
-            delay = 3000,                   // Reduced from 5000 - faster recovery
-            successThreshold = 3            // Increased from 2 - more stable
-    )
     @Retry(
             maxRetries = 1,
             delay = 30,                     // Reduced from 50ms - faster retry
             maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
-    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                // Reduced from 2000ms - faster timeout
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
@@ -76,18 +71,12 @@ public class CacheClient {
     /**
      * Retrieve user data from Redis.
      */
-    @CircuitBreaker(
-            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
-            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
-            delay = 3000,                   // Reduced from 5000 - faster recovery
-            successThreshold = 3            // Increased from 2 - more stable
-    )
     @Retry(
             maxRetries = 1,
-            delay = 50,                     // Reduced from 100ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
+            delay = 100,
+            jitter = 50
     )
-    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
@@ -121,18 +110,12 @@ public class CacheClient {
     /**
      * Update user data and related caches in Redis.
      */
-    @CircuitBreaker(
-            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
-            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
-            delay = 3000,                   // Reduced from 5000 - faster recovery
-            successThreshold = 3            // Increased from 2 - more stable
-    )
     @Retry(
             maxRetries = 1,
             delay = 30,                     // Reduced from 50ms - faster retry
             maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
-    @Timeout(value = 1500)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                 // Reduced from 2000ms - faster timeout
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
@@ -145,41 +128,6 @@ public class CacheClient {
                 .replaceWithVoid();
     }
 
-    /**
-     * Batch update multiple user data entries in parallel.
-     * Executes all updates concurrently for optimal performance.
-     *
-     * @param userDataMap Map of userId to UserSessionData to update
-     * @return Uni that completes when all updates are done
-     */
-    @CircuitBreaker(
-            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
-            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
-            delay = 3000,                   // Reduced from 5000 - faster recovery
-            successThreshold = 3            // Increased from 2 - more stable
-    )
-    @Timeout(value = 8000)                  // Keep higher for batch operations
-    public Uni<Void> updateUserDataBatch(java.util.Map<String, UserSessionData> userDataMap) {
-        if (userDataMap == null || userDataMap.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-
-        if (log.isDebugEnabled()) {
-            log.debugf("Batch updating %d user data entries", userDataMap.size());
-        }
-
-        // Create list of parallel update operations
-        java.util.List<Uni<Void>> updateOps = new java.util.ArrayList<>(userDataMap.size());
-        for (java.util.Map.Entry<String, UserSessionData> entry : userDataMap.entrySet()) {
-            updateOps.add(updateUserAndRelatedCaches(entry.getKey(), entry.getValue()));
-        }
-
-        // Execute all updates in parallel and collect failures
-        return Uni.join().all(updateOps).andCollectFailures()
-                .replaceWithVoid()
-                .onFailure().invoke(err ->
-                    log.errorf(err, "Batch update failed for some entries"));
-    }
 
     /**
      *  Use cached keyCommands instead of creating new instance
@@ -198,18 +146,13 @@ public class CacheClient {
      * @param userIds list of user IDs to retrieve
      * @return Uni with Map of userId -> UserSessionData
      */
-    @CircuitBreaker(
-            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
-            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
-            delay = 3000,                   // Reduced from 5000 - faster recovery
-            successThreshold = 3            // Increased from 2 - more stable
-    )
+
     @Retry(
             maxRetries = 1,
             delay = 50,                     // Reduced from 100ms - faster retry
             maxDuration = 3000
     )
-    @Timeout(value = 5000)
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
     public Uni<Map<String, UserSessionData>> getUserDataBatchAsMap(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Uni.createFrom().item(Map.of());

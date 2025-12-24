@@ -18,13 +18,12 @@ quarkus:
     password: Aaa!89nky78D
     reactive:
       url: oracle:thin:@localhost:1521/FREEPDB1
-      max-size: 50
-      idle-timeout: PT10M
-      acquisition-timeout: PT5S
+#      url: oracle:thin:@localhost:1522/ORCL
 
   # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   vertx:
     event-loops-pool-size: 32
+    worker-pool-size: 64
     internal-blocking-pool-size: 100
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
@@ -115,12 +114,25 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 3
+        retries: 10
+        retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
-        compression.type: snappy
+        compression.type: lz4
         batch.size: 32768
         linger.ms: 5
         buffer.memory: 67108864
+        metadata.max.age.ms: 30000
+        request.timeout.ms: 30000
+        delivery.timeout.ms: 120000
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+
+      #        retries: 3
+#        max.in.flight.requests.per.connection: 5
+#        compression.type: snappy
+#        batch.size: 32768
+#        linger.ms: 5
+#        buffer.memory: 67108864
 
       accounting-resp-events:
         connector: smallrye-kafka

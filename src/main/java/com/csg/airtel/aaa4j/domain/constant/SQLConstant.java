@@ -35,7 +35,7 @@ public class SQLConstant {
                         JOIN SERVICE_INSTANCE s
                           ON s.USERNAME = u.USER_NAME
                           OR (u.group_id IS NOT NULL AND s.USERNAME = u.group_id)
-                        LEFT JOIN BUCKET_INSTANCE b
+                        JOIN BUCKET_INSTANCE b
                           ON s.ID = b.service_id
             """;
 

@@ -3,10 +3,10 @@ quarkus:
   http:
     root-path: /api/v1
     port: 9905
-    io-threads: 8
+    io-threads: 16
     limits:
       max-body-size: 10M
-      max-connections: 2000
+      max-connections: 1000
 
 
   datasource:
@@ -15,11 +15,9 @@ quarkus:
     password: Aaa!89nky78D
     reactive:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
-      max-size: 200
-      idle-timeout: PT10M
-      acquisition-timeout: PT5S
 
-  # Vertx Configuration - Optimized for 2000 TPS
+
+  # Vertx Configuration - Optimized for 1000 TPS
   vertx:
     event-loops-pool-size: 32
     warning-exception-time: 10s
@@ -41,7 +39,8 @@ quarkus:
   log:
     level: INFO
     file:
-      path: /var/dte/aaa-account.log
+      enabled: true
+      path: /var/log/dte/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
         max-file-size: 100M
@@ -65,28 +64,24 @@ quarkus:
     traces:
       exporter: none
 
-  # Redis Configuration - OPTIMIZED FOR 2000 TPS - High-performance configuration
-  # Cluster: 36GB RAM, 3.3 vCPUs, 3 pods (~12GB RAM, 1.1 vCPU per pod)
-  # Per pod load: ~667 TPS requiring aggressive connection pooling
   redis:
-    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:6379
+    client-type: sentinel
+    hosts: redis://redis-cluster.cluster-redis.svc.cluster.local:26379
+    master-name: mymaster
+    role: master
     password: AAAtest_Redis_Pass_w0rd!
-    database: 0
-    # Pool configuration for extreme high load (2000 TPS)
-    max-pool-size: 600              # Large pool for 667 TPS/pod (90 concurrent ops + safety)
-    max-waiting-handlers: 12000     # 20x pool size for extreme burst handling
-    max-pool-waiting: 3000          # Very high concurrent request capacity for spikes
-    pool-recycle-timeout: 240000    # 4 minutes - more frequent recycling for high load
-    reconnect-attempts: 3           # Reduced to fail faster (was 5)
-    reconnect-interval: 500         # 500ms - faster reconnection for high TPS
-    pool-cleaner-interval: 20000    # Clean pool every 20 seconds - aggressive for 2000 TPS
-    response-timeout: 3000          # 3 second timeout - fail faster under load
-    connection-timeout: 2000        # 2 second connection timeout - quick failure detection
-    timeout: 60000                  # Overall connection timeout
+    max-pool-size: 300
+    max-waiting-handlers: 5000
+    max-pool-waiting: 800
+    pool-recycle-timeout: 240000
+    reconnect-attempts: 3
+    reconnect-interval: 500
+    pool-cleaner-interval: 20000
+    timeout: 60000
 
 # Pool Configuration
 pool:
-  max-size: 200                     # Max connections - increased for 2000 TPS
+  max-size: 20                      # Max connections
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -109,7 +104,7 @@ idle-session:
 # Kafka Configuration
 kafka:
   bootstrap:
-   servers: confluent-ctrl-0-svc.rkafkacone.svc.cluster.local:9092
+    servers: confluent-ctrl-0-svc.rkafkacone.svc.cluster.local:9092
 
 mp:
   messaging:
@@ -122,7 +117,7 @@ mp:
         acks: all
         retries: 3
         max.in.flight.requests.per.connection: 5
-        compression.type: snappy
+        compression.type: lz4
         batch.size: 32768
         linger.ms: 5
         buffer.memory: 67108864
@@ -135,10 +130,13 @@ mp:
         acks: all
         retries: 3
         max.in.flight.requests.per.connection: 5
-        compression.type: snappy
-        batch.size: 32768
-        linger.ms: 5
+        compression.type: lz4
+        batch.size: 16384
+        linger.ms: 10
         buffer.memory: 67108864
+        delivery.timeout.ms: 300000
+        request.timeout.ms: 120000
+        max.block.ms: 60000
 
       accounting-cdr-events:
         connector: smallrye-kafka
@@ -148,10 +146,13 @@ mp:
         acks: all
         retries: 3
         max.in.flight.requests.per.connection: 5
-        compression.type: snappy
-        batch.size: 32768
-        linger.ms: 5
+        compression.type: lz4
+        batch.size: 16384
+        linger.ms: 10
         buffer.memory: 67108864
+        delivery.timeout.ms: 300000
+        request.timeout.ms: 120000
+        max.block.ms: 60000
 
       quota-notification-events:
         connector: smallrye-kafka
@@ -161,10 +162,13 @@ mp:
         acks: all
         retries: 3
         max.in.flight.requests.per.connection: 5
-        compression.type: snappy
-        batch.size: 32768
-        linger.ms: 5
+        compression.type: lz4
+        batch.size: 16384
+        linger.ms: 10
         buffer.memory: 67108864
+        delivery.timeout.ms: 300000
+        request.timeout.ms: 120000
+        max.block.ms: 60000
 
     incoming:
       accounting-events:
@@ -175,12 +179,12 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500
+        max.poll.records: 1000
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         fetch.min.bytes: 128
         fetch.max.bytes: 52428800
         max.partition.fetch.bytes: 10485760
-        receive.buffer.bytes: 65536
+        receive.buffer.bytes: 131072
         failure-strategy: ignore
 
