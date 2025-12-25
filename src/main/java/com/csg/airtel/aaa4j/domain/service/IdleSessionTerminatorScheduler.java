@@ -38,18 +38,21 @@ public class IdleSessionTerminatorScheduler {
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
     private final AccountProducer accountProducer;
+    private final MonitoringService monitoringService;
 
 
     @Inject
     public IdleSessionTerminatorScheduler(CacheClient cacheClient,
                                           SessionExpiryIndex sessionExpiryIndex,
                                           IdleSessionConfig config,
-                                          AccountProducer accountProducer
+                                          AccountProducer accountProducer,
+                                          MonitoringService monitoringService
                                     ) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
         this.accountProducer = accountProducer;
+        this.monitoringService = monitoringService;
 
     }
 
@@ -249,6 +252,9 @@ public class IdleSessionTerminatorScheduler {
         userData.setSessions(activeSessions);
 
         totalSessionsTerminated.addAndGet(sessionsToTerminate.size());
+
+        // Record idle session terminations in monitoring
+        monitoringService.recordIdleSessionTerminated(sessionsToTerminate.size());
 
         // Trigger DB write operations for terminated sessions to persist balance state
         return triggerDBRequestInitiate(sessionsToTerminate, userData)

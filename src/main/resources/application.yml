@@ -222,4 +222,44 @@ mp:
         receive.buffer.bytes: 131072
         failure-strategy: ignore
 
+  # ==================== METRICS & MONITORING CONFIGURATION ====================
+  # Micrometer metrics configuration for session monitoring and component failures
+  micrometer:
+    enabled: true
+    binder:
+      # JVM metrics
+      jvm: true
+      # System metrics (CPU, memory, disk)
+      system: true
+      # HTTP server metrics
+      http-server: true
+      # Vert.x metrics
+      vertx: true
+    export:
+      # Prometheus format endpoint
+      prometheus:
+        enabled: true
+        path: /q/metrics
+        default-registry: true
+
+  # SmallRye Health configuration for health checks
+  smallrye-health:
+    root-path: /q/health
+    liveness-path: /q/health/live
+    readiness-path: /q/health/ready
+    ui:
+      enable: true
+      root-path: /q/health-ui
+
+# ==================== APPLICATION SPECIFIC MONITORING ====================
+# Monitoring service configuration
+monitoring:
+  metrics:
+    export:
+      enabled: true
+      interval: 30s
+      path: /var/log/aaa-account/metrics.json
+  health-checks:
+    enabled: true
+    log-path: /var/log/aaa-account/health-checks.log
 

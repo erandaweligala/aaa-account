@@ -34,18 +34,21 @@ public class CacheClient {
     private static final String KEY_PREFIX = "user:";
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
+    private final com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService;
 
     private final ReactiveKeyCommands<String> keyCommands;
 
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,
-                       SessionExpiryIndex sessionExpiryIndex) {
+                       SessionExpiryIndex sessionExpiryIndex,
+                       com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
+        this.monitoringService = monitoringService;
     }
 
     /**
@@ -87,6 +90,7 @@ public class CacheClient {
                 })
                 .onFailure().invoke(error -> {
                     long duration = System.currentTimeMillis() - startTime;
+                    monitoringService.recordRedisFailure();
                     log.error("Failed to store user data to Redis", StructuredLogger.Fields.create()
                             .add("userId", userId)
                             .addDuration(duration)

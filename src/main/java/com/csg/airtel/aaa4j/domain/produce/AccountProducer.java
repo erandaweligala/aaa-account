@@ -33,13 +33,15 @@ public class AccountProducer {
     private final Emitter<QuotaNotificationEvent> quotaNotificationEmitter;
     private final CacheClient cacheClient;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService;
 
     public AccountProducer(@Channel("db-write-events")Emitter<DBWriteRequest> dbWriteRequestEmitter,
                            @Channel("accounting-resp-events")Emitter<AccountingResponseEvent> accountingResponseEmitter,
                            @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter,
                            @Channel("quota-notification-events") Emitter<QuotaNotificationEvent> quotaNotificationEmitter,
                            CacheClient cacheClient,
-                           SessionLifecycleManager sessionLifecycleManager
+                           SessionLifecycleManager sessionLifecycleManager,
+                           com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService
                           ) {
         this.dbWriteRequestEmitter = dbWriteRequestEmitter;
         this.accountingResponseEmitter = accountingResponseEmitter;
@@ -47,6 +49,7 @@ public class AccountProducer {
         this.quotaNotificationEmitter = quotaNotificationEmitter;
         this.cacheClient = cacheClient;
         this.sessionLifecycleManager = sessionLifecycleManager;
+        this.monitoringService = monitoringService;
     }
 
     @CircuitBreaker(
@@ -94,6 +97,7 @@ public class AccountProducer {
                     })
                     .withNack(throwable -> {
                         long duration = System.currentTimeMillis() - startTime;
+                        monitoringService.recordKafkaProduceFailure();
                         LOG.error("Failed to send DB write event to Kafka", StructuredLogger.Fields.create()
                                 .add("sessionId", request.getSessionId())
                                 .add("userName", request.getUserName())
