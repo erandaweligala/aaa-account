@@ -78,6 +78,13 @@ public class StructuredLogger {
     }
 
     /**
+     * Log formatted info message
+     */
+    public void infof(String format, Object... params) {
+        logger.infof(format, params);
+    }
+
+    /**
      * Log structured debug with additional fields
      */
     public void debug(String message, Map<String, Object> fields) {
@@ -104,6 +111,13 @@ public class StructuredLogger {
     }
 
     /**
+     * Log formatted debug message
+     */
+    public void debugf(String format, Object... params) {
+        logger.debugf(format, params);
+    }
+
+    /**
      * Log structured warning with additional fields
      */
     public void warn(String message, Map<String, Object> fields) {
@@ -118,6 +132,13 @@ public class StructuredLogger {
      */
     public void warn(String message) {
         logger.warn(message);
+    }
+
+    /**
+     * Log formatted warning message
+     */
+    public void warnf(String format, Object... params) {
+        logger.warnf(format, params);
     }
 
     /**
@@ -148,6 +169,13 @@ public class StructuredLogger {
      */
     public void error(String message) {
         logger.error(message);
+    }
+
+    /**
+     * Log formatted error message
+     */
+    public void errorf(String format, Object... params) {
+        logger.errorf(format, params);
     }
 
     /**
