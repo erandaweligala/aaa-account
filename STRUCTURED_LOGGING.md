@@ -7,7 +7,10 @@ This AAA Accounting Service now uses **structured JSON logging** for easy monito
 ## Log Format
 
 ### File Logs (Production)
-- **Location**: `/var/logs/aaa-account.log`
+- **Location**: `/var/log/dte/aaa-account-{deployment-mode}-{pod-name}.log`
+  - Example: `/var/log/dte/aaa-account-production-aaa-account-7d9f8c6b5-xk2p9.log`
+  - Deployment mode: Set via `DEPLOYMENT_MODE` environment variable (dev, staging, production)
+  - Pod name: Automatically set from `HOSTNAME` in Kubernetes (pod name)
 - **Format**: JSON (one log entry per line)
 - **Rotation**: 100MB per file, 10 backups
 - **Async**: Non-blocking async logging for high performance
@@ -242,6 +245,40 @@ Create alerts based on:
 3. Find concurrency issues: `error_code="CONCURRENCY_LIMIT_EXCEEDED"`
 
 ## Configuration
+
+### Log File Naming
+
+Log files are named dynamically based on deployment environment and pod name:
+
+**Format**: `aaa-account-{deployment-mode}-{pod-name}.log`
+
+**Environment Variables**:
+- `DEPLOYMENT_MODE`: Specifies the deployment environment (e.g., dev, staging, production)
+  - Default: `local` (for application.yml) or `dev` (for application-telco_aaa_dev.yml)
+- `HOSTNAME`: Pod name in Kubernetes (automatically set by Kubernetes)
+  - Default: `localhost` (for application.yml) or `unknown` (for application-telco_aaa_dev.yml)
+
+**Examples**:
+- Local development: `aaa-account-local-localhost.log`
+- Dev environment: `aaa-account-dev-aaa-account-7d9f8c6b5-xk2p9.log`
+- Production: `aaa-account-production-aaa-account-5c4b3a2d1-mn8p7.log`
+
+**Kubernetes Deployment Example**:
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aaa-account
+spec:
+  template:
+    spec:
+      containers:
+      - name: aaa-account
+        env:
+        - name: DEPLOYMENT_MODE
+          value: "production"
+        # HOSTNAME is automatically set by Kubernetes to pod name
+```
 
 ### Enabling/Disabling JSON Logging
 

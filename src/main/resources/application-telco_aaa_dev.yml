@@ -38,9 +38,12 @@ quarkus:
     color: true
   log:
     level: INFO
+    # File name includes deployment mode and pod name for Kubernetes environments
+    # Set DEPLOYMENT_MODE env var (e.g., dev, staging, production)
+    # HOSTNAME is automatically set to pod name in Kubernetes
     file:
       enabled: true
-      path: /var/log/dte/aaa-account.log
+      path: /var/log/dte/aaa-account-${DEPLOYMENT_MODE:dev}-${HOSTNAME:unknown}.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
         max-file-size: 100M

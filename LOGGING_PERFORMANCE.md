@@ -4,6 +4,27 @@
 
 This AAA/RADIUS system is optimized for **2500+ TPS** (Transactions Per Second). At this scale, logging overhead becomes a **top-3 performance bottleneck**. This guide documents the performance optimizations implemented in `StructuredLogger`.
 
+## Log File Naming Convention
+
+Log files are dynamically named to include deployment mode and pod name for better traceability in multi-pod Kubernetes environments:
+
+**Format**: `aaa-account-{deployment-mode}-{pod-name}.log`
+
+**Examples**:
+- Local: `var/logs/aaa-account-local-localhost.log`
+- Development: `/var/log/dte/aaa-account-dev-aaa-account-7d9f8c6b5-xk2p9.log`
+- Production: `/var/log/dte/aaa-account-production-aaa-account-5c4b3a2d1-mn8p7.log`
+
+**Environment Variables**:
+- `DEPLOYMENT_MODE`: dev, staging, production (default: local or dev)
+- `HOSTNAME`: Automatically set to pod name in Kubernetes
+
+This naming convention enables:
+- ✅ Easy identification of logs from specific pods
+- ✅ Environment-specific log aggregation
+- ✅ Simplified troubleshooting in multi-pod deployments
+- ✅ Clear separation between dev/staging/production logs
+
 ## Performance Impact at Scale
 
 ### Baseline (Without Optimizations)
@@ -147,10 +168,12 @@ Before enabling optimizations, measure baseline:
 
 ```bash
 # Monitor log file growth rate
-watch -n 1 "du -h var/logs/aaa-account.log"
+# Note: Log files are named dynamically: aaa-account-{deployment-mode}-{pod-name}.log
+# Example: aaa-account-production-aaa-account-7d9f8c6b5-xk2p9.log
+watch -n 1 "du -h /var/log/dte/aaa-account-*.log"
 
 # Count log entries per second
-tail -f var/logs/aaa-account.log | pv -l -i 1 > /dev/null
+tail -f /var/log/dte/aaa-account-*.log | pv -l -i 1 > /dev/null
 ```
 
 ### Step 2: Enable Sampling
