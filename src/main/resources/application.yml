@@ -43,7 +43,7 @@ quarkus:
     level: DEBUG  # Set to DEBUG for better visibility
     # Console logging - Always human readable (never JSON)
     console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%X{requestId:-}] %-5p [%c{3.}] (%t) %s%e%n"
       async: true  # Performance: Enable async console logging
       async-overflow: DISCARD  # Performance: Discard console logs under extreme load
     # File logging - JSON disabled by default for easier debugging
@@ -52,7 +52,7 @@ quarkus:
     file:
       enable: true
       path: var/logs/aaa-account.log
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%X{requestId:-}] %-5p [%c{3.}] (%t) %s%e%n"
       async: true  # Performance: Enable async file logging (critical for high TPS)
       async-overflow: BLOCK  # Performance: Block when queue full to prevent data loss
       json:
