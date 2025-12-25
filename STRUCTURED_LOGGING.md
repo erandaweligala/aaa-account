@@ -243,26 +243,54 @@ Create alerts based on:
 
 ## Configuration
 
-Logging configuration is in `src/main/resources/application.yml`:
+### Enabling/Disabling JSON Logging
+
+**By default, JSON logging is DISABLED** for easier local debugging.
+
+#### Option 1: Environment Variable (Recommended for Production)
+```bash
+# Enable JSON logging for production
+export QUARKUS_LOG_FILE_JSON=true
+
+# Disable JSON logging for development (default)
+export QUARKUS_LOG_FILE_JSON=false
+```
+
+#### Option 2: Edit application.yml
+In `src/main/resources/application.yml`:
 
 ```yaml
 quarkus:
   log:
+    level: DEBUG  # DEBUG enabled by default
     file:
       json:
-        ~: true                    # Enable JSON logging
+        ~: false  # Change to true for JSON logging
+```
+
+### Full Configuration Reference
+
+```yaml
+quarkus:
+  log:
+    level: DEBUG  # Root log level
+    console:
+      json: false  # Console always human-readable
+    file:
+      json:
+        ~: false  # Set to true for production JSON logging
         pretty-print: false        # Compact format for performance
         additional-field:
           app.name: "aaa-accounting-service"
           app.version: "1.0.0"
           environment: "production"
-```
-
-To adjust log levels, modify:
-```yaml
-quarkus:
-  log:
     category:
       "com.csg.airtel.aaa4j":
-        level: DEBUG  # Change to INFO for production
+        level: DEBUG  # Application debug enabled
 ```
+
+### Log Levels
+- **DEBUG** (default): Shows all structured log fields for troubleshooting
+- **INFO**: Shows only important operational events
+- **WARN**: Shows warnings and errors
+- **ERROR**: Shows only errors
