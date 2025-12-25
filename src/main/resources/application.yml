@@ -44,6 +44,8 @@ quarkus:
     # Console logging - Always human readable (never JSON)
     console:
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      async: true  # Performance: Enable async console logging
+      async-overflow: DISCARD  # Performance: Discard console logs under extreme load
     # File logging - JSON disabled by default for easier debugging
     # To enable JSON for production: Set QUARKUS_LOG_FILE_JSON=true
     # Or change json.~: false to json.~: true below
@@ -51,6 +53,8 @@ quarkus:
       enable: true
       path: var/logs/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      async: true  # Performance: Enable async file logging (critical for high TPS)
+      async-overflow: BLOCK  # Performance: Block when queue full to prevent data loss
       json:
         ~: false  # Set to true for production JSON logging
         pretty-print: false  # Compact JSON for better performance
@@ -65,13 +69,13 @@ quarkus:
         max-file-size: 100M
         max-backup-index: 10
         rotate-on-boot: true
-    # Async logging for high-TPS performance
+    # Async logging for high-TPS performance (2500+ TPS optimized)
     handler:
       file:
         "ASYNC_FILE":
           level: ALL
-          overflow-action: BLOCK
-          queue-length: 2048
+          overflow-action: BLOCK  # BLOCK ensures no log loss; DISCARD for max throughput
+          queue-length: 4096  # Increased from 2048 for higher TPS (2500 * 2 seconds buffer)
     category:
       "org.apache.kafka":
         level: WARN
@@ -123,6 +127,15 @@ idle-session:
   timeout-minutes: 60       # 1 hour default - sessions older than this will be terminated
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
+
+# High-TPS Logging Performance Configuration (2500+ TPS Optimized)
+# At 2500 TPS × 7 pods = 17,500 logs/sec baseline
+# With sampling enabled, reduces to ~1,750 logs/sec (10x reduction)
+logging:
+  sampling:
+    enabled: false          # Set to 'true' in production for high-TPS environments
+    rate: 10                # Log 1 in N requests (10 = 10% sampling, 5 = 20% sampling)
+                            # Recommendation: Start with 10 (10%), adjust based on log volume metrics
 
 # Kafka Producer/Consumer Configuration - HIGH TPS OPTIMIZED for 2500 TPS
 mp:
