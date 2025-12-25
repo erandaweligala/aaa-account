@@ -118,7 +118,7 @@ public class StartHandler {
                     }
                     return Uni.createFrom().voidItem();
                 })
-                .eventually(() -> StructuredLogger.clearContext()); // Clear MDC after request completes
+                .eventually(StructuredLogger::clearContext); // Clear MDC after request completes
     }
 
     private Uni<Void> handleExistingUserSession(
@@ -249,7 +249,7 @@ public class StartHandler {
                     generateAndSendCDR(request, newSession);
                 })
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Failed to update cache for user: %s", request.username());
+                    log.errorf(throwable.getMessage(), "Failed to update cache for user: %s", request.username());
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -334,7 +334,7 @@ public class StartHandler {
                 .onItem().transformToUni(serviceBuckets ->
                         processServiceBuckets(request, serviceBuckets))
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Error creating new user session for user: %s",
+                    log.errorf(throwable.getMessage(), "Error creating new user session for user: %s",
                             request.username());
                     return Uni.createFrom().voidItem();
                 });
@@ -521,7 +521,7 @@ public class StartHandler {
 
         return utilCache.storeUserData(groupId, groupSessionData)
                 .onItem().invoke(unused -> log.infof("Group session data stored for groupId: %s", groupId))
-                .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", groupId));
+                .onFailure().invoke(failure -> log.errorf(failure.getMessage(), "Failed to store group data for groupId: %s", groupId));
     }
 
     private Uni<Void> updateExistingGroupData(

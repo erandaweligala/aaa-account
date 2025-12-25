@@ -135,7 +135,6 @@ public class AccountProducer {
             LOG.debug("Producing accounting response event to Kafka", StructuredLogger.Fields.create()
                     .add("sessionId", event.sessionId())
                     .add("eventType", event.eventType() != null ? event.eventType().toString() : "null")
-                    .add("responseAction", event.responseAction() != null ? event.responseAction().toString() : "null")
                     .addComponent("kafka-producer")
                     .build());
         }
@@ -256,7 +255,7 @@ public class AccountProducer {
                                 .call(() -> sessionLifecycleManager.onSessionTerminated(userId, sessionId))
                                 .invoke(() -> LOG.infof("Session revoke fallback completed for userId=%s, sessionId=%s",
                                         userId, sessionId))
-                                .onFailure().invoke(e -> LOG.errorf(e,
+                                .onFailure().invoke(e -> LOG.errorf(e.getMessage(),
                                         "Failed to complete session revoke fallback for userId=%s, sessionId=%s",
                                         userId, sessionId))
                                 .onFailure().recoverWithNull()
@@ -267,7 +266,7 @@ public class AccountProducer {
                         return sessionLifecycleManager.onSessionTerminated(userId, sessionId);
                     }
                 })
-                .onFailure().invoke(e -> LOG.errorf(e,
+                .onFailure().invoke(e -> LOG.errorf(e.getMessage(),
                         "Failed to retrieve user data during session revoke fallback for userId=%s, sessionId=%s",
                         userId, sessionId))
                 .onFailure().recoverWithNull()

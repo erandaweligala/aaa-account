@@ -110,7 +110,7 @@ public class InterimHandler {
                             .build());
                     return Uni.createFrom().voidItem();
                 })
-                .eventually(() -> StructuredLogger.clearContext());
+                .eventually(StructuredLogger::clearContext);
     }
 
     private Uni<Void> handleNewSessionUsage(AccountingRequestDto request,String traceId) {
@@ -121,7 +121,7 @@ public class InterimHandler {
         return userRepository.getServiceBucketsByUserName(request.username())
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                        log.warn("No service buckets found for user: %s", request.username());
+                        log.warnf("No service buckets found for user: %s", request.username());
                         return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
                     }

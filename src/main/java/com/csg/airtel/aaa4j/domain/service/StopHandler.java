@@ -46,9 +46,9 @@ public class StopHandler {
                 .add("username", request.username())
                 .add("sessionId", request.sessionId())
                 .add("bucketId", bucketId)
-                .add("acctInputOctets", request.acctInputOctets())
-                .add("acctOutputOctets", request.acctOutputOctets())
-                .add("acctSessionTime", request.acctSessionTime())
+                .add("acctInputOctets", request.inputOctets())
+                .add("acctOutputOctets", request.outputOctets())
+                .add("acctSessionTime", request.sessionTime())
                 .build());
 
         return cacheUtil.getUserData(request.username())
@@ -83,7 +83,7 @@ public class StopHandler {
                             .build());
                     return Uni.createFrom().voidItem();
                 })
-                .eventually(() -> StructuredLogger.clearContext());
+                .eventually(StructuredLogger::clearContext);
     }
 
     public Uni<Void> processAccountingStop(
@@ -119,7 +119,7 @@ public class StopHandler {
                         DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(updateResult.balance(), request.username(), request.sessionId(), EventType.UPDATE_EVENT);
                         return accountProducer.produceDBWriteEvent(dbWriteRequest)
                                 .onFailure().invoke(throwable ->
-                                        log.errorf(throwable, "Failed to produce DB write event for session: %s",
+                                        log.errorf(throwable.getMessage(), "Failed to produce DB write event for session: %s",
                                                 request.sessionId())
                                 );
                     }else {
@@ -132,7 +132,7 @@ public class StopHandler {
                     // Update cache
                     return cacheUtil.updateUserAndRelatedCaches(request.username(), userSessionData)
                             .onFailure().invoke(throwable ->
-                                    log.errorf(throwable, "Failed to update cache for user: %s",
+                                    log.errorf(throwable.getMessage(), "Failed to update cache for user: %s",
                                             request.username())
                             )
                             .onFailure().recoverWithNull(); // Cache failure can still be swallowed
@@ -148,7 +148,7 @@ public class StopHandler {
                     }
                 })
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Failed to process accounting stop for session: %s",
+                    log.errorf(throwable.getMessage(), "Failed to process accounting stop for session: %s",
                             request.sessionId());
                     return Uni.createFrom().voidItem();
                 });

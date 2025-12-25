@@ -52,14 +52,14 @@ public class AccountingConsumer {
                             .add("topic", metadata.getTopic())
                             .add("username", request.username())
                             .add("sessionId", request.sessionId())
-                            .add("acctStatusType", request.acctStatusType())
+                            .add("acctStatusType", request.actionType())
                             .build()));
         }
 
         LOG.info("Kafka message received, acknowledging immediately", StructuredLogger.Fields.create()
                 .add("username", request.username())
                 .add("sessionId", request.sessionId())
-                .add("acctStatusType", request.acctStatusType())
+                .add("acctStatusType", request.actionType())
                 .add("eventId", request.eventId())
                 .build());
 

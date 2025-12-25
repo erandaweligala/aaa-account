@@ -5,7 +5,6 @@ import org.jboss.logging.MDC;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -34,8 +33,6 @@ public class StructuredLogger {
     private static final ThreadLocal<StringBuilder> STRING_BUILDER_POOL =
         ThreadLocal.withInitial(() -> new StringBuilder(512)); // Pre-sized for typical log message
 
-    // Performance: Reusable empty map to avoid HashMap allocation for simple logs
-    private static final Map<String, Object> EMPTY_FIELDS = Map.of();
 
     private StructuredLogger(Logger logger) {
         this.logger = logger;
@@ -296,14 +293,14 @@ public class StructuredLogger {
      */
     public static class Fields {
         // Performance: Pre-size to 8 (typical field count) to avoid rehashing
-        private final Map<String, Object> fields;
+        private final Map<String, Object> stringObjectMap;
 
         private Fields() {
-            this.fields = new HashMap<>(8);
+            this.stringObjectMap = HashMap.newHashMap(8);
         }
 
         private Fields(int initialCapacity) {
-            this.fields = new HashMap<>(initialCapacity);
+            this.stringObjectMap = HashMap.newHashMap(initialCapacity);
         }
 
         /**
@@ -327,7 +324,7 @@ public class StructuredLogger {
          */
         public Fields add(String key, Object value) {
             if (value != null) {
-                fields.put(key, value);
+                stringObjectMap.put(key, value);
             }
             return this;
         }
@@ -336,7 +333,7 @@ public class StructuredLogger {
          * Add duration field (common metric in AAA systems).
          */
         public Fields addDuration(long durationMs) {
-            fields.put("duration_ms", durationMs);
+            stringObjectMap.put("duration_ms", durationMs);
             return this;
         }
 
@@ -344,7 +341,7 @@ public class StructuredLogger {
          * Add status field (success/failed/rejected).
          */
         public Fields addStatus(String status) {
-            fields.put("status", status);
+            stringObjectMap.put("status", status);
             return this;
         }
 
@@ -352,7 +349,7 @@ public class StructuredLogger {
          * Add error code for failures.
          */
         public Fields addErrorCode(String errorCode) {
-            fields.put("error_code", errorCode);
+            stringObjectMap.put("error_code", errorCode);
             return this;
         }
 
@@ -360,7 +357,7 @@ public class StructuredLogger {
          * Add component identifier.
          */
         public Fields addComponent(String component) {
-            fields.put("component", component);
+            stringObjectMap.put("component", component);
             return this;
         }
 
@@ -369,7 +366,7 @@ public class StructuredLogger {
          * Performance: Returns the internal map directly (no copy) - caller should not modify.
          */
         public Map<String, Object> build() {
-            return fields;
+            return stringObjectMap;
         }
     }
 

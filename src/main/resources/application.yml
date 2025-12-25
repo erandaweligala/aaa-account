@@ -40,21 +40,17 @@ quarkus:
   console:
     color: true
   log:
-    level: DEBUG  # Set to DEBUG for better visibility
-    # Console logging - Always human readable (never JSON)
+    level: INFO  # Set to DEBUG for better visibility
     console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%X{requestId:-}] %-5p [%c{3.}] (%t) %s%e%n"
-      async: true  # Performance: Enable async console logging
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%X{requestId:-}] %-5p [%c{3.}] (%t) %s%e%n" # Performance: Enable async console logging
       async-overflow: DISCARD  # Performance: Discard console logs under extreme load
-    # File logging - JSON disabled by default for easier debugging
-    # To enable JSON for production: Set QUARKUS_LOG_FILE_JSON=true
-    # Or change json.~: false to json.~: true below
+      json:
+        enabled: false
     file:
-      enable: true
-      path: var/logs/aaa-account.log
+      path: /var/logs/aaa-account-${DEPLOYMENT_MODE:local}-${HOSTNAME:localhost}.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%X{requestId:-}] %-5p [%c{3.}] (%t) %s%e%n"
       async: true  # Performance: Enable async file logging (critical for high TPS)
-      async-overflow: BLOCK  # Performance: Block when queue full to prevent data loss
+      async-overflow: DISCARD  # Performance: Block when queue full to prevent data loss
       json:
         ~: false  # Set to true for production JSON logging
         pretty-print: false  # Compact JSON for better performance
@@ -69,6 +65,8 @@ quarkus:
         max-file-size: 100M
         max-backup-index: 10
         rotate-on-boot: true
+      enabled: true
+
     # Async logging for high-TPS performance (2500+ TPS optimized)
     handler:
       file:
@@ -86,7 +84,7 @@ quarkus:
       "io.smallrye.config":
         level: INFO
       "com.csg.airtel.aaa4j":
-        level: DEBUG  # Debug enabled for application logs
+        level: INFO  # Debug enabled for application logs
 
   otel:
     traces:
