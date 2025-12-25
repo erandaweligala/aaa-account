@@ -41,15 +41,36 @@ quarkus:
     color: true
   log:
     level: INFO
+    # Console logging - Human readable for development
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      json: false
+    # File logging - JSON format for ops team (Fluent Bit/ELK/Splunk)
     file:
+      enable: true
       path: var/logs/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      json:
+        ~: true  # Enable JSON logging for file
+        pretty-print: false  # Compact JSON for better performance
+        record-delimiter: "\n"
+        excluded-keys:
+          - sequence
+        additional-field:
+          app.name: "aaa-accounting-service"
+          app.version: "1.0.0"
+          environment: "production"
       rotation:
         max-file-size: 100M
         max-backup-index: 10
         rotate-on-boot: true
-    console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+    # Async logging for high-TPS performance
+    handler:
+      file:
+        "ASYNC_FILE":
+          level: ALL
+          overflow-action: BLOCK
+          queue-length: 2048
     category:
       "org.apache.kafka":
         level: WARN
