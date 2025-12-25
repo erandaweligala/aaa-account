@@ -54,8 +54,8 @@ public class InterimHandler {
         log.info("Processing accounting INTERIM request", StructuredLogger.Fields.create()
                 .add("username", request.username())
                 .add("sessionId", request.sessionId())
-                .add("acctInputOctets", request.acctInputOctets())
-                .add("acctOutputOctets", request.acctOutputOctets())
+                .add("acctInputOctets", request.inputOctets())
+                .add("acctOutputOctets", request.outputOctets())
                 .build());
 
         return cacheUtil.getUserData(request.username())
@@ -121,7 +121,7 @@ public class InterimHandler {
         return userRepository.getServiceBucketsByUserName(request.username())
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                        log.warnf("No service buckets found for user: %s", request.username());
+                        log.warn("No service buckets found for user: %s", request.username());
                         return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
                     }

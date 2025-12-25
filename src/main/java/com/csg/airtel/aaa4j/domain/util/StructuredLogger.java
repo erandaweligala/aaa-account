@@ -7,11 +7,20 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
-/**
- * Structured logging utility for high-TPS operations with minimal overhead.
- * Uses MDC (Mapped Diagnostic Context) for correlation and structured fields.
- * Designed for easy parsing by ops teams (Fluent Bit, Elasticsearch, etc.)
- */
+//todo You’re right to be concerned. At ~2500 TPS, logging (not business logic) often becomes a top-3 bottleneck in AAA / RADIUS systems. Your StructuredLogger is well-written, but there are still real overhead sources that will show up at this TPS.
+//todo 1. MDC cost (hidden but real)
+//todo 2. StringBuilder + key=value formatting
+//todo 4. INFO logs at request level
+//
+//At 2500 TPS:
+//
+//2500 INFO/sec
+//
+//1 pod × 7 pods = 17,500 logs/sec
+//
+//1 log ≈ 300–500 bytes
+//
+//~7–9 MB/sec logs
 public class StructuredLogger {
 
     private final Logger logger;
