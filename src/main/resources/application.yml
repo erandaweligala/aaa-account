@@ -40,16 +40,39 @@ quarkus:
   console:
     color: true
   log:
-    level: INFO
+    level: DEBUG  # Set to DEBUG for better visibility
+    # Console logging - Always human readable (never JSON)
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      json: false
+    # File logging - JSON disabled by default for easier debugging
+    # To enable JSON for production: Set QUARKUS_LOG_FILE_JSON=true
+    # Or change json.~: false to json.~: true below
     file:
+      enable: true
       path: var/logs/aaa-account.log
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      json:
+        ~: false  # Set to true for production JSON logging
+        pretty-print: false  # Compact JSON for better performance
+        record-delimiter: "\n"
+        excluded-keys:
+          - sequence
+        additional-field:
+          app.name: "aaa-accounting-service"
+          app.version: "1.0.0"
+          environment: "production"
       rotation:
         max-file-size: 100M
         max-backup-index: 10
         rotate-on-boot: true
-    console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+    # Async logging for high-TPS performance
+    handler:
+      file:
+        "ASYNC_FILE":
+          level: ALL
+          overflow-action: BLOCK
+          queue-length: 2048
     category:
       "org.apache.kafka":
         level: WARN
@@ -60,7 +83,7 @@ quarkus:
       "io.smallrye.config":
         level: INFO
       "com.csg.airtel.aaa4j":
-        level: DEBUG
+        level: DEBUG  # Debug enabled for application logs
 
   otel:
     traces:

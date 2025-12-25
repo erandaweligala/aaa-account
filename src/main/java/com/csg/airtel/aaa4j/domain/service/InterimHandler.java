@@ -7,13 +7,13 @@ import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
+import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
-import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -22,7 +22,7 @@ import java.util.Objects;
 
 @ApplicationScoped
 public class InterimHandler {
-    private static final Logger log = Logger.getLogger(InterimHandler.class);
+    private static final StructuredLogger log = StructuredLogger.getLogger(InterimHandler.class);
     private static final String NO_SERVICE_BUCKETS_MSG = "No service buckets found";
     private static final String DATA_QUOTA_ZERO_MSG = "Data quota is zero";
 
@@ -46,33 +46,71 @@ public class InterimHandler {
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
-        log.infof("[traceId: %s] Processing interim accounting request Start for user: %s, sessionId: %s",traceId,
-                request.username(), request.sessionId());
+
+        // Set MDC context for correlation
+        StructuredLogger.setContext(traceId, request.username(), request.sessionId());
+        StructuredLogger.setOperation("INTERIM");
+
+        log.info("Processing accounting INTERIM request", StructuredLogger.Fields.create()
+                .add("username", request.username())
+                .add("sessionId", request.sessionId())
+                .add("acctInputOctets", request.acctInputOctets())
+                .add("acctOutputOctets", request.acctOutputOctets())
+                .build());
+
         return cacheUtil.getUserData(request.username())
                 .onItem().invoke(() -> {
                     if (log.isDebugEnabled()) {
-                        log.debugf("User data retrieved for user: %s", request.username());
+                        log.debug("User data retrieved for INTERIM", StructuredLogger.Fields.create()
+                                .add("username", request.username())
+                                .build());
                     }
                 })
                 .onItem().transformToUni(userSessionData ->
                         userSessionData == null
-                                ? handleNewSessionUsage(request,traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for new session for  %s ms",traceId,System.currentTimeMillis()-startTime))
-                                : processAccountingRequest(userSessionData, request,traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for existing session for  %s ms",traceId, System.currentTimeMillis()-startTime))
+                                ? handleNewSessionUsage(request,traceId).invoke(() -> {
+                                    long duration = System.currentTimeMillis() - startTime;
+                                    log.info("Completed INTERIM processing for new session", StructuredLogger.Fields.create()
+                                            .add("username", request.username())
+                                            .addDuration(duration)
+                                            .addStatus("success")
+                                            .build());
+                                })
+                                : processAccountingRequest(userSessionData, request,traceId).invoke(() -> {
+                                    long duration = System.currentTimeMillis() - startTime;
+                                    log.info("Completed INTERIM processing for existing session", StructuredLogger.Fields.create()
+                                            .add("username", request.username())
+                                            .addDuration(duration)
+                                            .addStatus("success")
+                                            .build());
+                                })
 
                 )
                 .onFailure().recoverWithUni(throwable -> {
-                    // Handle circuit breaker open specifically - cache service temporarily unavailable
+                    long duration = System.currentTimeMillis() - startTime;
+
+                    // Handle circuit breaker open specifically
                     if (throwable instanceof CircuitBreakerOpenException) {
-                        log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
-                                        "Service temporarily unavailable due to high tps or Redis connectivity issues.",
-                                traceId, request.username());
+                        log.error("Cache service circuit breaker OPEN", StructuredLogger.Fields.create()
+                                .add("username", request.username())
+                                .addErrorCode("CIRCUIT_BREAKER_OPEN")
+                                .addDuration(duration)
+                                .addStatus("failed")
+                                .add("reason", "Redis connectivity issues or high TPS")
+                                .build());
                         return Uni.createFrom().voidItem();
                     }
                     // Handle other errors
-                    log.errorf(throwable, "[traceId: %s] Error processing accounting for user: %s",
-                            traceId, request.username());
+                    log.error("Error processing INTERIM accounting", throwable, StructuredLogger.Fields.create()
+                            .add("username", request.username())
+                            .addErrorCode("INTERIM_PROCESSING_ERROR")
+                            .addDuration(duration)
+                            .addStatus("failed")
+                            .add("errorType", throwable.getClass().getSimpleName())
+                            .build());
                     return Uni.createFrom().voidItem();
-                });
+                })
+                .eventually(() -> StructuredLogger.clearContext());
     }
 
     private Uni<Void> handleNewSessionUsage(AccountingRequestDto request,String traceId) {

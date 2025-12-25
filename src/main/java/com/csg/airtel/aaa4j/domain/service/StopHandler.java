@@ -7,11 +7,11 @@ import com.csg.airtel.aaa4j.domain.model.UpdateResult;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
+import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,7 +20,7 @@ import java.util.List;
 @ApplicationScoped
 public class StopHandler {
 
-    private static final Logger log = Logger.getLogger(StopHandler.class);
+    private static final StructuredLogger log = StructuredLogger.getLogger(StopHandler.class);
 
     private final CacheClient cacheUtil;
     private final AccountProducer accountProducer;
@@ -36,19 +36,54 @@ public class StopHandler {
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
-        log.infof("[traceId: %s] Processing accounting stop for user: %s, sessionId: %s",
-                traceId, request.username(), request.sessionId());
+        long startTime = System.currentTimeMillis();
+
+        // Set MDC context for correlation
+        StructuredLogger.setContext(traceId, request.username(), request.sessionId());
+        StructuredLogger.setOperation("STOP");
+
+        log.info("Processing accounting STOP request", StructuredLogger.Fields.create()
+                .add("username", request.username())
+                .add("sessionId", request.sessionId())
+                .add("bucketId", bucketId)
+                .add("acctInputOctets", request.acctInputOctets())
+                .add("acctOutputOctets", request.acctOutputOctets())
+                .add("acctSessionTime", request.acctSessionTime())
+                .build());
+
         return cacheUtil.getUserData(request.username())
-                .onItem().invoke(() -> log.infof("[traceId: %s] User data retrieved for user: %s", traceId, request.username()))
+                .onItem().invoke(() -> {
+                    if (log.isDebugEnabled()) {
+                        log.debug("User data retrieved for STOP", StructuredLogger.Fields.create()
+                                .add("username", request.username())
+                                .build());
+                    }
+                })
                 .onItem().transformToUni(userSessionData ->
                         userSessionData != null ?
-                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> log.infof("[traceId: %s] Completed processing for eventType=%s, action=%s, bucketId=%s", traceId, bucketId))
+                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> {
+                                     long duration = System.currentTimeMillis() - startTime;
+                                     log.info("Completed STOP processing", StructuredLogger.Fields.create()
+                                             .add("username", request.username())
+                                             .add("bucketId", bucketId)
+                                             .addDuration(duration)
+                                             .addStatus("success")
+                                             .build());
+                                 })
                                  : Uni.createFrom().voidItem()
                 )
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Error processing accounting for user: %s", request.username());
+                    long duration = System.currentTimeMillis() - startTime;
+                    log.error("Error processing accounting STOP", throwable, StructuredLogger.Fields.create()
+                            .add("username", request.username())
+                            .addErrorCode("STOP_PROCESSING_ERROR")
+                            .addDuration(duration)
+                            .addStatus("failed")
+                            .add("errorType", throwable.getClass().getSimpleName())
+                            .build());
                     return Uni.createFrom().voidItem();
-                });
+                })
+                .eventually(() -> StructuredLogger.clearContext());
     }
 
     public Uni<Void> processAccountingStop(
@@ -56,14 +91,21 @@ public class StopHandler {
             ,String bucketId) {
 
         if (request.delayTime() > 0) {
-            log.warnf("Duplicate Stop Request unchanged for sessionId: %s",request.sessionId());
+            log.warn("Duplicate STOP request detected", StructuredLogger.Fields.create()
+                    .add("sessionId", request.sessionId())
+                    .add("delayTime", request.delayTime())
+                    .addStatus("duplicate")
+                    .build());
             return Uni.createFrom().voidItem();
 
         }
         Session session = findSessionById(userSessionData.getSessions(), request.sessionId());
 
         if (session == null) {
-            log.infof( "[traceId: %s] Session not found for sessionId: %s", request.username(), request.sessionId());
+            log.info("Session not found in cache, creating placeholder", StructuredLogger.Fields.create()
+                    .add("username", request.username())
+                    .add("sessionId", request.sessionId())
+                    .build());
                 session = createSession(request);
                 session.setGroupId(userSessionData.getGroupId());
         }
