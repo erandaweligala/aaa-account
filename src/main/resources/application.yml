@@ -23,7 +23,6 @@ quarkus:
   # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   vertx:
     event-loops-pool-size: 32
-    worker-pool-size: 64
     internal-blocking-pool-size: 100
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
@@ -76,8 +75,7 @@ quarkus:
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    response-timeout: 6000
-    connection-timeout: 2000
+
 
 
 
@@ -126,7 +124,6 @@ mp:
         delivery.timeout.ms: 120000
         reconnect.backoff.ms: 1000
         reconnect.backoff.max.ms: 5000
-        enable.idempotence: true
 
       #        retries: 3
 #        max.in.flight.requests.per.connection: 5
@@ -141,19 +138,12 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 10
-        retry.backoff.ms: 500
+        retries: 3
         max.in.flight.requests.per.connection: 5
-        compression.type: lz4
+        compression.type: snappy
         batch.size: 32768
         linger.ms: 5
         buffer.memory: 67108864
-        metadata.max.age.ms: 30000
-        request.timeout.ms: 30000
-        delivery.timeout.ms: 120000
-        reconnect.backoff.ms: 1000
-        reconnect.backoff.max.ms: 5000
-        enable.idempotence: true
 
       accounting-cdr-events:
         connector: smallrye-kafka
@@ -161,19 +151,12 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 10
-        retry.backoff.ms: 500
+        retries: 3
         max.in.flight.requests.per.connection: 5
-        compression.type: lz4
+        compression.type: snappy
         batch.size: 32768
         linger.ms: 5
         buffer.memory: 67108864
-        metadata.max.age.ms: 30000
-        request.timeout.ms: 30000
-        delivery.timeout.ms: 120000
-        reconnect.backoff.ms: 1000
-        reconnect.backoff.max.ms: 5000
-        enable.idempotence: true
 
       quota-notification-events:
         connector: smallrye-kafka
@@ -181,19 +164,12 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 10
-        retry.backoff.ms: 500
+        retries: 3
         max.in.flight.requests.per.connection: 5
-        compression.type: lz4
+        compression.type: snappy
         batch.size: 32768
         linger.ms: 5
         buffer.memory: 67108864
-        metadata.max.age.ms: 30000
-        request.timeout.ms: 30000
-        delivery.timeout.ms: 120000
-        reconnect.backoff.ms: 1000
-        reconnect.backoff.max.ms: 5000
-        enable.idempotence: true
 
     incoming:
       accounting-events:
