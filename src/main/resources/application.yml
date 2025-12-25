@@ -44,7 +44,6 @@ quarkus:
     # Console logging - Always human readable (never JSON)
     console:
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
-      json: false
     # File logging - JSON disabled by default for easier debugging
     # To enable JSON for production: Set QUARKUS_LOG_FILE_JSON=true
     # Or change json.~: false to json.~: true below
