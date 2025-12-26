@@ -65,13 +65,16 @@ public class SessionLifecycleManager {
         log.debugf("Registering new session in expiry index: userId=%s, sessionId=%s, expiryTime=%d",
                 userId, session.getSessionId(), expiryTimeMillis);
 
-        // Record session creation in monitoring
-        monitoringService.recordSessionCreated();
-
-        return sessionExpiryIndex.registerSession(userId, session.getSessionId(), expiryTimeMillis)
-                .onFailure().invoke(e ->
-                        log.warnf("Failed to register session in expiry index: %s", e.getMessage()))
-                .onFailure().recoverWithNull()
+        // Record session creation in monitoring (async)
+        return Uni.combine().all()
+                .unis(
+                        monitoringService.recordSessionCreatedAsync(),
+                        sessionExpiryIndex.registerSession(userId, session.getSessionId(), expiryTimeMillis)
+                                .onFailure().invoke(e ->
+                                        log.warnf("Failed to register session in expiry index: %s", e.getMessage()))
+                                .onFailure().recoverWithNull()
+                )
+                .discardItems()
                 .replaceWithVoid();
     }
 
@@ -119,13 +122,16 @@ public class SessionLifecycleManager {
         log.debugf("Removing terminated session from expiry index: userId=%s, sessionId=%s",
                 userId, sessionId);
 
-        // Record session termination in monitoring
-        monitoringService.recordSessionTerminated();
-
-        return sessionExpiryIndex.removeSession(userId, sessionId)
-                .onFailure().invoke(e ->
-                        log.warnf("Failed to remove session from expiry index: %s", e.getMessage()))
-                .onFailure().recoverWithNull()
+        // Record session termination in monitoring (async)
+        return Uni.combine().all()
+                .unis(
+                        monitoringService.recordSessionTerminatedAsync(),
+                        sessionExpiryIndex.removeSession(userId, sessionId)
+                                .onFailure().invoke(e ->
+                                        log.warnf("Failed to remove session from expiry index: %s", e.getMessage()))
+                                .onFailure().recoverWithNull()
+                )
+                .discardItems()
                 .replaceWithVoid();
     }
 

@@ -1,21 +1,20 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.micrometer.core.instrument.*;
 import io.quarkus.scheduler.Scheduled;
+import io.smallrye.mutiny.Uni;
+import io.vertx.mutiny.core.Vertx;
+import io.vertx.mutiny.core.buffer.Buffer;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,19 +31,22 @@ public class MetricsExporter {
     @Inject
     MeterRegistry meterRegistry;
 
+    @Inject
+    Vertx vertx;
+
     /**
      * Scheduled export of metrics to JSON file.
-     * Runs every 30 seconds.
+     * Runs every 30 seconds asynchronously.
      */
     @Scheduled(every = "30s")
-    public void exportMetrics() {
-        try {
-            Map<String, Object> metricsData = collectMetrics();
-            writeMetricsToFile(metricsData);
-            logger.debug("Successfully exported metrics to {}", METRICS_FILE_PATH);
-        } catch (Exception e) {
-            logger.error("Failed to export metrics", e);
-        }
+    public Uni<Void> exportMetrics() {
+        return Uni.createFrom().item(() -> collectMetrics())
+                .chain(metricsData -> writeMetricsToFileAsync(metricsData))
+                .invoke(() -> logger.debug("Successfully exported metrics to {}", METRICS_FILE_PATH))
+                .onFailure().retry().withBackOff(Duration.ofSeconds(1)).atMost(3)
+                .onFailure().invoke(e -> logger.error("Failed to export metrics after retries", e))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
 
     /**
@@ -96,25 +98,44 @@ public class MetricsExporter {
     }
 
     /**
-     * Write metrics data to JSON file.
+     * Write metrics data to JSON file asynchronously using Vertx file system.
      */
-    private void writeMetricsToFile(Map<String, Object> metricsData) throws IOException {
+    private Uni<Void> writeMetricsToFileAsync(Map<String, Object> metricsData) {
+        return Uni.createFrom().item(() -> {
+            try {
+                return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metricsData);
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to serialize metrics to JSON", e);
+            }
+        })
+        .chain(json -> ensureDirectoryExists()
+                .chain(() -> vertx.fileSystem().writeFile(METRICS_FILE_PATH, Buffer.buffer(json)))
+        )
+        .replaceWithVoid();
+    }
+
+    /**
+     * Ensure the metrics directory exists asynchronously.
+     */
+    private Uni<Void> ensureDirectoryExists() {
         File metricsFile = new File(METRICS_FILE_PATH);
         File parentDir = metricsFile.getParentFile();
 
-        // Ensure directory exists
-        if (parentDir != null && !parentDir.exists()) {
-            boolean created = parentDir.mkdirs();
-            if (created) {
-                logger.info("Created metrics directory: {}", parentDir.getAbsolutePath());
-            }
+        if (parentDir == null) {
+            return Uni.createFrom().voidItem();
         }
 
-        // Write metrics to file
-        try (FileWriter writer = new FileWriter(metricsFile)) {
-            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metricsData);
-            writer.write(json);
-            writer.flush();
-        }
+        String parentPath = parentDir.getAbsolutePath();
+
+        return vertx.fileSystem().exists(parentPath)
+                .chain(exists -> {
+                    if (exists) {
+                        return Uni.createFrom().voidItem();
+                    } else {
+                        return vertx.fileSystem().mkdirs(parentPath)
+                                .invoke(() -> logger.info("Created metrics directory: {}", parentPath))
+                                .replaceWithVoid();
+                    }
+                });
     }
 }
