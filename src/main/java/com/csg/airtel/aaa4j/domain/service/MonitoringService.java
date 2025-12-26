@@ -18,10 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Session lifecycle (active, created, terminated, idle)
  * - Component failures (Kafka, Redis, Database)
  * - Performance timers
- * - Error tracking
  */
-//todo  * - Performance timers
-// * - Error tracking need to remove
 @ApplicationScoped
 public class MonitoringService {
 
@@ -56,12 +53,6 @@ public class MonitoringService {
     private Timer redisOperationTimer;
     private Timer databaseOperationTimer;
     private Timer kafkaPublishTimer;
-
-    // Error counters
-    private Counter concurrencyLimitErrors;
-    private Counter quotaExceededErrors;
-    private Counter validationErrors;
-    private Counter systemErrors;
 
     @Inject
     public MonitoringService(MeterRegistry meterRegistry) {
@@ -169,27 +160,6 @@ public class MonitoringService {
         kafkaPublishTimer = Timer.builder("component.operation.time")
                 .description("Time for Kafka publish operations")
                 .tag("component", "kafka")
-                .register(meterRegistry);
-
-        // Error counters
-        concurrencyLimitErrors = Counter.builder("errors.concurrency_limit")
-                .description("Number of concurrency limit exceeded errors")
-                .tag("error_type", "concurrency_limit")
-                .register(meterRegistry);
-
-        quotaExceededErrors = Counter.builder("errors.quota_exceeded")
-                .description("Number of quota exceeded errors")
-                .tag("error_type", "quota_exceeded")
-                .register(meterRegistry);
-
-        validationErrors = Counter.builder("errors.validation")
-                .description("Number of validation errors")
-                .tag("error_type", "validation")
-                .register(meterRegistry);
-
-        systemErrors = Counter.builder("errors.system")
-                .description("Number of system errors")
-                .tag("error_type", "system")
                 .register(meterRegistry);
 
         logger.info("MonitoringService initialized successfully with {} meters", meterRegistry.getMeters().size());
@@ -329,23 +299,5 @@ public class MonitoringService {
 
     public Timer getKafkaPublishTimer() {
         return kafkaPublishTimer;
-    }
-
-    // ========== Error Counters ==========
-
-    public void recordConcurrencyLimitError() {
-        concurrencyLimitErrors.increment();
-    }
-
-    public void recordQuotaExceededError() {
-        quotaExceededErrors.increment();
-    }
-
-    public void recordValidationError() {
-        validationErrors.increment();
-    }
-
-    public void recordSystemError() {
-        systemErrors.increment();
     }
 }
