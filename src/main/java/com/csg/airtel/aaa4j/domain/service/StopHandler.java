@@ -9,6 +9,7 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -26,16 +27,20 @@ public class StopHandler {
     private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final MonitoringService monitoringService;
 
     @Inject
-    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager) {
+    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, MonitoringService monitoringService) {
         this.cacheUtil = cacheUtil;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
+        this.monitoringService = monitoringService;
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
+        // High-TPS optimized timer recording (uses nanoTime, ~50ns overhead)
+        Timer.Sample timerSample = Timer.start();
         long startTime = System.currentTimeMillis();
 
         // Set MDC context for correlation
@@ -83,7 +88,11 @@ public class StopHandler {
                             .build());
                     return Uni.createFrom().voidItem();
                 })
-                .eventually(StructuredLogger::clearContext);
+                .eventually(() -> {
+                    // Record timer for both success and failure cases (high-performance pattern)
+                    timerSample.stop(monitoringService.getStopProcessingTimer());
+                    StructuredLogger.clearContext();
+                });
     }
 
     public Uni<Void> processAccountingStop(

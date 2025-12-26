@@ -9,6 +9,7 @@ import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
 import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -66,6 +67,8 @@ public class AccountProducer {
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
+        // High-TPS optimized timer recording for Kafka operations
+        Timer.Sample timerSample = Timer.start();
         long startTime = System.currentTimeMillis();
 
         if (LOG.isDebugEnabled()) {
@@ -85,6 +88,7 @@ public class AccountProducer {
                     .withAck(() -> {
                         em.complete(null);
                         long duration = System.currentTimeMillis() - startTime;
+                        timerSample.stop(monitoringService.getKafkaPublishTimer());
                         LOG.info("Successfully sent DB write event to Kafka", StructuredLogger.Fields.create()
                                 .add("sessionId", request.getSessionId())
                                 .add("userName", request.getUserName())
@@ -97,6 +101,7 @@ public class AccountProducer {
                     })
                     .withNack(throwable -> {
                         long duration = System.currentTimeMillis() - startTime;
+                        timerSample.stop(monitoringService.getKafkaPublishTimer());
                         monitoringService.recordKafkaProduceFailure();
                         LOG.error("Failed to send DB write event to Kafka", StructuredLogger.Fields.create()
                                 .add("sessionId", request.getSessionId())

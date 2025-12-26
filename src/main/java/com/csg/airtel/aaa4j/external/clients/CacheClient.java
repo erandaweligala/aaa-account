@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.Timer;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
@@ -63,6 +64,8 @@ public class CacheClient {
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)                // Reduced from 2000ms - faster timeout
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
+        // High-TPS optimized timer recording for Redis operations
+        Timer.Sample timerSample = Timer.start();
         long startTime = System.currentTimeMillis();
 
         if (log.isDebugEnabled()) {
@@ -99,7 +102,8 @@ public class CacheClient {
                             .addComponent("redis-cache")
                             .add("error", error.getMessage())
                             .build());
-                });
+                })
+                .eventually(() -> timerSample.stop(monitoringService.getRedisOperationTimer()));
     }
 
     /**
@@ -112,6 +116,8 @@ public class CacheClient {
     )
     @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
     public Uni<UserSessionData> getUserData(String userId) {
+        // High-TPS optimized timer recording for Redis operations
+        Timer.Sample timerSample = Timer.start();
         final long startTime = System.currentTimeMillis();
 
         if (log.isDebugEnabled()) {
@@ -175,7 +181,8 @@ public class CacheClient {
                             .addComponent("redis-cache")
                             .add("errorType", e.getClass().getSimpleName())
                             .build());
-                });
+                })
+                .eventually(() -> timerSample.stop(monitoringService.getRedisOperationTimer()));
     }
 
 

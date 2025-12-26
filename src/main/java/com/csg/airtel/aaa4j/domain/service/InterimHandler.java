@@ -10,6 +10,7 @@ import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
+import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -33,18 +34,22 @@ public class InterimHandler {
     private final AccountProducer accountProducer;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
+    private final MonitoringService monitoringService;
 
     @Inject
-    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
+    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager, COAService coaService, MonitoringService monitoringService) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
         this.accountingUtil = accountingUtil;
         this.accountProducer = accountProducer;
         this.sessionLifecycleManager = sessionLifecycleManager;
         this.coaService = coaService;
+        this.monitoringService = monitoringService;
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
+        // High-TPS optimized timer recording (uses nanoTime, ~50ns overhead)
+        Timer.Sample timerSample = Timer.start();
         long startTime = System.currentTimeMillis();
 
         // Set MDC context for correlation
@@ -110,7 +115,11 @@ public class InterimHandler {
                             .build());
                     return Uni.createFrom().voidItem();
                 })
-                .eventually(StructuredLogger::clearContext);
+                .eventually(() -> {
+                    // Record timer for both success and failure cases (high-performance pattern)
+                    timerSample.stop(monitoringService.getInterimProcessingTimer());
+                    StructuredLogger.clearContext();
+                });
     }
 
     private Uni<Void> handleNewSessionUsage(AccountingRequestDto request,String traceId) {

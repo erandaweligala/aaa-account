@@ -242,6 +242,65 @@ mp:
         path: /q/metrics
         default-registry: true
 
+    # ==================== HIGH-TPS DISTRIBUTION STATISTICS ====================
+    # Percentile histograms and SLO buckets for latency analysis at 2500+ TPS
+    # Memory overhead: ~2KB per timer (HDR Histogram) - negligible at this scale
+    # Recording overhead: ~100ns per sample - 0.0002ms at 2500 TPS
+    binder-overrides:
+      jvm-memory-used:
+        enabled: true
+      jvm-gc-pause:
+        enabled: true
+
+quarkus:
+  micrometer:
+    binder:
+      http-server:
+        match-patterns: /api/.*
+        ignore-patterns: /q/.*
+    export:
+      prometheus:
+        # Optimize Prometheus export for high cardinality
+        descriptions: false  # Reduce export size
+
+    # Distribution statistics configuration for request processing timers
+    distribution:
+      # RADIUS Request Processing Timers (processing.time)
+      # Target SLOs: <100ms (p95), <500ms (p99), <1000ms (p99.9)
+      percentiles:
+        "[processing.time]": 0.5,0.75,0.95,0.99,0.999
+      percentiles-histogram:
+        "[processing.time]": true
+      slo:
+        "[processing.time]": 50ms,100ms,250ms,500ms,1000ms,2000ms
+      minimum-expected-value:
+        "[processing.time]": 1ms
+      maximum-expected-value:
+        "[processing.time]": 10000ms
+
+      # Component Operation Timers (Redis, Database, Kafka)
+      # Target SLOs: <10ms (Redis), <50ms (DB), <100ms (Kafka)
+      percentiles:
+        "[component.operation.time]": 0.5,0.75,0.95,0.99,0.999
+      percentiles-histogram:
+        "[component.operation.time]": true
+      slo:
+        "[component.operation.time]": 5ms,10ms,25ms,50ms,100ms,500ms
+      minimum-expected-value:
+        "[component.operation.time]": 1ms
+      maximum-expected-value:
+        "[component.operation.time]": 5000ms
+
+      # HTTP Server Timers (@Timed annotations)
+      percentiles:
+        "[http.server.requests]": 0.5,0.75,0.95,0.99
+      percentiles-histogram:
+        "[http.server.requests]": true
+      slo:
+        "[http.server.requests]": 50ms,100ms,250ms,500ms,1000ms
+
+mp:
+
   # SmallRye Health configuration for health checks
   smallrye-health:
     root-path: /q/health

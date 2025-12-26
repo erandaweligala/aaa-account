@@ -11,6 +11,7 @@ import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
+import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -31,19 +32,23 @@ public class StartHandler {
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
+    private final MonitoringService monitoringService;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService, MonitoringService monitoringService) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
         this.coaService = coaService;
+        this.monitoringService = monitoringService;
     }
 
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
+        // High-TPS optimized timer recording (uses nanoTime, ~50ns overhead)
+        Timer.Sample timerSample = Timer.start();
         long startTime = System.currentTimeMillis();
 
         // Set MDC context for correlation across all logs in this request
@@ -118,7 +123,11 @@ public class StartHandler {
                     }
                     return Uni.createFrom().voidItem();
                 })
-                .eventually(StructuredLogger::clearContext); // Clear MDC after request completes
+                .eventually(() -> {
+                    // Record timer for both success and failure cases (high-performance pattern)
+                    timerSample.stop(monitoringService.getStartProcessingTimer());
+                    StructuredLogger.clearContext();
+                });
     }
 
     private Uni<Void> handleExistingUserSession(
