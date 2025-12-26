@@ -253,19 +253,23 @@ public class IdleSessionTerminatorScheduler {
 
         totalSessionsTerminated.addAndGet(sessionsToTerminate.size());
 
-        // Record idle session terminations in monitoring
-        monitoringService.recordIdleSessionTerminated(sessionsToTerminate.size());
-
+        // Record idle session terminations in monitoring (async)
         // Trigger DB write operations for terminated sessions to persist balance state
-        return triggerDBRequestInitiate(sessionsToTerminate, userData)
-                .onItem().transformToUni(v ->
-                        // Update cache after DB write is initiated
-                        cacheClient.updateUserAndRelatedCaches(userName, userData)
-                                .onFailure().invoke(error ->
-                                        log.errorf(error, "Failed to update cache for user: %s", userName))
-                                .onFailure().recoverWithNull()
-                                .replaceWithVoid()
-                );
+        return Uni.combine().all()
+                .unis(
+                        monitoringService.recordIdleSessionTerminatedAsync(sessionsToTerminate.size()),
+                        triggerDBRequestInitiate(sessionsToTerminate, userData)
+                                .onItem().transformToUni(v ->
+                                        // Update cache after DB write is initiated
+                                        cacheClient.updateUserAndRelatedCaches(userName, userData)
+                                                .onFailure().invoke(error ->
+                                                        log.errorf(error, "Failed to update cache for user: %s", userName))
+                                                .onFailure().recoverWithNull()
+                                                .replaceWithVoid()
+                                )
+                )
+                .discardItems()
+                .replaceWithVoid();
     }
 
     /**

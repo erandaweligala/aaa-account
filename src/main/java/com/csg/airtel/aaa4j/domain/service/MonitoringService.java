@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
@@ -210,6 +211,39 @@ public class MonitoringService {
     public void recordIdleSessionTerminated(long count) {
         totalIdleSessionsTerminated.addAndGet(count);
         activeSessions.addAndGet(-count);
+    }
+
+    /**
+     * Async version of recordSessionCreated for use in reactive flows.
+     * Executes the metric recording without blocking.
+     */
+    public Uni<Void> recordSessionCreatedAsync() {
+        return Uni.createFrom().item(() -> {
+            recordSessionCreated();
+            return null;
+        });
+    }
+
+    /**
+     * Async version of recordSessionTerminated for use in reactive flows.
+     * Executes the metric recording without blocking.
+     */
+    public Uni<Void> recordSessionTerminatedAsync() {
+        return Uni.createFrom().item(() -> {
+            recordSessionTerminated();
+            return null;
+        });
+    }
+
+    /**
+     * Async version of recordIdleSessionTerminated for use in reactive flows.
+     * Executes the metric recording without blocking.
+     */
+    public Uni<Void> recordIdleSessionTerminatedAsync(long count) {
+        return Uni.createFrom().item(() -> {
+            recordIdleSessionTerminated(count);
+            return null;
+        });
     }
 
     public long getActiveSessions() {
