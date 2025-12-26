@@ -48,10 +48,13 @@ public class UserBucketRepository {
     public static final String NOTIFICATION_TEMPLATES = "NOTIFICATION_TEMPLATES";
 
     final Pool client;
+    final com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService;
 
     @Inject
-    public UserBucketRepository(Pool client) {
+    public UserBucketRepository(Pool client,
+                                com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService) {
         this.client = client;
+        this.monitoringService = monitoringService;
     }
 
     /**
@@ -80,6 +83,7 @@ public class UserBucketRepository {
                 .execute(Tuple.of(userName))
                     .onItem().transform(this::mapRowsToServiceBuckets)
                 .onFailure().invoke(error -> {
+                    monitoringService.recordDatabaseFailure();
                     if (log.isDebugEnabled()) {
                         log.debugf(error, "Error fetching service buckets for user: %s", userName);
                     }
