@@ -1,7 +1,7 @@
 package com.csg.airtel.aaa4j.application.health;
 
-import io.smallrye.mutiny.Uni;
-import io.vertx.mutiny.oracledbclient.OraclePool;
+
+import io.vertx.mutiny.sqlclient.Pool;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.health.HealthCheck;
@@ -25,7 +25,7 @@ public class DatabaseHealthCheck implements HealthCheck {
     private static final Duration TIMEOUT = Duration.ofSeconds(5);
 
     @Inject
-    OraclePool client;
+    Pool client;
 
     @Override
     public HealthCheckResponse call() {

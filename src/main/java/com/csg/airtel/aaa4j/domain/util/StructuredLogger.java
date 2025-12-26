@@ -8,23 +8,12 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
-/**
- * High-performance structured logger optimized for AAA/RADIUS systems at 2500+ TPS.
- *
- * Performance optimizations implemented:
- * 1. MDC batching and selective usage to reduce ThreadLocal overhead
- * 2. Pre-sized StringBuilder with object pooling to minimize allocations
- * 3. Adaptive sampling for INFO logs to reduce log volume at high TPS
- * 4. Lazy evaluation for expensive field construction
- *
- * At 2500 TPS × 7 pods = 17,500 logs/sec with 50% sampling = ~8,750 logs/sec
- * Log size: 300-500 bytes → ~3-4 MB/sec (vs 7-9 MB/sec baseline)
- */
+
 public class StructuredLogger {
 
     private final Logger logger;
 
-    // Performance: Sampling configuration for high-TPS scenarios
+
     private static volatile boolean samplingEnabled = false;
     private static volatile int samplingRate = 10; // Log 1 in N requests (10 = 10% sampling)
     private static final AtomicLong requestCounter = new AtomicLong(0);

@@ -40,8 +40,8 @@ public class MetricsExporter {
      */
     @Scheduled(every = "30s")
     public Uni<Void> exportMetrics() {
-        return Uni.createFrom().item(() -> collectMetrics())
-                .chain(metricsData -> writeMetricsToFileAsync(metricsData))
+        return Uni.createFrom().item(this::collectMetrics)
+                .chain(this::writeMetricsToFileAsync)
                 .invoke(() -> logger.debug("Successfully exported metrics to {}", METRICS_FILE_PATH))
                 .onFailure().retry().withBackOff(Duration.ofSeconds(1)).atMost(3)
                 .onFailure().invoke(e -> logger.error("Failed to export metrics after retries", e))
@@ -66,8 +66,7 @@ public class MetricsExporter {
             Map<String, String> tags = new HashMap<>();
             meter.getId().getTags().forEach(tag -> tags.put(tag.getKey(), tag.getValue()));
 
-            if (meter instanceof Gauge) {
-                Gauge gauge = (Gauge) meter;
+            if (meter instanceof Gauge gauge) {
                 Map<String, Object> gaugeData = new HashMap<>();
                 gaugeData.put("value", gauge.value());
                 gaugeData.put("tags", tags);

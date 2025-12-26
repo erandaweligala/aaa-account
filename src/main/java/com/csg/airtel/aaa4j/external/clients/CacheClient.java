@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.external.clients;
 
 import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
+import com.csg.airtel.aaa4j.domain.service.MonitoringService;
 import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,7 +36,7 @@ public class CacheClient {
     private static final String KEY_PREFIX = "user:";
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
-    private final com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService;
+    private final MonitoringService monitoringService;
 
     private final ReactiveKeyCommands<String> keyCommands;
 

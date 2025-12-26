@@ -20,13 +20,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * - Performance timers
  * - Error tracking
  */
+//todo  * - Performance timers
+// * - Error tracking need to remove
 @ApplicationScoped
 public class MonitoringService {
 
     private static final Logger logger = LoggerFactory.getLogger(MonitoringService.class);
 
-    @Inject
-    MeterRegistry meterRegistry;
+
+    final MeterRegistry meterRegistry;
 
     // Session count metrics
     private final AtomicLong activeSessions = new AtomicLong(0);
@@ -60,6 +62,11 @@ public class MonitoringService {
     private Counter quotaExceededErrors;
     private Counter validationErrors;
     private Counter systemErrors;
+
+    @Inject
+    public MonitoringService(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
 
     /**
      * Initialize all metrics on startup
