@@ -67,6 +67,18 @@ quarkus:
     traces:
       exporter: none
 
+  # Micrometer Metrics Configuration
+  micrometer:
+    enabled: true
+    binder:
+      jvm: true
+      system: true
+      http-server: true
+    export:
+      prometheus:
+        enabled: true
+        path: /q/metrics
+
   redis:
     hosts: redis://localhost:6379
     max-pool-size: 600

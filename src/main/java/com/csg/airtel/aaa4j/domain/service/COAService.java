@@ -20,9 +20,11 @@ public class COAService {
     private static final Logger log = Logger.getLogger(COAService.class);
 
     private final AccountProducer accountProducer;
+    private final MonitoringService monitoringService;
 
-    public COAService(AccountProducer accountProducer) {
+    public COAService(AccountProducer accountProducer, MonitoringService monitoringService) {
         this.accountProducer = accountProducer;
+        this.monitoringService = monitoringService;
     }
 
     public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username) {
@@ -43,7 +45,11 @@ public class COAService {
                                                 username
                                         )
                                 )
-                                .invoke(() -> generateAndSendCoaDisconnectCDR(session, username))
+                                .invoke(() -> {
+                                    // Record COA request metric
+                                    monitoringService.recordCOARequest();
+                                    generateAndSendCoaDisconnectCDR(session, username);
+                                })
                                 .onFailure().retry()
                                 .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
                                 .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
@@ -96,7 +102,11 @@ public class COAService {
      */
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
         return accountProducer.produceAccountingResponseEvent(event)
-                .invoke(() -> generateAndSendCoaDisconnectCDR(session, username));
+                .invoke(() -> {
+                    // Record COA request metric
+                    monitoringService.recordCOARequest();
+                    generateAndSendCoaDisconnectCDR(session, username);
+                });
     }
 
 }

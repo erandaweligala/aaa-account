@@ -36,11 +36,15 @@ public class SessionLifecycleManager {
 
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
+    private final MonitoringService monitoringService;
 
     @Inject
-    public SessionLifecycleManager(SessionExpiryIndex sessionExpiryIndex, IdleSessionConfig config) {
+    public SessionLifecycleManager(SessionExpiryIndex sessionExpiryIndex,
+                                   IdleSessionConfig config,
+                                   MonitoringService monitoringService) {
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
+        this.monitoringService = monitoringService;
     }
 
     /**
@@ -55,6 +59,9 @@ public class SessionLifecycleManager {
         if (!config.enabled() || session == null || session.getSessionId() == null) {
             return Uni.createFrom().voidItem();
         }
+
+        // Record session creation metric
+        monitoringService.recordSessionCreated();
 
         long expiryTimeMillis = calculateExpiryTime(session.getSessionInitiatedTime());
 
@@ -108,6 +115,9 @@ public class SessionLifecycleManager {
         if (!config.enabled() || userId == null || sessionId == null) {
             return Uni.createFrom().voidItem();
         }
+
+        // Record session termination metric
+        monitoringService.recordSessionTerminated();
 
         log.debugf("Removing terminated session from expiry index: userId=%s, sessionId=%s",
                 userId, sessionId);
