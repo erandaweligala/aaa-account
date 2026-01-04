@@ -38,18 +38,21 @@ public class IdleSessionTerminatorScheduler {
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
     private final AccountProducer accountProducer;
+    private final MonitoringService monitoringService;
 
 
     @Inject
     public IdleSessionTerminatorScheduler(CacheClient cacheClient,
                                           SessionExpiryIndex sessionExpiryIndex,
                                           IdleSessionConfig config,
-                                          AccountProducer accountProducer
+                                          AccountProducer accountProducer,
+                                          MonitoringService monitoringService
                                     ) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
         this.accountProducer = accountProducer;
+        this.monitoringService = monitoringService;
 
     }
 
@@ -88,13 +91,19 @@ public class IdleSessionTerminatorScheduler {
         processExpiredSessionsBatched(expiryThresholdMillis, batchSize,
                 totalSessionsTerminated, totalUsersProcessed, totalBatchesProcessed)
                 .subscribe().with(
-                        result -> log.infof(
-                                "Idle session termination completed. " +
-                                "Batches: %d, Users: %d, Sessions terminated: %d, Duration: %d ms",
-                                totalBatchesProcessed.get(),
-                                totalUsersProcessed.get(),
-                                totalSessionsTerminated.get(),
-                                System.currentTimeMillis() - startTime),
+                        result -> {
+                            int terminatedCount = totalSessionsTerminated.get();
+                            // Record idle session termination metrics
+                            monitoringService.recordIdleSessionsTerminated(terminatedCount);
+
+                            log.infof(
+                                    "Idle session termination completed. " +
+                                    "Batches: %d, Users: %d, Sessions terminated: %d, Duration: %d ms",
+                                    totalBatchesProcessed.get(),
+                                    totalUsersProcessed.get(),
+                                    terminatedCount,
+                                    System.currentTimeMillis() - startTime);
+                        },
                         error -> log.errorf(error, "Error during idle session termination")
                 );
     }
