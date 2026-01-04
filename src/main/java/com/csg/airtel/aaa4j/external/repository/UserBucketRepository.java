@@ -2,7 +2,6 @@ package com.csg.airtel.aaa4j.external.repository;
 
 
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
-import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
@@ -49,13 +48,10 @@ public class UserBucketRepository {
     public static final String NOTIFICATION_TEMPLATES = "NOTIFICATION_TEMPLATES";
 
     final Pool client;
-    final com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService;
 
     @Inject
-    public UserBucketRepository(Pool client,
-                                com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService) {
+    public UserBucketRepository(Pool client) {
         this.client = client;
-        this.monitoringService = monitoringService;
     }
 
     /**
@@ -76,9 +72,6 @@ public class UserBucketRepository {
             maxDuration = 10000
     )
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
-        // High-TPS optimized timer recording for database operations
-        Timer.Sample timerSample = Timer.start();
-
         if (log.isDebugEnabled()) {
             log.debugf("Fetching service buckets for user: %s", userName);
         }
@@ -87,7 +80,6 @@ public class UserBucketRepository {
                 .execute(Tuple.of(userName))
                     .onItem().transform(this::mapRowsToServiceBuckets)
                 .onFailure().invoke(error -> {
-                    monitoringService.recordDatabaseFailure();
                     if (log.isDebugEnabled()) {
                         log.debugf(error, "Error fetching service buckets for user: %s", userName);
                     }
@@ -96,8 +88,7 @@ public class UserBucketRepository {
                     if (log.isDebugEnabled()) {
                         log.debugf("Fetched %d service buckets for user: %s", results.size(), userName);
                     }
-                })
-                .eventually(() -> timerSample.stop(monitoringService.getDatabaseOperationTimer()));
+                });
     }
 
     /**

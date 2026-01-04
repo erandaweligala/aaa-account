@@ -2,11 +2,8 @@ package com.csg.airtel.aaa4j.external.clients;
 
 import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
-import com.csg.airtel.aaa4j.domain.service.MonitoringService;
-import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.micrometer.core.instrument.Timer;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
@@ -18,6 +15,7 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
+import org.jboss.logging.Logger;
 
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -30,27 +28,24 @@ import java.util.stream.Collectors;
 @ApplicationScoped
 public class CacheClient {
 
-    private static final StructuredLogger log = StructuredLogger.getLogger(CacheClient.class);
+    private static final Logger log = Logger.getLogger(CacheClient.class);
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;
     private static final String KEY_PREFIX = "user:";
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
-    private final MonitoringService monitoringService;
 
     private final ReactiveKeyCommands<String> keyCommands;
 
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,
-                       SessionExpiryIndex sessionExpiryIndex,
-                       com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService) {
+                       SessionExpiryIndex sessionExpiryIndex) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
-        this.monitoringService = monitoringService;
     }
 
     /**
@@ -65,46 +60,12 @@ public class CacheClient {
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)                // Reduced from 2000ms - faster timeout
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
-        // High-TPS optimized timer recording for Redis operations
-        Timer.Sample timerSample = Timer.start();
-        long startTime = System.currentTimeMillis();
-
         if (log.isDebugEnabled()) {
-            log.debug("Storing user data to Redis", StructuredLogger.Fields.create()
-                    .add("userId", userId)
-                    .add("sessionCount", userData.getSessions() != null ? userData.getSessions().size() : 0)
-                    .addComponent("redis-cache")
-                    .add("operation", "SET")
-                    .build());
+            log.debugf("Storing user data for cache userId: %s", userId);
         }
-
         String key = KEY_PREFIX + userId;
         return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(key, userData)
-                .onItem().invoke(() -> {
-                    if (log.isDebugEnabled()) {
-                        long duration = System.currentTimeMillis() - startTime;
-                        log.debug("Successfully stored user data to Redis", StructuredLogger.Fields.create()
-                                .add("userId", userId)
-                                .addDuration(duration)
-                                .addStatus("success")
-                                .addComponent("redis-cache")
-                                .build());
-                    }
-                })
-                .onFailure().invoke(error -> {
-                    long duration = System.currentTimeMillis() - startTime;
-                    monitoringService.recordRedisFailure();
-                    log.error("Failed to store user data to Redis", StructuredLogger.Fields.create()
-                            .add("userId", userId)
-                            .addDuration(duration)
-                            .addStatus("failed")
-                            .addErrorCode("REDIS_STORE_FAILED")
-                            .addComponent("redis-cache")
-                            .add("error", error.getMessage())
-                            .build());
-                })
-                .eventually(() -> timerSample.stop(monitoringService.getRedisOperationTimer()));
+                .set(key, userData);
     }
 
     /**
@@ -117,54 +78,24 @@ public class CacheClient {
     )
     @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
     public Uni<UserSessionData> getUserData(String userId) {
-        // High-TPS optimized timer recording for Redis operations
-        Timer.Sample timerSample = Timer.start();
-        final long startTime = System.currentTimeMillis();
-
+        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
-            log.debug("Retrieving user data from Redis", StructuredLogger.Fields.create()
-                    .add("userId", userId)
-                    .addComponent("redis-cache")
-                    .add("operation", "GET")
-                    .build());
+            log.debugf("Retrieving user data for cache userId: %s", userId);
         }
-
         String key = KEY_PREFIX + userId;
         return reactiveRedisDataSource.value(UserSessionData.class)
                 .get(key)
                 .onItem().transform(Unchecked.function(jsonValue -> {
-                    long duration = System.currentTimeMillis() - startTime;
-
                     if (jsonValue == null ) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("Cache miss - no user data found", StructuredLogger.Fields.create()
-                                    .add("userId", userId)
-                                    .addDuration(duration)
-                                    .addComponent("redis-cache")
-                                    .add("cacheHit", false)
-                                    .build());
-                        }
                         return null; // No record found
                     }
                     try {
                         if (log.isDebugEnabled()) {
-                            log.debug("Cache hit - user data retrieved", StructuredLogger.Fields.create()
-                                    .add("userId", userId)
-                                    .addDuration(duration)
-                                    .addComponent("redis-cache")
-                                    .add("cacheHit", true)
-                                    .add("sessionCount", jsonValue.getSessions() != null ? jsonValue.getSessions().size() : 0)
-                                    .build());
+                            log.debugf("User data retrieved for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
                         }
                         return jsonValue;
                     } catch (Exception e) {
-                        log.error("Failed to deserialize user data from Redis", StructuredLogger.Fields.create()
-                                .add("userId", userId)
-                                .addDuration(duration)
-                                .addErrorCode("REDIS_DESERIALIZE_ERROR")
-                                .addComponent("redis-cache")
-                                .add("error", e.getMessage())
-                                .build());
+                        log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
                         throw new BaseException("Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
                                 Response.Status.INTERNAL_SERVER_ERROR,
@@ -172,18 +103,7 @@ public class CacheClient {
                                 null);
                     }
                 }))
-                .onFailure().invoke(e -> {
-                    long duration = System.currentTimeMillis() - startTime;
-                    log.error("Failed to get user data from Redis", e, StructuredLogger.Fields.create()
-                            .add("userId", userId)
-                            .addDuration(duration)
-                            .addStatus("failed")
-                            .addErrorCode("REDIS_GET_FAILED")
-                            .addComponent("redis-cache")
-                            .add("errorType", e.getClass().getSimpleName())
-                            .build());
-                })
-                .eventually(() -> timerSample.stop(monitoringService.getRedisOperationTimer()));
+                .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
     }
 
 

@@ -23,6 +23,7 @@ quarkus:
   # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   vertx:
     event-loops-pool-size: 32
+    worker-pool-size: 64
     internal-blocking-pool-size: 100
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
@@ -40,40 +41,16 @@ quarkus:
   console:
     color: true
   log:
-    level: INFO  # Set to DEBUG for better visibility
-    console:
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%X{requestId:-}] %-5p [%c{3.}] (%t) %s%e%n" # Performance: Enable async console logging
-      async-overflow: DISCARD  # Performance: Discard console logs under extreme load
-      json:
-        enabled: false
+    level: INFO
     file:
-      path: /var/logs/aaa-account-${DEPLOYMENT_MODE:local}-${HOSTNAME:localhost}.log
-      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} [%X{requestId:-}] %-5p [%c{3.}] (%t) %s%e%n"
-      async: true  # Performance: Enable async file logging (critical for high TPS)
-      async-overflow: DISCARD  # Performance: Block when queue full to prevent data loss
-      json:
-        ~: false  # Set to true for production JSON logging
-        pretty-print: false  # Compact JSON for better performance
-        record-delimiter: "\n"
-        excluded-keys:
-          - sequence
-        additional-field:
-          app.name: "aaa-accounting-service"
-          app.version: "1.0.0"
-          environment: "production"
+      path: var/logs/aaa-account.log
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
       rotation:
         max-file-size: 100M
         max-backup-index: 10
         rotate-on-boot: true
-      enabled: true
-
-    # Async logging for high-TPS performance (2500+ TPS optimized)
-    handler:
-      file:
-        "ASYNC_FILE":
-          level: ALL
-          overflow-action: BLOCK  # BLOCK ensures no log loss; DISCARD for max throughput
-          queue-length: 4096  # Increased from 2048 for higher TPS (2500 * 2 seconds buffer)
+    console:
+      format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
     category:
       "org.apache.kafka":
         level: WARN
@@ -84,7 +61,7 @@ quarkus:
       "io.smallrye.config":
         level: INFO
       "com.csg.airtel.aaa4j":
-        level: INFO  # Debug enabled for application logs
+        level: DEBUG
 
   otel:
     traces:
@@ -99,7 +76,8 @@ quarkus:
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-
+    response-timeout: 3000
+    connection-timeout: 2000
 
 
 
@@ -125,15 +103,6 @@ idle-session:
   timeout-minutes: 60       # 1 hour default - sessions older than this will be terminated
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
-
-# High-TPS Logging Performance Configuration (2500+ TPS Optimized)
-# At 2500 TPS × 7 pods = 17,500 logs/sec baseline
-# With sampling enabled, reduces to ~1,750 logs/sec (10x reduction)
-logging:
-  sampling:
-    enabled: false          # Set to 'true' in production for high-TPS environments
-    rate: 10                # Log 1 in N requests (10 = 10% sampling, 5 = 20% sampling)
-                            # Recommendation: Start with 10 (10%), adjust based on log volume metrics
 
 # Kafka Producer/Consumer Configuration - HIGH TPS OPTIMIZED for 2500 TPS
 mp:
@@ -222,103 +191,4 @@ mp:
         receive.buffer.bytes: 131072
         failure-strategy: ignore
 
-  # ==================== METRICS & MONITORING CONFIGURATION ====================
-  # Micrometer metrics configuration for session monitoring and component failures
-  micrometer:
-    enabled: true
-    binder:
-      # JVM metrics
-      jvm: true
-      # System metrics (CPU, memory, disk)
-      system: true
-      # HTTP server metrics
-      http-server: true
-      # Vert.x metrics
-      vertx: true
-    export:
-      # Prometheus format endpoint
-      prometheus:
-        enabled: true
-        path: /q/metrics
-        default-registry: true
-
-    # ==================== HIGH-TPS DISTRIBUTION STATISTICS ====================
-    # Percentile histograms and SLO buckets for latency analysis at 2500+ TPS
-    # Memory overhead: ~2KB per timer (HDR Histogram) - negligible at this scale
-    # Recording overhead: ~100ns per sample - 0.0002ms at 2500 TPS
-    binder-overrides:
-      jvm-memory-used:
-        enabled: true
-      jvm-gc-pause:
-        enabled: true
-
-quarkus:
-  micrometer:
-    binder:
-      http-server:
-        match-patterns: /api/.*
-        ignore-patterns: /q/.*
-    export:
-      prometheus:
-        # Optimize Prometheus export for high cardinality
-        descriptions: false  # Reduce export size
-
-    # Distribution statistics configuration for request processing timers
-    distribution:
-      # RADIUS Request Processing Timers (processing.time)
-      # Target SLOs: <100ms (p95), <500ms (p99), <1000ms (p99.9)
-      percentiles:
-        "[processing.time]": 0.5,0.75,0.95,0.99,0.999
-      percentiles-histogram:
-        "[processing.time]": true
-      slo:
-        "[processing.time]": 50ms,100ms,250ms,500ms,1000ms,2000ms
-      minimum-expected-value:
-        "[processing.time]": 1ms
-      maximum-expected-value:
-        "[processing.time]": 10000ms
-
-      # Component Operation Timers (Redis, Database, Kafka)
-      # Target SLOs: <10ms (Redis), <50ms (DB), <100ms (Kafka)
-      percentiles:
-        "[component.operation.time]": 0.5,0.75,0.95,0.99,0.999
-      percentiles-histogram:
-        "[component.operation.time]": true
-      slo:
-        "[component.operation.time]": 5ms,10ms,25ms,50ms,100ms,500ms
-      minimum-expected-value:
-        "[component.operation.time]": 1ms
-      maximum-expected-value:
-        "[component.operation.time]": 5000ms
-
-      # HTTP Server Timers (@Timed annotations)
-      percentiles:
-        "[http.server.requests]": 0.5,0.75,0.95,0.99
-      percentiles-histogram:
-        "[http.server.requests]": true
-      slo:
-        "[http.server.requests]": 50ms,100ms,250ms,500ms,1000ms
-
-mp:
-
-  # SmallRye Health configuration for health checks
-  smallrye-health:
-    root-path: /q/health
-    liveness-path: /q/health/live
-    readiness-path: /q/health/ready
-    ui:
-      enable: true
-      root-path: /q/health-ui
-
-# ==================== APPLICATION SPECIFIC MONITORING ====================
-# Monitoring service configuration
-monitoring:
-  metrics:
-    export:
-      enabled: true
-      interval: 30s
-      path: /var/log/aaa-account/metrics.json
-  health-checks:
-    enabled: true
-    log-path: /var/log/aaa-account/health-checks.log
 

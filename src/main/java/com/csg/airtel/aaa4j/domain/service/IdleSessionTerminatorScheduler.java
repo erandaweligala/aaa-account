@@ -38,21 +38,18 @@ public class IdleSessionTerminatorScheduler {
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
     private final AccountProducer accountProducer;
-    private final MonitoringService monitoringService;
 
 
     @Inject
     public IdleSessionTerminatorScheduler(CacheClient cacheClient,
                                           SessionExpiryIndex sessionExpiryIndex,
                                           IdleSessionConfig config,
-                                          AccountProducer accountProducer,
-                                          MonitoringService monitoringService
+                                          AccountProducer accountProducer
                                     ) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.config = config;
         this.accountProducer = accountProducer;
-        this.monitoringService = monitoringService;
 
     }
 
@@ -253,23 +250,16 @@ public class IdleSessionTerminatorScheduler {
 
         totalSessionsTerminated.addAndGet(sessionsToTerminate.size());
 
-        // Record idle session terminations in monitoring (async)
         // Trigger DB write operations for terminated sessions to persist balance state
-        return Uni.combine().all()
-                .unis(
-                        monitoringService.recordIdleSessionTerminatedAsync(sessionsToTerminate.size()),
-                        triggerDBRequestInitiate(sessionsToTerminate, userData)
-                                .onItem().transformToUni(v ->
-                                        // Update cache after DB write is initiated
-                                        cacheClient.updateUserAndRelatedCaches(userName, userData)
-                                                .onFailure().invoke(error ->
-                                                        log.errorf(error, "Failed to update cache for user: %s", userName))
-                                                .onFailure().recoverWithNull()
-                                                .replaceWithVoid()
-                                )
-                )
-                .discardItems()
-                .replaceWithVoid();
+        return triggerDBRequestInitiate(sessionsToTerminate, userData)
+                .onItem().transformToUni(v ->
+                        // Update cache after DB write is initiated
+                        cacheClient.updateUserAndRelatedCaches(userName, userData)
+                                .onFailure().invoke(error ->
+                                        log.errorf(error, "Failed to update cache for user: %s", userName))
+                                .onFailure().recoverWithNull()
+                                .replaceWithVoid()
+                );
     }
 
     /**

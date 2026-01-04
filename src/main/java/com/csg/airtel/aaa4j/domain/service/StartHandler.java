@@ -8,14 +8,13 @@ import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
-import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
-import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.faulttolerance.exceptions.CircuitBreakerOpenException;
+import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -25,108 +24,63 @@ import java.util.Objects;
 
 @ApplicationScoped
 public class StartHandler {
-    private static final StructuredLogger log = StructuredLogger.getLogger(StartHandler.class);
+    private static final Logger log = Logger.getLogger(StartHandler.class);
     private final CacheClient utilCache;
     private final UserBucketRepository userRepository;
     private final AccountProducer  accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
-    private final MonitoringService monitoringService;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService, MonitoringService monitoringService) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
         this.coaService = coaService;
-        this.monitoringService = monitoringService;
     }
 
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
-        // High-TPS optimized timer recording (uses nanoTime, ~50ns overhead)
-        Timer.Sample timerSample = Timer.start();
         long startTime = System.currentTimeMillis();
-
-        // Set MDC context for correlation across all logs in this request
-        StructuredLogger.setContext(traceId, request.username(), request.sessionId());
-        StructuredLogger.setOperation("START");
-
-        log.info("Processing accounting START request", StructuredLogger.Fields.create()
-                .add("username", request.username())
-                .add("sessionId", request.sessionId())
-                .add("nasIP", request.nasIP())
-                .add("framedIP", request.framedIPAddress())
-                .build());
+        log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
+                traceId, request.username(), request.sessionId());
 
         return utilCache.getUserData(request.username())
-                .onItem().invoke(userData -> {
-                    if (log.isDebugEnabled()) {
-                        log.debug("User data retrieved from cache", StructuredLogger.Fields.create()
-                                .add("username", request.username())
-                                .add("hasData", userData != null)
-                                .build());
-                    }
-                })
+                .onItem().invoke(userData ->
+                        log.infof("traceId: %s User data retrieved for user: %s",traceId, request.username()))
                 .onItem().transformToUni(userSessionData -> {
                     if (userSessionData == null) {
-                        log.info("No cache entry found, creating new user session", StructuredLogger.Fields.create()
-                                .add("username", request.username())
-                                .build());
+                        log.infof("traceId: %s No cache entry found for user: %s", traceId,request.username());
                         Uni<Void> accountingResponseEventUni = handleNewUserSession(request);
 
                         long duration = System.currentTimeMillis() - startTime;
-                        log.info("Completed START processing for new user", StructuredLogger.Fields.create()
-                                .add("username", request.username())
-                                .addDuration(duration)
-                                .addStatus("success")
-                                .build());
+                        log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
+                                traceId, request.username(), duration);
                         return accountingResponseEventUni;
                     } else {
-                        log.info("Existing session found, processing START", StructuredLogger.Fields.create()
-                                .add("username", request.username())
-                                .add("existingSessionCount", userSessionData.getSessions() != null ? userSessionData.getSessions().size() : 0)
-                                .build());
+                        log.infof("traceId: %s Existing session found for user: %s",traceId, request.username());
                         Uni<Void> accountingResponseEventUni = handleExistingUserSession(request, userSessionData);
                         long duration = System.currentTimeMillis() - startTime;
-                        log.info("Completed START processing for existing user", StructuredLogger.Fields.create()
-                                .add("username", request.username())
-                                .addDuration(duration)
-                                .addStatus("success")
-                                .build());
+                        log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
+                                traceId, request.username(), duration);
                         return accountingResponseEventUni;
                     }
                 })
                 .onFailure().recoverWithUni(throwable -> {
-                    long duration = System.currentTimeMillis() - startTime;
-
                     // Handle circuit breaker open specifically - service temporarily unavailable
                     if (throwable instanceof CircuitBreakerOpenException) {
-                        log.error("Cache service circuit breaker OPEN", StructuredLogger.Fields.create()
-                                .add("username", request.username())
-                                .addErrorCode("CIRCUIT_BREAKER_OPEN")
-                                .addDuration(duration)
-                                .addStatus("failed")
-                                .add("reason", "Redis connectivity issues or high TPS")
-                                .build());
-                    } else {
-                        log.error("Error processing accounting START", throwable, StructuredLogger.Fields.create()
-                                .add("username", request.username())
-                                .addErrorCode("START_PROCESSING_ERROR")
-                                .addDuration(duration)
-                                .addStatus("failed")
-                                .add("errorType", throwable.getClass().getSimpleName())
-                                .build());
+                        log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
+                                        "Service temporarily unavailable due to high tps or Redis connectivity issues.",
+                                traceId, request.username());
+
                     }
+                    // Handle other errors
+                    log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s",
+                            traceId, request.username());
                     return Uni.createFrom().voidItem();
-                })
-                .eventually(() -> {
-                    // Record timer for both success and failure cases (high-performance pattern)
-                    timerSample.stop(monitoringService.getStartProcessingTimer());
-                    StructuredLogger.clearContext();
                 });
     }
 
@@ -155,13 +109,7 @@ public class StartHandler {
             List<Balance> balanceList) {
 
         if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
-            log.error("Maximum concurrency sessions exceeded", StructuredLogger.Fields.create()
-                    .add("username", request.username())
-                    .add("maxConcurrency", userSessionData.getConcurrency())
-                    .add("currentSessions", userSessionData.getSessions().size())
-                    .addErrorCode("CONCURRENCY_LIMIT_EXCEEDED")
-                    .addStatus("rejected")
-                    .build());
+            log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
@@ -196,13 +144,7 @@ public class StartHandler {
 
         double availableBalance = calculateAvailableBalance(combinedBalances);
         if (availableBalance <= 0) {
-            log.warn("Data balance exhausted", StructuredLogger.Fields.create()
-                    .add("username", request.username())
-                    .add("availableBalance", availableBalance)
-                    .add("balanceCount", combinedBalances.size())
-                    .addErrorCode("BALANCE_EXHAUSTED")
-                    .addStatus("rejected")
-                    .build());
+            log.warnf("User: %s has exhausted their data balance. Cannot start new session.", request.username());
             return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Data balance exhausted",
                             AccountingResponseEvent.EventType.COA,
@@ -212,11 +154,8 @@ public class StartHandler {
         }
 
         if (sessionAlreadyExists(userSessionData, request.sessionId())) {
-            log.info("Session already exists, ignoring duplicate START", StructuredLogger.Fields.create()
-                    .add("username", request.username())
-                    .add("sessionId", request.sessionId())
-                    .addStatus("duplicate")
-                    .build());
+            log.infof("Session already exists for user: %s, sessionId: %s",
+                    request.username(), request.sessionId());
             return Uni.createFrom().voidItem();
         }
 
@@ -258,7 +197,7 @@ public class StartHandler {
                     generateAndSendCDR(request, newSession);
                 })
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable.getMessage(), "Failed to update cache for user: %s", request.username());
+                    log.errorf(throwable, "Failed to update cache for user: %s", request.username());
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -343,7 +282,7 @@ public class StartHandler {
                 .onItem().transformToUni(serviceBuckets ->
                         processServiceBuckets(request, serviceBuckets))
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable.getMessage(), "Error creating new user session for user: %s",
+                    log.errorf(throwable, "Error creating new user session for user: %s",
                             request.username());
                     return Uni.createFrom().voidItem();
                 });
@@ -530,7 +469,7 @@ public class StartHandler {
 
         return utilCache.storeUserData(groupId, groupSessionData)
                 .onItem().invoke(unused -> log.infof("Group session data stored for groupId: %s", groupId))
-                .onFailure().invoke(failure -> log.errorf(failure.getMessage(), "Failed to store group data for groupId: %s", groupId));
+                .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", groupId));
     }
 
     private Uni<Void> updateExistingGroupData(

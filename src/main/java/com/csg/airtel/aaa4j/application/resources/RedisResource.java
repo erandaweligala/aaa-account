@@ -10,7 +10,7 @@ import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-
+import org.eclipse.microprofile.metrics.annotation.Timed;
 
 
 import java.util.HashMap;
@@ -41,6 +41,7 @@ public class RedisResource {
 
     @GET
     @Path("/redis-ping")
+    @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.TEXT_PLAIN)
     public Uni<Map<String, Object>> testConnection() {
 
@@ -55,6 +56,7 @@ public class RedisResource {
 
     @POST
     @Path("/redis-ping")
+    @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.TEXT_PLAIN)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Map<String, Object>> interimUpdate(AccountingRequestDto request) {
@@ -71,6 +73,7 @@ public class RedisResource {
 
     @DELETE
     @Path("/redis/delete")
+    @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.TEXT_PLAIN)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Map<String, Object>> deleteKeyCache(@QueryParam("username") String key) {
@@ -86,6 +89,7 @@ public class RedisResource {
 
     @GET
     @Path("/redis/get")
+    @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni <UserSessionData> getKeyCache(@QueryParam("username") String key) {
@@ -99,6 +103,7 @@ public class RedisResource {
 
     @GET
     @Path("/redis/notification-clear")
+    @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Map<String, Object>> deleteNotification(@QueryParam("username") String username,@QueryParam("templateId") long templateId,

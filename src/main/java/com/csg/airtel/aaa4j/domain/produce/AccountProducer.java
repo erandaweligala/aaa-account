@@ -7,9 +7,7 @@ import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
-import com.csg.airtel.aaa4j.domain.util.StructuredLogger;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
-import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.reactive.messaging.kafka.api.OutgoingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -20,6 +18,7 @@ import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.eclipse.microprofile.reactive.messaging.Channel;
 import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Message;
+import org.jboss.logging.Logger;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -27,22 +26,20 @@ import java.util.concurrent.CompletableFuture;
 @ApplicationScoped
 public class AccountProducer {
 
-    private static final StructuredLogger LOG = StructuredLogger.getLogger(AccountProducer.class);
+    private static final Logger LOG = Logger.getLogger(AccountProducer.class);
     private final Emitter<DBWriteRequest> dbWriteRequestEmitter;
     private final Emitter<AccountingResponseEvent> accountingResponseEmitter;
     private final Emitter<AccountingCDREvent> accountingCDREventEmitter;
     private final Emitter<QuotaNotificationEvent> quotaNotificationEmitter;
     private final CacheClient cacheClient;
     private final SessionLifecycleManager sessionLifecycleManager;
-    private final com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService;
 
     public AccountProducer(@Channel("db-write-events")Emitter<DBWriteRequest> dbWriteRequestEmitter,
                            @Channel("accounting-resp-events")Emitter<AccountingResponseEvent> accountingResponseEmitter,
                            @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter,
                            @Channel("quota-notification-events") Emitter<QuotaNotificationEvent> quotaNotificationEmitter,
                            CacheClient cacheClient,
-                           SessionLifecycleManager sessionLifecycleManager,
-                           com.csg.airtel.aaa4j.domain.service.MonitoringService monitoringService
+                           SessionLifecycleManager sessionLifecycleManager
                           ) {
         this.dbWriteRequestEmitter = dbWriteRequestEmitter;
         this.accountingResponseEmitter = accountingResponseEmitter;
@@ -50,7 +47,6 @@ public class AccountProducer {
         this.quotaNotificationEmitter = quotaNotificationEmitter;
         this.cacheClient = cacheClient;
         this.sessionLifecycleManager = sessionLifecycleManager;
-        this.monitoringService = monitoringService;
     }
 
     @CircuitBreaker(
@@ -67,19 +63,8 @@ public class AccountProducer {
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
-        // High-TPS optimized timer recording for Kafka operations
-        Timer.Sample timerSample = Timer.start();
         long startTime = System.currentTimeMillis();
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Producing DB write event to Kafka", StructuredLogger.Fields.create()
-                    .add("sessionId", request.getSessionId())
-                    .add("userName", request.getUserName())
-                    .add("eventType", request.getEventType() != null ? request.getEventType().toString() : "null")
-                    .addComponent("kafka-producer")
-                    .build());
-        }
-
+        LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
         return Uni.createFrom().emitter(em -> {
             Message<DBWriteRequest> message = Message.of(request)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -87,32 +72,11 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        long duration = System.currentTimeMillis() - startTime;
-                        timerSample.stop(monitoringService.getKafkaPublishTimer());
-                        LOG.info("Successfully sent DB write event to Kafka", StructuredLogger.Fields.create()
-                                .add("sessionId", request.getSessionId())
-                                .add("userName", request.getUserName())
-                                .addDuration(duration)
-                                .addStatus("success")
-                                .addComponent("kafka-producer")
-                                .add("topic", "DC-DR")
-                                .build());
+                        LOG.infof("Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        long duration = System.currentTimeMillis() - startTime;
-                        timerSample.stop(monitoringService.getKafkaPublishTimer());
-                        monitoringService.recordKafkaProduceFailure();
-                        LOG.error("Failed to send DB write event to Kafka", StructuredLogger.Fields.create()
-                                .add("sessionId", request.getSessionId())
-                                .add("userName", request.getUserName())
-                                .addDuration(duration)
-                                .addStatus("failed")
-                                .addErrorCode("KAFKA_SEND_FAILED")
-                                .addComponent("kafka-producer")
-                                .add("topic", "DC-DR")
-                                .add("error", throwable.getMessage())
-                                .build());
+                        LOG.errorf("Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -139,15 +103,7 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
-
-        if (LOG.isDebugEnabled()) {
-            LOG.debug("Producing accounting response event to Kafka", StructuredLogger.Fields.create()
-                    .add("sessionId", event.sessionId())
-                    .add("eventType", event.eventType() != null ? event.eventType().toString() : "null")
-                    .addComponent("kafka-producer")
-                    .build());
-        }
-
+        LOG.infof("Start produceAccountingResponseEvent process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -155,28 +111,11 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        long duration = System.currentTimeMillis() - startTime;
-                        LOG.info("Successfully sent accounting response event to Kafka", StructuredLogger.Fields.create()
-                                .add("sessionId", event.sessionId())
-                                .add("eventType", event.eventType() != null ? event.eventType().toString() : "null")
-                                .addDuration(duration)
-                                .addStatus("success")
-                                .addComponent("kafka-producer")
-                                .add("topic", "accounting-response")
-                                .build());
+                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        long duration = System.currentTimeMillis() - startTime;
-                        LOG.error("Failed to send accounting response event to Kafka", StructuredLogger.Fields.create()
-                                .add("sessionId", event.sessionId())
-                                .addDuration(duration)
-                                .addStatus("failed")
-                                .addErrorCode("KAFKA_SEND_FAILED")
-                                .addComponent("kafka-producer")
-                                .add("topic", "accounting-response")
-                                .add("error", throwable.getMessage())
-                                .build());
+                        LOG.errorf("Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -264,7 +203,7 @@ public class AccountProducer {
                                 .call(() -> sessionLifecycleManager.onSessionTerminated(userId, sessionId))
                                 .invoke(() -> LOG.infof("Session revoke fallback completed for userId=%s, sessionId=%s",
                                         userId, sessionId))
-                                .onFailure().invoke(e -> LOG.errorf(e.getMessage(),
+                                .onFailure().invoke(e -> LOG.errorf(e,
                                         "Failed to complete session revoke fallback for userId=%s, sessionId=%s",
                                         userId, sessionId))
                                 .onFailure().recoverWithNull()
@@ -275,7 +214,7 @@ public class AccountProducer {
                         return sessionLifecycleManager.onSessionTerminated(userId, sessionId);
                     }
                 })
-                .onFailure().invoke(e -> LOG.errorf(e.getMessage(),
+                .onFailure().invoke(e -> LOG.errorf(e,
                         "Failed to retrieve user data during session revoke fallback for userId=%s, sessionId=%s",
                         userId, sessionId))
                 .onFailure().recoverWithNull()
