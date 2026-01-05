@@ -98,7 +98,7 @@ public class StopHandler {
                 .call(() -> sessionLifecycleManager.onSessionTerminated(request.username(), request.sessionId()))
                 .invoke(() ->
                     //send CDR event asynchronously
-                    generateAndSendCDR(request, finalSession)
+                    generateAndSendCDR(request, finalSession, userSessionData.getUserStatus())
                 )
                 .invoke(() -> {
                     if (log.isDebugEnabled()) {
@@ -127,8 +127,14 @@ public class StopHandler {
         return accountingUtil.updateSessionAndBalance(userSessionData, session, request, bucketId);
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent);
+    private void generateAndSendCDR(AccountingRequestDto request, Session session, String userStatus) {
+        // Only generate CDR if userStatus is "BAR"
+        if ("BAR".equals(userStatus)) {
+            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent);
+        } else {
+            log.infof("Skipping CDR generation for session: %s - userStatus is not BAR: %s",
+                    session.getSessionId(), userStatus);
+        }
     }
 
     private Session createSession(AccountingRequestDto request) {

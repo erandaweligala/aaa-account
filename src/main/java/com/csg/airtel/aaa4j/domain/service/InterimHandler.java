@@ -137,6 +137,7 @@ public class InterimHandler {
 
         } else {
             Session finalSession = session;
+            String userStatus = userData.getUserStatus();
             return accountingUtil.updateSessionAndBalance(userData, session, request,null)
                     .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
@@ -145,7 +146,7 @@ public class InterimHandler {
                         }
                         log.infof("Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
-                        generateAndSendCDR(request, finalSession);
+                        generateAndSendCDR(request, finalSession, userStatus);
                         return Uni.createFrom().voidItem();
 
                     });
@@ -181,8 +182,14 @@ public class InterimHandler {
         );
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
+    private void generateAndSendCDR(AccountingRequestDto request, Session session, String userStatus) {
+        // Only generate CDR if userStatus is "BAR"
+        if ("BAR".equals(userStatus)) {
+            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
+        } else {
+            log.infof("Skipping CDR generation for session: %s - userStatus is not BAR: %s",
+                    session.getSessionId(), userStatus);
+        }
     }
 
 
