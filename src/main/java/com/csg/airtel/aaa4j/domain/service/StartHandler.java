@@ -42,7 +42,6 @@ public class StartHandler {
         this.coaService = coaService;
     }
 
-    //todo need to check UserSessionData.userStatus == BAR if only genarateCDR only
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
@@ -194,7 +193,7 @@ public class StartHandler {
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
                 .invoke(() -> {
                     log.infof("cdr write event started for user: %s", request.username());
-                    generateAndSendCDR(request, newSession);
+                    generateAndSendCDR(request, newSession, userSessionData.getUserStatus());
                 })
                 .onFailure().recoverWithUni(throwable -> {
                     log.errorf(throwable, "Failed to update cache for user: %s", request.username());
@@ -375,11 +374,12 @@ public class StartHandler {
         }
 
         final Session finalSession = session;
+        final String finalUserStatus = newUserSessionData.getUserStatus();
         return userStorageUni
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
                 .onItem().invoke(unused -> {
                     log.infof("CDR write event started for user: %s", request.username());
-                    generateAndSendCDR(request, finalSession);
+                    generateAndSendCDR(request, finalSession, finalUserStatus);
                 });
     }
 
@@ -538,8 +538,14 @@ public class StartHandler {
         );
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
+    private void generateAndSendCDR(AccountingRequestDto request, Session session, String userStatus) {
+        // Only generate CDR if userStatus is "BAR"
+        if ("BAR".equals(userStatus)) {
+            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
+        } else {
+            log.infof("Skipping CDR generation for session: %s - userStatus is not BAR: %s",
+                    session.getSessionId(), userStatus);
+        }
     }
 
 
