@@ -42,7 +42,6 @@ public class StartHandler {
         this.coaService = coaService;
     }
 
-    //todo implement need to check first userStatus if userStatus==BAR no need to proceed and log genarate CDR
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
@@ -540,12 +539,12 @@ public class StartHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session, String userStatus) {
-        // Only generate CDR if userStatus is "BAR"
+        // Skip CDR generation if userStatus is "BAR" (barred users)
         if ("BAR".equals(userStatus)) {
-            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
+            log.infof("Skipping CDR generation for session: %s - userStatus is BAR",
+                    session.getSessionId());
         } else {
-            log.infof("Skipping CDR generation for session: %s - userStatus is not BAR: %s",
-                    session.getSessionId(), userStatus);
+            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
         }
     }
 

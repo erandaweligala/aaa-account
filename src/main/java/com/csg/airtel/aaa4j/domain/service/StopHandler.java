@@ -128,12 +128,12 @@ public class StopHandler {
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session, String userStatus) {
-        // Only generate CDR if userStatus is "BAR"
+        // Skip CDR generation if userStatus is "BAR" (barred users)
         if ("BAR".equals(userStatus)) {
-            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent);
+            log.infof("Skipping CDR generation for session: %s - userStatus is BAR",
+                    session.getSessionId());
         } else {
-            log.infof("Skipping CDR generation for session: %s - userStatus is not BAR: %s",
-                    session.getSessionId(), userStatus);
+            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent);
         }
     }
 
