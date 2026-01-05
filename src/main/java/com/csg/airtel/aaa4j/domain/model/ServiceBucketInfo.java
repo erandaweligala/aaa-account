@@ -31,5 +31,6 @@ public class ServiceBucketInfo {
     private boolean isGroup;
     private long concurrency;
     private String notificationTemplates;
+    private String userStatus;
 
 }

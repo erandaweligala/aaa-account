@@ -42,7 +42,7 @@ public class StartHandler {
         this.coaService = coaService;
     }
 
-
+    //todo need to check UserSessionData.userStatus == BAR if only genarateCDR only
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",

@@ -5,7 +5,7 @@ public class SQLConstant {
     }
     public static final String QUERY_BALANCE = """
                         WITH target_user AS (
-                            SELECT USER_NAME, SESSION_TIMEOUT, CONCURRENCY, NOTIFICATION_TEMPLATES, group_id
+                            SELECT USER_NAME, SESSION_TIMEOUT, CONCURRENCY, NOTIFICATION_TEMPLATES, group_id,STATUS
                             FROM AAA_USER
                             WHERE USER_NAME = :1
                         )

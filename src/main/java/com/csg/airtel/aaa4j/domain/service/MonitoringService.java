@@ -8,15 +8,6 @@ import org.jboss.logging.Logger;
 
 /**
  * Service for tracking application metrics using Micrometer.
- *
- * <p>This service provides centralized metric recording for:
- * <ul>
- *   <li>Session lifecycle events (created, terminated)</li>
- *   <li>COA (Change of Authorization) requests</li>
- *   <li>Idle session terminations</li>
- * </ul>
- *
- * <p>Metrics are exposed via Prometheus endpoint at /q/metrics
  */
 @ApplicationScoped
 public class MonitoringService {

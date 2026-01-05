@@ -51,6 +51,9 @@ quarkus:
         rotate-on-boot: true
     console:
       format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+      json:
+        enabled: false
+
     category:
       "org.apache.kafka":
         level: WARN

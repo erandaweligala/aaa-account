@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.cdr.*;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
+import lombok.Getter;
 import org.jboss.logging.Logger;
 
 import java.time.Instant;
@@ -28,7 +29,9 @@ public class CdrMappingUtil {
     /**
      * Parameter object to encapsulate accounting metrics data
      */
+    @Getter
     public static class AccountingMetrics {
+        // Getters
         private final String acctStatusType;
         private final String eventType;
         private final Integer sessionTime;
@@ -85,14 +88,6 @@ public class CdrMappingUtil {
             );
         }
 
-        // Getters
-        public String getAcctStatusType() { return acctStatusType; }
-        public String getEventType() { return eventType; }
-        public Integer getSessionTime() { return sessionTime; }
-        public Long getInputOctets() { return inputOctets; }
-        public Long getOutputOctets() { return outputOctets; }
-        public Integer getInputGigawords() { return inputGigawords; }
-        public Integer getOutputGigawords() { return outputGigawords; }
     }
 
     /**

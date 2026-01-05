@@ -960,7 +960,7 @@ public class AccountingUtil {
         }
 
         // Clear all sessions and send COA disconnect for all sessions
-        return coaService.clearAllSessionsAndSendCOA(userData, username)
+        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .chain(() -> updateBalanceInDatabase(foundBalance, result.newQuota(),
                         request.sessionId(), bucketUsername, username))
                 .invoke(() -> {
@@ -1006,7 +1006,7 @@ public class AccountingUtil {
         }
 
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
-        return coaService.clearAllSessionsAndSendCOA(userData, username)
+        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .chain(() -> updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                         request.sessionId(), bucketUsername, username))
                 .invoke(() -> {

@@ -9,7 +9,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.eclipse.microprofile.metrics.annotation.Timed;
 import org.jboss.logging.Logger;
 
 
@@ -25,7 +24,6 @@ public class BucketResource {
 
     @PATCH
     @Path("/addBucket/{userName}")
-    @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Response> addBucket(@PathParam("userName") String userName, BalanceWrapper balance) {
@@ -41,7 +39,6 @@ public class BucketResource {
 
     @PATCH
     @Path("/updateBucket/{userName}/{serviceId}")
-    @Timed(name = "process_time", description = "Time to process request")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Response> updateBucket(@PathParam("userName") String userName, Balance balance,@PathParam("serviceId") String serviceId) {
@@ -57,13 +54,12 @@ public class BucketResource {
     }
 
     @PATCH
-    @Path("/terminate-sessions/{userName}/")
-    @Timed(name = "process_time", description = "Time to process request")
+    @Path("/terminate-sessions/{userName}/{sessionId}")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    public Uni<Response> terminate(@PathParam("userName") String userName) {
+    public Uni<Response> terminate(@PathParam("userName") String userName,@PathParam("sessionId") String sessionId) {
         log.infof("Sessions Terminate  Start %s", userName);
-        return bucketService.terminateSessions(userName)
+        return bucketService.terminateSessions(userName,sessionId)
                 .onItem().transform(apiResponse -> {
                     log.infof("Sessions Terminate Completed %s", userName);
                     return Response.status(apiResponse.getStatus())

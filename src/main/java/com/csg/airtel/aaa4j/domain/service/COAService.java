@@ -13,6 +13,7 @@ import org.jboss.logging.Logger;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 
 
 @ApplicationScoped
@@ -27,10 +28,14 @@ public class COAService {
         this.monitoringService = monitoringService;
     }
 
-    public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username) {
+    public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username,String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
             return Uni.createFrom().voidItem();
+        }
+        if(sessionId != null){
+            sessions = sessions.stream().filter(rs -> Objects.equals(rs.getSessionId(), sessionId))
+                    .toList();
         }
 
         // Use merge instead of concatenate for parallel execution (better throughput)
@@ -66,6 +71,8 @@ public class COAService {
                 .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
                 .replaceWithVoid();
     }
+
+
 
     /**
      * Generate and send COA Disconnect CDR event asynchronously.

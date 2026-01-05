@@ -204,13 +204,13 @@ public class BucketService {
     }
 
 
-    public Uni<ApiResponse<Balance>> terminateSessions(String userName) {
+    public Uni<ApiResponse<Balance>> terminateSessions(String userName,String sessionId) {
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
                     if (userData == null) {
                         return Uni.createFrom().item(createErrorResponse("User not found"));
                     }
-                   return coaService.clearAllSessionsAndSendCOA(userData,userName)
+                   return coaService.clearAllSessionsAndSendCOA(userData,userName,sessionId)
                            .invoke(() -> userData.getSessions().clear())
                            .onItem().transform(result -> {
                                log.infof("Sessions Terminated successfully for user %s",
