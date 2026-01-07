@@ -231,7 +231,78 @@ public class BucketService {
 
 
 
-    public Uni<ApiResponse<String>> updateUserStatus(String userName,String status){
-        //todo implement need to update UserSessionData.userStatus and update cache and send COA 
+    public Uni<ApiResponse<String>> updateUserStatus(String userName, String status) {
+        log.infof("Updating user status for user %s to %s", userName, status);
+
+        // Input validation
+        if (userName == null || userName.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseString("Username is required"));
+        }
+        if (status == null || status.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseString("Status is required"));
+        }
+
+        // Validate status values
+        if (!status.equalsIgnoreCase("ACTIVE") && !status.equalsIgnoreCase("BARRED")) {
+            return Uni.createFrom().item(createErrorResponseString("Invalid status. Must be 'ACTIVE' or 'BARRED'"));
+        }
+
+        return cacheClient.getUserData(userName)
+                .onItem().transformToUni(userData -> {
+                    if (userData == null) {
+                        return Uni.createFrom().item(createErrorResponseString("User not found"));
+                    }
+
+                    String oldStatus = userData.getUserStatus();
+                    log.infof("Changing user status for user %s from %s to %s", userName, oldStatus, status);
+
+                    // Update userStatus in UserSessionData
+                    UserSessionData updatedUserData = userData.toBuilder()
+                            .userStatus(status)
+                            .build();
+
+                    // Update cache
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
+                            .call(() -> {
+                                // If status is BARRED, send COA to disconnect all active sessions
+                                if ("BARRED".equalsIgnoreCase(status) && userData.getSessions() != null && !userData.getSessions().isEmpty()) {
+                                    log.infof("User status changed to BARRED, sending COA to disconnect %d active sessions for user %s",
+                                            userData.getSessions().size(), userName);
+                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null);
+                                }
+                                return Uni.createFrom().voidItem();
+                            })
+                            .onItem().transform(result -> {
+                                log.infof("Successfully updated user status for user %s to %s", userName, status);
+                                return createSuccessResponseString(
+                                        String.format("User status updated successfully from %s to %s", oldStatus, status)
+                                );
+                            });
+                })
+                .onFailure().recoverWithItem(throwable -> {
+                    log.errorf("Failed to update user status for user %s: %s",
+                            userName, throwable.getMessage(), throwable);
+                    return createErrorResponseString(
+                            "Failed to update user status: " + throwable.getMessage()
+                    );
+                });
+    }
+
+    private ApiResponse<String> createSuccessResponseString(String message) {
+        ApiResponse<String> response = new ApiResponse<>();
+        response.setTimestamp(Instant.now());
+        response.setMessage(message);
+        response.setStatus(Response.Status.OK);
+        response.setData(null);
+        return response;
+    }
+
+    private ApiResponse<String> createErrorResponseString(String message) {
+        ApiResponse<String> response = new ApiResponse<>();
+        response.setTimestamp(Instant.now());
+        response.setMessage(message);
+        response.setData(null);
+        response.setStatus(Response.Status.BAD_REQUEST);
+        return response;
     }
 }
