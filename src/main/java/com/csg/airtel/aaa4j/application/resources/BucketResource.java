@@ -67,4 +67,19 @@ public class BucketResource {
                             .build();
                 });
     }
+
+    @PATCH
+    @Path("/patchStatus/{userName}/{status}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<Response> userStatusUpdate(@PathParam("userName") String userName,@PathParam("status") String status) {
+        log.infof("Update User Status  Start %s", userName);
+        return bucketService.updateUserStatus(userName,status)
+                .onItem().transform(apiResponse -> {
+                    log.infof("Update User Status Completed %s", userName);
+                    return Response.status(apiResponse.getStatus())
+                            .entity(apiResponse)
+                            .build();
+                });
+    }
 }

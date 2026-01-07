@@ -42,6 +42,7 @@ public class StartHandler {
         this.coaService = coaService;
     }
 
+    //todo need to check UserSessionData.userStatus == BAR if only genarateCDR only
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
@@ -193,7 +194,7 @@ public class StartHandler {
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
                 .invoke(() -> {
                     log.infof("cdr write event started for user: %s", request.username());
-                    generateAndSendCDR(request, newSession, userSessionData.getUserStatus());
+                    generateAndSendCDR(request, newSession);
                 })
                 .onFailure().recoverWithUni(throwable -> {
                     log.errorf(throwable, "Failed to update cache for user: %s", request.username());
@@ -343,7 +344,7 @@ public class StartHandler {
             totalQuota += bucket.getCurrentBalance();
         }
 
-        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota,concurrency,templates);
+        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota,concurrency,templates,serviceBuckets.getFirst().getUserStatus());
     }
 
 
@@ -364,7 +365,7 @@ public class StartHandler {
         Session session = createSessionWithBalance(request, highestPriorityBalance);
         session.setGroupId(result.groupId());
         UserSessionData newUserSessionData = buildUserSessionData(
-                request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates);
+                request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates,result.userStatus);
 
         Uni<Void> userStorageUni = storeUserSessionData(request.username(), newUserSessionData);
 
@@ -374,12 +375,11 @@ public class StartHandler {
         }
 
         final Session finalSession = session;
-        final String finalUserStatus = newUserSessionData.getUserStatus();
         return userStorageUni
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
                 .onItem().invoke(unused -> {
                     log.infof("CDR write event started for user: %s", request.username());
-                    generateAndSendCDR(request, finalSession, finalUserStatus);
+                    generateAndSendCDR(request, finalSession);
                 });
     }
 
@@ -398,9 +398,10 @@ public class StartHandler {
             List<Balance> balanceList,
             String groupId,
             Session session,
-            Balance highestPriorityBalance,String templates) {
+            Balance highestPriorityBalance,String templates,String userStatus) {
 
         UserSessionData newUserSessionData = new UserSessionData();
+        newUserSessionData.setUserStatus(userStatus);
         newUserSessionData.setGroupId(groupId);
         newUserSessionData.setUserName(request.username());
         newUserSessionData.setConcurrency(concurrency);
@@ -495,7 +496,7 @@ public class StartHandler {
             List<Balance> balanceList,
             List<Balance> balanceGroupList,
             String groupId,
-            double totalQuota,long concurrency,String templates) {
+            double totalQuota,long concurrency,String templates,String userStatus) {
     }
 
     private static String getGroupId(AccountingRequestDto request, ServiceBucketInfo bucket, List<Balance> balanceGroupList, Balance balance, String groupId, List<Balance> balanceList) {
@@ -538,16 +539,7 @@ public class StartHandler {
         );
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session, String userStatus) {
-        // Skip CDR generation if userStatus is "BAR" (barred users)
-        if ("BAR".equals(userStatus)) {
-            log.infof("Skipping CDR generation for session: %s - userStatus is BAR",
-                    session.getSessionId());
-        } else {
-            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
-        }
+    private void generateAndSendCDR(AccountingRequestDto request, Session session) {
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
     }
-
-
-
 }

@@ -105,7 +105,7 @@ public class InterimHandler {
                     newSession.setGroupId(groupId);
                     UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)
                             .groupId(groupId).userName(request.username()).concurrency(concurrency)
-                            .balance(balanceList).sessions(new ArrayList<>(List.of(newSession))).build();
+                            .balance(balanceList).sessions(new ArrayList<>(List.of(newSession))).userStatus(serviceBuckets.getFirst().getUserStatus()).build();
                     return processAccountingRequest(newUserSessionData, request,traceId);
 
                 });
@@ -130,6 +130,12 @@ public class InterimHandler {
                     AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
 
         }
+
+        if("BARRED".equalsIgnoreCase(userData.getUserStatus())){
+            log.warnf("User status is BARRED for user: %s", request.username());
+            generateAndSendCDR(request,session);
+            return Uni.createFrom().voidItem();
+        }
         // Early return if session time hasn't increased
         if (request.sessionTime() <= session.getSessionTime()) {
             log.warnf("TraceId: %s Duplicate Session time unchanged for sessionId: %s", traceId,request.sessionId());
@@ -137,7 +143,6 @@ public class InterimHandler {
 
         } else {
             Session finalSession = session;
-            String userStatus = userData.getUserStatus();
             return accountingUtil.updateSessionAndBalance(userData, session, request,null)
                     .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
@@ -146,7 +151,7 @@ public class InterimHandler {
                         }
                         log.infof("Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
-                        generateAndSendCDR(request, finalSession, userStatus);
+                        generateAndSendCDR(request, finalSession);
                         return Uni.createFrom().voidItem();
 
                     });
@@ -182,14 +187,8 @@ public class InterimHandler {
         );
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session, String userStatus) {
-        // Skip CDR generation if userStatus is "BAR" (barred users)
-        if ("BAR".equals(userStatus)) {
-            log.infof("Skipping CDR generation for session: %s - userStatus is BAR",
-                    session.getSessionId());
-        } else {
-            CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
-        }
+    private void generateAndSendCDR(AccountingRequestDto request, Session session) {
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
     }
 
 

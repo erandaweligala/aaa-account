@@ -229,4 +229,9 @@ public class BucketService {
     }
 
 
+
+
+    public Uni<ApiResponse<String>> updateUserStatus(String userName,String status){
+        //todo implement need to update UserSessionData.userStatus and update cache and send COA 
+    }
 }
