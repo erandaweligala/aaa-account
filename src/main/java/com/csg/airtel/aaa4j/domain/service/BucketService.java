@@ -261,14 +261,13 @@ public class BucketService {
                             .userStatus(status)
                             .build();
 
-                    // Update cache
-                    //todo need send coa  any status update
+                    // Update cache and send COA for any status update
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
                             .call(() -> {
-                                // If status is BARRED, send COA to disconnect all active sessions
-                                if ("BARRED".equalsIgnoreCase(status) && userData.getSessions() != null && !userData.getSessions().isEmpty()) {
-                                    log.infof("User status changed to BARRED, sending COA to disconnect %d active sessions for user %s",
-                                            userData.getSessions().size(), userName);
+                                // Send COA to notify NAS about status update for all active sessions
+                                if (userData.getSessions() != null && !userData.getSessions().isEmpty()) {
+                                    log.infof("User status changed from %s to %s, sending COA to update %d active sessions for user %s",
+                                            oldStatus, status, userData.getSessions().size(), userName);
                                     return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null);
                                 }
                                 return Uni.createFrom().voidItem();
