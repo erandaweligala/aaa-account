@@ -262,6 +262,7 @@ public class BucketService {
                             .build();
 
                     // Update cache
+                    //todo need send coa  any status update
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
                             .call(() -> {
                                 // If status is BARRED, send COA to disconnect all active sessions
