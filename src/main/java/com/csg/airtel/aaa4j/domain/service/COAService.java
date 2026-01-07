@@ -47,7 +47,7 @@ public class COAService {
                                                 AppConstant.DISCONNECT_ACTION,
                                                 session.getNasIp(),
                                                 session.getFramedId(),
-                                                username
+                                                session.getUserName() !=null ?session.getUserName():username
                                         )
                                 )
                                 .invoke(() -> {

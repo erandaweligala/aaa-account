@@ -535,7 +535,8 @@ public class StartHandler {
                 request.nasIP(),
                 request.nasPortId(),
                 false,
-                0,null
+                0,null,
+                request.username()
         );
     }
 

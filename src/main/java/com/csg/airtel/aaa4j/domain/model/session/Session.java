@@ -23,5 +23,6 @@ public class Session {
     private boolean isNewSession;
     private long availableBalance;
     private String groupId;
+    private String userName;
 
 }

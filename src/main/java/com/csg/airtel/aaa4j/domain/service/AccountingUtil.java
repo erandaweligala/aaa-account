@@ -1284,11 +1284,6 @@ public class AccountingUtil {
     /**
      * Get complete group bucket data including balances and sessions.
      *
-     * Performance Note: This method fetches fresh group data on each call.
-     * For high TPS scenarios with repeated group data access in the same request,
-     * consider using .memoize().indefinitely() on the returned Uni to cache the
-     * result for the duration of the request chain.
-     *
      * @param groupId the group ID to fetch data for
      * @return Uni of UserSessionData for the group, or null if no group or default group
      */
