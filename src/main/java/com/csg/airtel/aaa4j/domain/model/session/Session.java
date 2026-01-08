@@ -15,6 +15,7 @@ public class Session {
     private String sessionId;
     private LocalDateTime sessionInitiatedTime;
     private String previousUsageBucketId;
+    private String serviceId;
     private Integer sessionTime;
     private Long previousTotalUsageQuotaValue;
     private String framedId;

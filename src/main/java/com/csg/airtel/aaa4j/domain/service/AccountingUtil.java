@@ -933,6 +933,7 @@ public class AccountingUtil {
         sessionData.setPreviousTotalUsageQuotaValue(totalUsage);
         sessionData.setSessionTime(sessionTime);
         sessionData.setPreviousUsageBucketId(foundBalance.getBucketId());
+        sessionData.setServiceId(foundBalance.getServiceId());
         sessionData.setSessionInitiatedTime(CACHED_NOW.get());
         sessionData.setAvailableBalance(foundBalance.getQuota()); // last available balance
 

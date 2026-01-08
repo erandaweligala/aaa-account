@@ -205,6 +205,7 @@ public class StartHandler {
     private Session createSessionWithBalance(AccountingRequestDto request, Balance balance) {
         Session session = createSession(request);
         session.setPreviousUsageBucketId(balance.getBucketId());
+        session.setServiceId(balance.getServiceId());
         return session;
     }
 
