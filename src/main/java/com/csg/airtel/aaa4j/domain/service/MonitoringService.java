@@ -2,6 +2,9 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.quarkus.redis.datasource.ReactiveRedisDataSource;
+import io.quarkus.redis.datasource.value.ReactiveValueCommands;
+import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -15,6 +18,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @ApplicationScoped
 public class MonitoringService {
     private static final Logger log = Logger.getLogger(MonitoringService.class);
+    private static final String COA_REQUEST_COUNT_CACHE_KEY = "coaRequestCount";
 
     private final Counter sessionsCreatedCounter;
     private final Counter sessionsTerminatedCounter;
@@ -24,8 +28,11 @@ public class MonitoringService {
     private volatile LocalDate currentDay;
     private final AtomicLong dailyCoaRequestCount;
 
+    // Redis cache for distributed daily COA count tracking
+    private final ReactiveValueCommands<String, Long> redisValueCommands;
+
     @Inject
-    public MonitoringService(MeterRegistry registry) {
+    public MonitoringService(MeterRegistry registry, ReactiveRedisDataSource reactiveRedisDataSource) {
         log.info("Initializing MonitoringService with Micrometer metrics");
 
         // Initialize counters
@@ -44,6 +51,9 @@ public class MonitoringService {
         // Initialize COA request cache for 24-hour tracking
         this.currentDay = LocalDate.now();
         this.dailyCoaRequestCount = new AtomicLong(0);
+
+        // Initialize Redis cache commands for distributed daily count tracking
+        this.redisValueCommands = reactiveRedisDataSource.value(String.class, Long.class);
 
         log.info("MonitoringService initialized successfully");
     }
@@ -116,6 +126,7 @@ public class MonitoringService {
     /**
      * Updates the daily COA request count.
      * Resets the counter if a new day has started (00:00).
+     * Syncs the count with Redis for distributed tracking.
      */
     private synchronized void updateDailyCoaCount() {
         LocalDate today = LocalDate.now();
@@ -126,10 +137,28 @@ public class MonitoringService {
                     currentDay, dailyCoaRequestCount.get());
             currentDay = today;
             dailyCoaRequestCount.set(0);
+
+            // Reset Redis cache for new day
+            redisValueCommands.set(COA_REQUEST_COUNT_CACHE_KEY, 0L)
+                    .subscribe().with(
+                            success -> log.debug("Redis COA count reset for new day"),
+                            error -> log.warnf("Failed to reset Redis COA count: %s", error.getMessage())
+                    );
         }
 
-        // Increment daily count
-        dailyCoaRequestCount.incrementAndGet();
+        // Increment daily count in memory
+        long newCount = dailyCoaRequestCount.incrementAndGet();
+
+        // Increment Redis cache (fire and forget for performance)
+        redisValueCommands.incr(COA_REQUEST_COUNT_CACHE_KEY)
+                .subscribe().with(
+                        redisCount -> {
+                            if (log.isDebugEnabled()) {
+                                log.debugf("Redis COA count incremented to: %d (local: %d)", redisCount, newCount);
+                            }
+                        },
+                        error -> log.warnf("Failed to increment Redis COA count: %s", error.getMessage())
+                );
     }
 
     /**
@@ -159,19 +188,46 @@ public class MonitoringService {
     /**
      * Get the daily COA request count for the current 24-hour period (00:00 to 24:00).
      * The count automatically resets at midnight.
+     * Reads from Redis cache (key: coaRequestCount) for distributed tracking.
+     * Falls back to in-memory count if Redis is unavailable.
      * Useful for monitoring and debugging.
      *
-     * @return Current day's COA request count
+     * @return Uni containing current day's COA request count
      */
-    //todo need getDailyCoaRequestCount add cache key = coaRequestCount
-    public long getDailyCoaRequestCount() {
-        // Ensure we're looking at today's count
+    public Uni<Long> getDailyCoaRequestCount() {
+        // Check if day has changed
         LocalDate today = LocalDate.now();
         if (!today.equals(currentDay)) {
             // Day has changed but updateDailyCoaCount hasn't been called yet
-            return 0;
+            if (log.isDebugEnabled()) {
+                log.debug("Day has changed, returning 0 for COA count");
+            }
+            return Uni.createFrom().item(0L);
         }
-        return dailyCoaRequestCount.get();
+
+        // Fetch from Redis cache (primary source for distributed systems)
+        return redisValueCommands.get(COA_REQUEST_COUNT_CACHE_KEY)
+                .onItem().transform(count -> {
+                    if (count != null) {
+                        if (log.isDebugEnabled()) {
+                            log.debugf("Retrieved daily COA count from Redis: %d", count);
+                        }
+                        return count;
+                    } else {
+                        // Redis cache not initialized yet, return in-memory count
+                        long inMemoryCount = dailyCoaRequestCount.get();
+                        if (log.isDebugEnabled()) {
+                            log.debugf("Redis cache empty, using in-memory count: %d", inMemoryCount);
+                        }
+                        return inMemoryCount;
+                    }
+                })
+                .onFailure().recoverWithItem(() -> {
+                    // Fall back to in-memory count if Redis fails
+                    long inMemoryCount = dailyCoaRequestCount.get();
+                    log.warnf("Failed to retrieve COA count from Redis, using in-memory count: %d", inMemoryCount);
+                    return inMemoryCount;
+                });
     }
 
 }
