@@ -51,7 +51,8 @@ public class SQLConstant {
                            CREATED_DATE,
                            CREATED_BY,
                            MODIFIED_DATE,
-                           MODIFIED_BY
+                           MODIFIED_BY,
+                           SUPER_TEMPLATE_ID
                         FROM MESSAGE_TEMPLATE
                         WHERE STATUS = 'ACTIVE'
                         ORDER BY TEMPLATE_ID
