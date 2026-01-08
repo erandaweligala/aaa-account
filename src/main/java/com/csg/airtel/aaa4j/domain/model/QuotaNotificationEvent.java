@@ -16,6 +16,7 @@ public record QuotaNotificationEvent(
         @JsonProperty("bucketId") String bucketId,
         @JsonProperty("thresholdLevel") Long thresholdLevel,
         @JsonProperty("initialBalance") Long initialBalance,
-        @JsonProperty("templateId") Long templateId
+        @JsonProperty("templateId") Long templateId,
+        @JsonProperty("superTemplateId") Long superTemplateId
 ) {
 }
