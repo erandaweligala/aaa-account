@@ -124,7 +124,7 @@ public class CdrMappingUtil {
         SessionCdr cdrSession = buildSessionCdr(request, metrics.getSessionTime(), metrics.getEventType());
         User cdrUser = buildUserCdr(request,session.getGroupId());
         Network cdrNetwork = buildNetworkCdr(request);
-        Accounting cdrAccounting = buildAccountingCdr(metrics, session.getServiceId(), session.getPreviousUsageBucketId());
+        Accounting cdrAccounting = buildAccountingCdr(metrics, session.getServiceId(), session.getPreviousUsageBucketId(),session.getPreviousTotalUsageQuotaValue());
 
         Payload payload = Payload.builder()
                 .session(cdrSession)
@@ -190,7 +190,7 @@ public class CdrMappingUtil {
     /**
      * Builds an Accounting CDR object from metrics
      */
-    public static Accounting buildAccountingCdr(AccountingMetrics metrics, String serviceId, String bucketId) {
+    public static Accounting buildAccountingCdr(AccountingMetrics metrics, String serviceId, String bucketId,long previousUsage) {
         long totalUsage = calculateTotalUsage(metrics.getInputOctets(), metrics.getOutputOctets(),
                 metrics.getInputGigawords(), metrics.getOutputGigawords());
         return Accounting.builder()
@@ -205,6 +205,7 @@ public class CdrMappingUtil {
                 .acctOutputGigawords(metrics.getOutputGigawords() != null ? metrics.getOutputGigawords() : 0)
                 .serviceId(serviceId)
                 .bucketId(bucketId)
+                .sessionUsage(totalUsage - previousUsage)
                 .build();
     }
 

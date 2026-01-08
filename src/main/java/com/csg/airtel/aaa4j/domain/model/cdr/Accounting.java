@@ -42,4 +42,6 @@ public class Accounting {
 
     @JsonProperty("bucketId")
     private String bucketId;
+    @JsonProperty("sessionUsage")
+    private long sessionUsage;
 }

@@ -15,7 +15,6 @@ public class Session {
     private String sessionId;
     private LocalDateTime sessionInitiatedTime;
     private String previousUsageBucketId;
-    private String serviceId;
     private Integer sessionTime;
     private Long previousTotalUsageQuotaValue;
     private String framedId;
@@ -25,5 +24,6 @@ public class Session {
     private long availableBalance;
     private String groupId;
     private String userName;
+    private String serviceId;
 
 }
