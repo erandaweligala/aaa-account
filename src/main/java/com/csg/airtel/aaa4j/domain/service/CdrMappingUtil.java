@@ -317,14 +317,23 @@ public class CdrMappingUtil {
      * @param session The session data
      * @param accountProducer The producer to send the CDR event
      * @param cdrBuilder Function that builds the appropriate CDR event type
+     * @param serviceId The service ID for the accounting CDR
+     * @param bucketId The bucket ID for the accounting CDR
      */
     public static void generateAndSendCDR(
             AccountingRequestDto request,
             Session session,
             AccountProducer accountProducer,
-            BiFunction<AccountingRequestDto, Session, AccountingCDREvent> cdrBuilder) {
+            BiFunction<AccountingRequestDto, Session, AccountingCDREvent> cdrBuilder,
+            String serviceId,
+            String bucketId) {
         try {
             AccountingCDREvent cdrEvent = cdrBuilder.apply(request, session);
+            // Update the accounting section with the provided serviceId and bucketId
+            if (cdrEvent.getPayload() != null && cdrEvent.getPayload().getAccounting() != null) {
+                cdrEvent.getPayload().getAccounting().setServiceId(serviceId);
+                cdrEvent.getPayload().getAccounting().setBucketId(bucketId);
+            }
 
             // Run asynchronously without blocking
             accountProducer.produceAccountingCDREvent(cdrEvent)
