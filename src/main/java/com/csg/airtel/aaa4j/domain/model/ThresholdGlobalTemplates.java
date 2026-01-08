@@ -9,4 +9,5 @@ public class ThresholdGlobalTemplates {
     private String massage;
     private Long threshold;
     private String[] params;
+    private Long superTemplateId;
 }

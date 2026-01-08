@@ -24,6 +24,7 @@ public class MessageTemplate {
     private String createdBy;
     private LocalDateTime modifiedDate;
     private String modifiedBy;
+    private Long superTemplateId;
 
     /**
      * Convert to ThresholdGlobalTemplates for quota notification usage.
@@ -40,6 +41,8 @@ public class MessageTemplate {
 
         // Extract parameters from message content (e.g., {username}, {bucketId}, {availableQuota})
         template.setParams(extractTemplateParams(messageContent));
+
+        template.setSuperTemplateId(superTemplateId);
 
         return template;
     }

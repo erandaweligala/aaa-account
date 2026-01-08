@@ -99,8 +99,8 @@ public class MessageTemplateCacheService {
         // Cache in Redis (fire and forget for startup performance)
         valueCommands.set(cacheKey, thresholdTemplate)
                 .subscribe().with(
-                        success -> LOG.debugf("Cached template ID %d in Redis: %s (%d%%)",
-                                template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage()),
+                        success -> LOG.debugf("Cached template ID %d (super template ID: %d) in Redis: %s (%d%%)",
+                                template.getTemplateId(), template.getSuperTemplateId(), template.getTemplateName(), template.getQuotaPercentage()),
                         error -> LOG.warnf("Failed to cache template ID %d in Redis: %s",
                                 template.getTemplateId(), error.getMessage())
                 );
@@ -108,8 +108,8 @@ public class MessageTemplateCacheService {
         // Cache in memory for fast access
         inMemoryCache.put(template.getTemplateId(), thresholdTemplate);
 
-        LOG.debugf("Cached template ID %d in-memory: %s (%d%%)",
-                template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
+        LOG.debugf("Cached template ID %d (super template ID: %d) in-memory: %s (%d%%)",
+                template.getTemplateId(), template.getSuperTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
     }
 
     /**

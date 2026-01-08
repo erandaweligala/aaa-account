@@ -188,7 +188,8 @@ public class QuotaNotificationService {
                 balance.getBucketId(),
                 template.getThreshold(),
                 balance.getInitialBalance(),
-                templateId
+                templateId,
+                template.getSuperTemplateId()
         );
     }
 
