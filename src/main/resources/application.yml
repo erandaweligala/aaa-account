@@ -119,6 +119,10 @@ idle-session:
   scheduler-interval: 60m    # Run every 60 minutes
   batch-size: 1000          # Process 1000 sessions per batch (increased for scale)
 
+# Service Bucket Cache Configuration
+service-bucket-cache:
+  ttl-seconds: 300          # 5 minutes default TTL for service bucket cache
+
 # Kafka Producer/Consumer Configuration - HIGH TPS OPTIMIZED for 2500 TPS
 mp:
   messaging:

@@ -9,6 +9,7 @@ import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import com.csg.airtel.aaa4j.external.clients.ServiceBucketCacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -27,15 +28,17 @@ public class StartHandler {
     private static final Logger log = Logger.getLogger(StartHandler.class);
     private final CacheClient utilCache;
     private final UserBucketRepository userRepository;
+    private final ServiceBucketCacheClient serviceBucketCache;
     private final AccountProducer  accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, ServiceBucketCacheClient serviceBucketCache, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
+        this.serviceBucketCache = serviceBucketCache;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
@@ -279,7 +282,9 @@ public class StartHandler {
         log.infof("No existing session data found for user: %s. Creating new session data.",
                 request.username());
 
-        return userRepository.getServiceBucketsByUserName(request.username())
+        return serviceBucketCache.getOrFetchServiceBuckets(
+                        request.username(),
+                        () -> userRepository.getServiceBucketsByUserName(request.username()))
                 .onItem().transformToUni(serviceBuckets ->
                         processServiceBuckets(request, serviceBuckets))
                 .onFailure().recoverWithUni(throwable -> {

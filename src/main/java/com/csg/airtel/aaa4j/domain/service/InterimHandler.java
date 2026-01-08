@@ -8,6 +8,7 @@ import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import com.csg.airtel.aaa4j.external.clients.ServiceBucketCacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -29,15 +30,17 @@ public class InterimHandler {
 
     private final CacheClient cacheUtil;
     private final UserBucketRepository userRepository;
+    private final ServiceBucketCacheClient serviceBucketCache;
     private final AccountingUtil accountingUtil;
     private final AccountProducer accountProducer;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
 
     @Inject
-    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
+    public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, ServiceBucketCacheClient serviceBucketCache, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
+        this.serviceBucketCache = serviceBucketCache;
         this.accountingUtil = accountingUtil;
         this.accountProducer = accountProducer;
         this.sessionLifecycleManager = sessionLifecycleManager;
@@ -80,7 +83,9 @@ public class InterimHandler {
         if (log.isDebugEnabled()) {
             log.debugf("No cache entry found for user: %s", request.username());
         }
-        return userRepository.getServiceBucketsByUserName(request.username())
+        return serviceBucketCache.getOrFetchServiceBuckets(
+                        request.username(),
+                        () -> userRepository.getServiceBucketsByUserName(request.username()))
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
                         log.warnf("No service buckets found for user: %s", request.username());

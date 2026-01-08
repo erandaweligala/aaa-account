@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
 import com.csg.airtel.aaa4j.domain.service.NotificationTrackingService;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import com.csg.airtel.aaa4j.external.clients.ServiceBucketCacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -28,13 +29,16 @@ public class RedisResource {
 
     final CacheClient cacheClient;
 
+    final ServiceBucketCacheClient serviceBucketCache;
+
     final AccountingHandlerFactory accountingHandlerFactory;
 
     final NotificationTrackingService notificationTrackingService;
 
-    public RedisResource(UserBucketRepository userRepository, CacheClient cacheClient, AccountingHandlerFactory accountingHandlerFactory, NotificationTrackingService notificationTrackingService) {
+    public RedisResource(UserBucketRepository userRepository, CacheClient cacheClient, ServiceBucketCacheClient serviceBucketCache, AccountingHandlerFactory accountingHandlerFactory, NotificationTrackingService notificationTrackingService) {
         this.userRepository = userRepository;
         this.cacheClient = cacheClient;
+        this.serviceBucketCache = serviceBucketCache;
         this.accountingHandlerFactory = accountingHandlerFactory;
         this.notificationTrackingService = notificationTrackingService;
     }
@@ -109,6 +113,50 @@ public class RedisResource {
                 .onItem().transform(result -> {
                     Map<String, Object> res = new HashMap<>();
                     res.put("Notification-clear", result);
+                    return res;
+                });
+    }
+
+    @DELETE
+    @Path("/service-bucket-cache/invalidate")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Map<String, Object>> invalidateServiceBucketCache(@QueryParam("username") String username) {
+        return serviceBucketCache
+                .invalidateCache(username)
+                .onItem().transform(deleted -> {
+                    Map<String, Object> res = new HashMap<>();
+                    res.put("username", username);
+                    res.put("invalidated", deleted);
+                    res.put("message", deleted ? "Cache invalidated successfully" : "Cache not found");
+                    return res;
+                });
+    }
+
+    @GET
+    @Path("/service-bucket-cache/exists")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Map<String, Object>> checkServiceBucketCacheExists(@QueryParam("username") String username) {
+        return serviceBucketCache
+                .exists(username)
+                .onItem().transform(exists -> {
+                    Map<String, Object> res = new HashMap<>();
+                    res.put("username", username);
+                    res.put("exists", exists);
+                    return res;
+                });
+    }
+
+    @GET
+    @Path("/service-bucket-cache/ttl")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Map<String, Object>> getServiceBucketCacheTTL(@QueryParam("username") String username) {
+        return serviceBucketCache
+                .getRemainingTTL(username)
+                .onItem().transform(ttl -> {
+                    Map<String, Object> res = new HashMap<>();
+                    res.put("username", username);
+                    res.put("ttl_seconds", ttl);
+                    res.put("status", ttl == -2 ? "not_found" : ttl == -1 ? "no_expiry" : "active");
                     return res;
                 });
     }
