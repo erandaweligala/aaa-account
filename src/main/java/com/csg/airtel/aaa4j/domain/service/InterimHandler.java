@@ -188,6 +188,8 @@ public class InterimHandler {
         );
     }
 
+
+    //todo need to add serviceId , this method argument remove session.serviceId
     private void generateAndSendCDR(AccountingRequestDto request, Session session) {
         CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
     }
