@@ -163,6 +163,7 @@ public class MonitoringService {
      *
      * @return Current day's COA request count
      */
+    //todo need add redis cache
     public long getDailyCoaRequestCount() {
         // Ensure we're looking at today's count
         LocalDate today = LocalDate.now();
@@ -173,13 +174,4 @@ public class MonitoringService {
         return dailyCoaRequestCount.get();
     }
 
-    /**
-     * Get the current day being tracked for daily COA count.
-     * Useful for testing and debugging.
-     *
-     * @return Current day being tracked
-     */
-    public LocalDate getCurrentDay() {
-        return currentDay;
-    }
 }
