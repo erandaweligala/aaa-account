@@ -53,14 +53,9 @@ public class QuotaNotificationService {
             return Uni.createFrom().voidItem();
         }
 
-        String templateIds = userData.getSuperTemplateId();
-        if (templateIds == null || templateIds.trim().isEmpty()) {
+        String superTemplateId = userData.getSuperTemplateId();
+        if (superTemplateId == null || superTemplateId.trim().isEmpty()) {
             LOG.debugf("No threshold templates configured for user: %s", userData.getUserName());
-            return Uni.createFrom().voidItem();
-        }
-
-        List<Long> activeTemplateIds = parseTemplateIds(templateIds);
-        if (activeTemplateIds.isEmpty()) {
             return Uni.createFrom().voidItem();
         }
 
@@ -76,33 +71,40 @@ public class QuotaNotificationService {
         LOG.debugf("Checking thresholds for user=%s, bucket=%s, oldUsage=%.2f%%, newUsage=%.2f%%",
                 userData.getUserName(), balance.getBucketId(), oldUsagePercentage, newUsagePercentage);
 
-        // Check each configured threshold
-        List<Uni<Void>> notifications = new ArrayList<>();
-        for (Long templateId : activeTemplateIds) {
-            Uni<Void> notification = templateCacheService.getTemplate(templateId)
-                    .onItem().transformToUni(template -> {
-                        if (template != null) {
-                            return checkThreshold(
-                                    userData, balance, template, templateId, oldUsagePercentage, newUsagePercentage, newQuota
-                            );
-                        }
-                        return Uni.createFrom().nullItem();
-                    });
-            notifications.add(notification);
-        }
+        // Batch fetch all templates by superTemplateId
+        return templateCacheService.getTemplatesBySuperTemplateId(superTemplateId)
+                .onItem().transformToUni(templates -> {
+                    if (templates.isEmpty()) {
+                        LOG.debugf("No templates found for superTemplateId: %s", superTemplateId);
+                        return Uni.createFrom().voidItem();
+                    }
 
-        if (notifications.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
+                    // Check each configured threshold
+                    List<Uni<Void>> notifications = new ArrayList<>();
+                    for (Map.Entry<Long, ThresholdGlobalTemplates> entry : templates.entrySet()) {
+                        Long templateId = entry.getKey();
+                        ThresholdGlobalTemplates template = entry.getValue();
 
-        // Publish all triggered notifications
-        return Uni.join().all(notifications).andFailFast()
-                .replaceWithVoid()
-                .onFailure().invoke(throwable ->
-                    LOG.errorf(throwable, "Failed to publish quota notifications for user: %s",
-                        userData.getUserName()))
-                .onFailure().recoverWithNull()
-                .replaceWithVoid();
+                        Uni<Void> notification = checkThreshold(
+                                userData, balance, template, templateId,
+                                oldUsagePercentage, newUsagePercentage, newQuota
+                        );
+                        notifications.add(notification);
+                    }
+
+                    if (notifications.isEmpty()) {
+                        return Uni.createFrom().voidItem();
+                    }
+
+                    // Publish all triggered notifications
+                    return Uni.join().all(notifications).andFailFast()
+                            .replaceWithVoid()
+                            .onFailure().invoke(throwable ->
+                                LOG.errorf(throwable, "Failed to publish quota notifications for user: %s",
+                                    userData.getUserName()))
+                            .onFailure().recoverWithNull()
+                            .replaceWithVoid();
+                });
     }
 
     /**
@@ -230,29 +232,6 @@ public class QuotaNotificationService {
         }
 
         return message;
-    }
-
-    /**
-     * Parse comma-separated template IDs from string.
-     */
-    private List<Long> parseTemplateIds(String templateIds) {
-        if (templateIds == null || templateIds.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        List<Long> ids = new ArrayList<>();
-        String[] parts = templateIds.split(",");
-
-        for (String part : parts) {
-            try {
-                Long id = Long.parseLong(part.trim());
-                ids.add(id);
-            } catch (NumberFormatException e) {
-                LOG.warnf("Invalid template ID: %s", part);
-            }
-        }
-
-        return ids;
     }
 
     /**
