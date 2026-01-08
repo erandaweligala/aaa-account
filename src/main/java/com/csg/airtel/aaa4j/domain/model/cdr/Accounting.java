@@ -36,4 +36,10 @@ public class Accounting {
 
     @JsonProperty("totalUsage")
     private Long totalUsage;
+
+    @JsonProperty("serviceId")
+    private String serviceId;
+
+    @JsonProperty("bucketId")
+    private String bucketId;
 }
