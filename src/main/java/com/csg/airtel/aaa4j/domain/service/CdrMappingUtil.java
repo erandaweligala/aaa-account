@@ -18,7 +18,6 @@ import java.util.function.BiFunction;
  * Utility class for mapping AccountingRequestDto and Session data to CDR events.
  * Provides common mapping logic used across all accounting handlers (Start, Interim, Stop).
  */
-//todo implement add filed serviceId and bucketId under Accounting
 public class CdrMappingUtil {
 
     private static final Logger log = Logger.getLogger(CdrMappingUtil.class);
@@ -125,7 +124,7 @@ public class CdrMappingUtil {
         SessionCdr cdrSession = buildSessionCdr(request, metrics.getSessionTime(), metrics.getEventType());
         User cdrUser = buildUserCdr(request,session.getGroupId());
         Network cdrNetwork = buildNetworkCdr(request);
-        Accounting cdrAccounting = buildAccountingCdr(metrics);
+        Accounting cdrAccounting = buildAccountingCdr(metrics, session.getServiceId(), session.getPreviousUsageBucketId());
 
         Payload payload = Payload.builder()
                 .session(cdrSession)
@@ -191,7 +190,7 @@ public class CdrMappingUtil {
     /**
      * Builds an Accounting CDR object from metrics
      */
-    public static Accounting buildAccountingCdr(AccountingMetrics metrics) {
+    public static Accounting buildAccountingCdr(AccountingMetrics metrics, String serviceId, String bucketId) {
         long totalUsage = calculateTotalUsage(metrics.getInputOctets(), metrics.getOutputOctets(),
                 metrics.getInputGigawords(), metrics.getOutputGigawords());
         return Accounting.builder()
@@ -204,6 +203,8 @@ public class CdrMappingUtil {
                 .totalUsage(totalUsage)
                 .acctInputGigawords(metrics.getInputGigawords() != null ? metrics.getInputGigawords() : 0)
                 .acctOutputGigawords(metrics.getOutputGigawords() != null ? metrics.getOutputGigawords() : 0)
+                .serviceId(serviceId)
+                .bucketId(bucketId)
                 .build();
     }
 
