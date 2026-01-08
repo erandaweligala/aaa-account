@@ -18,6 +18,7 @@ import java.util.function.BiFunction;
  * Utility class for mapping AccountingRequestDto and Session data to CDR events.
  * Provides common mapping logic used across all accounting handlers (Start, Interim, Stop).
  */
+//todo implement add filed serviceId and bucketId under Accounting
 public class CdrMappingUtil {
 
     private static final Logger log = Logger.getLogger(CdrMappingUtil.class);
@@ -222,7 +223,7 @@ public class CdrMappingUtil {
                 .nasIdentifier(null)
                 .nasIpAddress(session.getNasIp())
                 .nasPort(session.getNasPortId())
-                .nasPortType(null)
+                .nasPortType(session.getNasPortId() )
                 .sessionTime(String.valueOf(session.getSessionTime() != null ? session.getSessionTime() : 0))
                 .startTime(session.getSessionInitiatedTime() != null
                     ? session.getSessionInitiatedTime().atZone(java.time.ZoneId.systemDefault()).toInstant()
