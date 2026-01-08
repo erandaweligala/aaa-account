@@ -163,7 +163,7 @@ public class MonitoringService {
      *
      * @return Current day's COA request count
      */
-    //todo need add redis cache
+    //todo need getDailyCoaRequestCount add cache key = coaRequestCount
     public long getDailyCoaRequestCount() {
         // Ensure we're looking at today's count
         LocalDate today = LocalDate.now();
