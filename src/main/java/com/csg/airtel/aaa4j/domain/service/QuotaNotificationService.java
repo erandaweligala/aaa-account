@@ -53,7 +53,7 @@ public class QuotaNotificationService {
             return Uni.createFrom().voidItem();
         }
 
-        String templateIds = userData.getTemplateIds();
+        String templateIds = userData.getSuperTemplateId();
         if (templateIds == null || templateIds.trim().isEmpty()) {
             LOG.debugf("No threshold templates configured for user: %s", userData.getUserName());
             return Uni.createFrom().voidItem();
