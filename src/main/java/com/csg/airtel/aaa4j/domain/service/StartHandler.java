@@ -194,7 +194,7 @@ public class StartHandler {
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
                 .invoke(() -> {
                     log.infof("cdr write event started for user: %s", request.username());
-                    generateAndSendCDR(request, newSession);
+                    generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId());
                 })
                 .onFailure().recoverWithUni(throwable -> {
                     log.errorf(throwable, "Failed to update cache for user: %s", request.username());
@@ -380,7 +380,7 @@ public class StartHandler {
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
                 .onItem().invoke(unused -> {
                     log.infof("CDR write event started for user: %s", request.username());
-                    generateAndSendCDR(request, finalSession);
+                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
                 });
     }
 
@@ -541,7 +541,7 @@ public class StartHandler {
         );
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent);
+    private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent, serviceId, bucketId);
     }
 }

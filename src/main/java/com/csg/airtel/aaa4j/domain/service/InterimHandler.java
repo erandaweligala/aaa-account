@@ -133,7 +133,7 @@ public class InterimHandler {
 
         if("BARRED".equalsIgnoreCase(userData.getUserStatus())){
             log.warnf("User status is BARRED for user: %s", request.username());
-            generateAndSendCDR(request,session);
+            generateAndSendCDR(request, session, session.getServiceId(), session.getPreviousUsageBucketId());
             return Uni.createFrom().voidItem();
         }
         // Early return if session time hasn't increased
@@ -151,7 +151,7 @@ public class InterimHandler {
                         }
                         log.infof("Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
-                        generateAndSendCDR(request, finalSession);
+                        generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
                         return Uni.createFrom().voidItem();
 
                     });
@@ -189,9 +189,8 @@ public class InterimHandler {
     }
 
 
-    //todo need to add serviceId , this method argument remove session.serviceId
-    private void generateAndSendCDR(AccountingRequestDto request, Session session) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent);
+    private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
+        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent, serviceId, bucketId);
     }
 
 
