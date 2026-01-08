@@ -24,7 +24,6 @@ public class MonitoringService {
     private final Counter sessionsTerminatedCounter;
     private final Counter coaRequestsCounter;
 
-    // COA request cache for 24-hour tracking (00:00 to 24:00)
     private volatile LocalDate currentDay;
     private final AtomicLong dailyCoaRequestCount;
 
@@ -154,7 +153,7 @@ public class MonitoringService {
                 .subscribe().with(
                         redisCount -> {
                             if (log.isDebugEnabled()) {
-                                log.debugf("Redis COA count incremented to: %d (local: %d)", redisCount, newCount);
+                                log.debugf("Redis COA count incremented (local: %d)", newCount);
                             }
                         },
                         error -> log.warnf("Failed to increment Redis COA count: %s", error.getMessage())

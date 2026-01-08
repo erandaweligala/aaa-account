@@ -37,7 +37,6 @@ public class MessageTemplateRepository {
     private static final String COL_CREATED_BY = "CREATED_BY";
     private static final String COL_MODIFIED_DATE = "MODIFIED_DATE";
     private static final String COL_MODIFIED_BY = "MODIFIED_BY";
-    private static final String COL_SUPER_TEMPLATE_ID = "SUPER_TEMPLATE_ID";
 
     private static final int DEFAULT_TEMPLATE_LIST_CAPACITY = 20;
 
@@ -106,7 +105,6 @@ public class MessageTemplateRepository {
             template.setCreatedBy(row.getString(COL_CREATED_BY));
             template.setModifiedDate(row.getLocalDateTime(COL_MODIFIED_DATE));
             template.setModifiedBy(row.getString(COL_MODIFIED_BY));
-            template.setSuperTemplateId(row.getLong(COL_SUPER_TEMPLATE_ID));
 
             results.add(template);
         }

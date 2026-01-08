@@ -6,8 +6,8 @@ import lombok.Setter;
 @Getter
 @Setter
 public class ThresholdGlobalTemplates {
+    private String id;
     private String massage;
     private Long threshold;
     private String[] params;
-    private Long superTemplateId;
 }
