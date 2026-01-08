@@ -6,6 +6,9 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
+import java.time.LocalDate;
+import java.util.concurrent.atomic.AtomicLong;
+
 /**
  * Service for tracking application metrics using Micrometer.
  */
@@ -16,6 +19,10 @@ public class MonitoringService {
     private final Counter sessionsCreatedCounter;
     private final Counter sessionsTerminatedCounter;
     private final Counter coaRequestsCounter;
+
+    // COA request cache for 24-hour tracking (00:00 to 24:00)
+    private volatile LocalDate currentDay;
+    private final AtomicLong dailyCoaRequestCount;
 
     @Inject
     public MonitoringService(MeterRegistry registry) {
@@ -33,6 +40,10 @@ public class MonitoringService {
         this.coaRequestsCounter = Counter.builder("coa.requests.total")
                 .description("Total number of COA (Change of Authorization) requests sent")
                 .register(registry);
+
+        // Initialize COA request cache for 24-hour tracking
+        this.currentDay = LocalDate.now();
+        this.dailyCoaRequestCount = new AtomicLong(0);
 
         log.info("MonitoringService initialized successfully");
     }
@@ -85,15 +96,40 @@ public class MonitoringService {
     /**
      * Records a COA (Change of Authorization) request.
      * Should be called from COAService when sending COA disconnect events.
+     * Tracks both lifetime total and daily count (24-hour window from 00:00 to 24:00).
      */
-    //todo need add recordCOARequest cache coa count 24 hrs 00 t0 24
     public void recordCOARequest() {
         try {
+            // Increment lifetime counter
             coaRequestsCounter.increment();
-            log.debugf("COA request metric recorded. Total: %.0f", coaRequestsCounter.count());
+
+            // Update daily cache with automatic reset at midnight
+            updateDailyCoaCount();
+
+            log.debugf("COA request metric recorded. Total: %.0f, Daily: %d",
+                    coaRequestsCounter.count(), dailyCoaRequestCount.get());
         } catch (Exception e) {
             log.warnf("Failed to record COA request metric: %s", e.getMessage());
         }
+    }
+
+    /**
+     * Updates the daily COA request count.
+     * Resets the counter if a new day has started (00:00).
+     */
+    private synchronized void updateDailyCoaCount() {
+        LocalDate today = LocalDate.now();
+
+        // Check if we've moved to a new day
+        if (!today.equals(currentDay)) {
+            log.infof("New day detected. Resetting COA daily count. Previous day: %s, Count: %d",
+                    currentDay, dailyCoaRequestCount.get());
+            currentDay = today;
+            dailyCoaRequestCount.set(0);
+        }
+
+        // Increment daily count
+        dailyCoaRequestCount.incrementAndGet();
     }
 
     /**
@@ -113,10 +149,37 @@ public class MonitoringService {
     }
 
     /**
-     * Get current count of COA requests.
+     * Get current count of COA requests (lifetime total).
      * Useful for testing and debugging.
      */
     public double getCOARequestsCount() {
         return coaRequestsCounter.count();
+    }
+
+    /**
+     * Get the daily COA request count for the current 24-hour period (00:00 to 24:00).
+     * The count automatically resets at midnight.
+     * Useful for monitoring and debugging.
+     *
+     * @return Current day's COA request count
+     */
+    public long getDailyCoaRequestCount() {
+        // Ensure we're looking at today's count
+        LocalDate today = LocalDate.now();
+        if (!today.equals(currentDay)) {
+            // Day has changed but updateDailyCoaCount hasn't been called yet
+            return 0;
+        }
+        return dailyCoaRequestCount.get();
+    }
+
+    /**
+     * Get the current day being tracked for daily COA count.
+     * Useful for testing and debugging.
+     *
+     * @return Current day being tracked
+     */
+    public LocalDate getCurrentDay() {
+        return currentDay;
     }
 }
