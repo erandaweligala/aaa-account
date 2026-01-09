@@ -212,10 +212,9 @@ public class MessageTemplateCacheService {
             return Uni.createFrom().item(matchingTemplates);
         }
 
-        // Fallback: Check Redis cache for templates with this superTemplateId
         LOG.debugf("No templates found in-memory for superTemplateId: %d, checking Redis", superTemplateId);
 
-        // Use Redis KEYS pattern to find all matching keys (superTemplateId:templateId format)
+
         String pattern = superTemplateId + ":*";
 
         return keyCommands.keys(pattern)
@@ -246,7 +245,7 @@ public class MessageTemplateCacheService {
                             .toList();
 
                     // Combine all fetch operations
-                    return Uni.combine().all().unis(fetches).combinedWith(results ->
+                    return Uni.combine().all().unis(fetches).combinedWith(results -> //todo 'combinedWith(java.util.function.Function<java.util.List<?>,O>)' is deprecated and marked for removal
                             results.stream()
                                     .filter(obj -> obj instanceof ThresholdGlobalTemplates)
                                     .map(obj -> (ThresholdGlobalTemplates) obj)
