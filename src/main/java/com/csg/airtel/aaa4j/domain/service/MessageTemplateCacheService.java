@@ -245,7 +245,7 @@ public class MessageTemplateCacheService {
                             .toList();
 
                     // Combine all fetch operations
-                    return Uni.combine().all().unis(fetches).combinedWith(results -> //todo 'combinedWith(java.util.function.Function<java.util.List<?>,O>)' is deprecated and marked for removal
+                    return Uni.combine().all().unis(fetches).with(results ->
                             results.stream()
                                     .filter(obj -> obj instanceof ThresholdGlobalTemplates)
                                     .map(obj -> (ThresholdGlobalTemplates) obj)
