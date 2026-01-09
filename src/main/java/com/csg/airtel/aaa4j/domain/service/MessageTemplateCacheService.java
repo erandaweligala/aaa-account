@@ -180,7 +180,7 @@ public class MessageTemplateCacheService {
      * @return List of ThresholdGlobalTemplates matching the superTemplateId
      */
 
-    //todo if dont have  in memory values from get cahce
+    //todo if dont have values in  inmemory  need to get values from get cahce
     public Uni<List<ThresholdGlobalTemplates>> getTemplatesBySuperTemplateId(Long superTemplateId) {
         if (superTemplateId == null) {
             return Uni.createFrom().item(Collections.emptyList());
