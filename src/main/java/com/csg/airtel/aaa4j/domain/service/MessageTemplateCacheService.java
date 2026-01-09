@@ -16,6 +16,7 @@ import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @ApplicationScoped
@@ -168,6 +169,38 @@ public class MessageTemplateCacheService {
      */
     public Map<Long, ThresholdGlobalTemplates> getAllTemplates() {
         return new HashMap<>(inMemoryCache);
+    }
+
+    /**
+     * Get all templates matching a specific superTemplateId prefix.
+     * This retrieves all templates that belong to a super template group.
+     *
+     * @param superTemplateId the super template ID to filter by
+     * @return List of ThresholdGlobalTemplates matching the superTemplateId
+     */
+    public Uni<List<ThresholdGlobalTemplates>> getTemplatesBySuperTemplateId(Long superTemplateId) {
+        if (superTemplateId == null) {
+            return Uni.createFrom().item(java.util.Collections.emptyList());
+        }
+
+        LOG.debugf("Fetching all templates for superTemplateId: %d", superTemplateId);
+
+        // Filter in-memory cache for templates with matching superTemplateId prefix
+        // Templates are keyed as: superTemplateId + templateId (concatenated Long values)
+        List<ThresholdGlobalTemplates> matchingTemplates = inMemoryCache.entrySet().stream()
+                .filter(entry -> {
+                    // Check if the key starts with the superTemplateId
+                    // Since keys are composite (superTemplateId + templateId), we need to check the prefix
+                    String keyStr = String.valueOf(entry.getKey());
+                    String superIdStr = String.valueOf(superTemplateId);
+                    return keyStr.startsWith(superIdStr);
+                })
+                .map(Map.Entry::getValue)
+                .collect(java.util.stream.Collectors.toList());
+
+        LOG.debugf("Found %d templates for superTemplateId: %d", matchingTemplates.size(), superTemplateId);
+
+        return Uni.createFrom().item(matchingTemplates);
     }
 
     /**
