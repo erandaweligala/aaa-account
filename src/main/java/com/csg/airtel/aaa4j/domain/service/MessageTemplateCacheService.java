@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.domain.model.MessageTemplate;
 import com.csg.airtel.aaa4j.domain.model.ThresholdGlobalTemplates;
 import com.csg.airtel.aaa4j.external.repository.MessageTemplateRepository;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
+import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
 import io.quarkus.runtime.Startup;
 import io.smallrye.mutiny.Uni;
@@ -19,6 +20,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @ApplicationScoped
 @Startup
@@ -31,6 +33,8 @@ public class MessageTemplateCacheService {
 
     private final ReactiveValueCommands<String, ThresholdGlobalTemplates> valueCommands;
 
+    private final ReactiveKeyCommands<String> keyCommands;
+
     private final Map<Long, ThresholdGlobalTemplates> inMemoryCache;
 
     @Inject
@@ -39,6 +43,7 @@ public class MessageTemplateCacheService {
             ReactiveRedisDataSource reactiveRedisDataSource) {
         this.templateRepository = templateRepository;
         this.valueCommands = reactiveRedisDataSource.value(String.class, ThresholdGlobalTemplates.class);
+        this.keyCommands = reactiveRedisDataSource.key();
         this.inMemoryCache = new HashMap<>();
     }
 
@@ -175,12 +180,11 @@ public class MessageTemplateCacheService {
     /**
      * Get all templates matching a specific superTemplateId prefix.
      * This retrieves all templates that belong to a super template group.
+     * Falls back to Redis cache if not found in-memory.
      *
      * @param superTemplateId the super template ID to filter by
      * @return List of ThresholdGlobalTemplates matching the superTemplateId
      */
-
-    //todo if dont have values in  inmemory  need to get values from get cahce
     public Uni<List<ThresholdGlobalTemplates>> getTemplatesBySuperTemplateId(Long superTemplateId) {
         if (superTemplateId == null) {
             return Uni.createFrom().item(Collections.emptyList());
@@ -188,7 +192,7 @@ public class MessageTemplateCacheService {
 
         LOG.debugf("Fetching all templates for superTemplateId: %d", superTemplateId);
 
-        // Filter in-memory cache for templates with matching superTemplateId prefix
+        // Fast path: Filter in-memory cache for templates with matching superTemplateId prefix
         // Templates are keyed as: superTemplateId + templateId (concatenated Long values)
         List<ThresholdGlobalTemplates> matchingTemplates = inMemoryCache.entrySet().stream()
                 .filter(entry -> {
@@ -201,9 +205,86 @@ public class MessageTemplateCacheService {
                 .map(Map.Entry::getValue)
                 .toList();
 
-        LOG.debugf("Found %d templates for superTemplateId: %d", matchingTemplates.size(), superTemplateId);
+        LOG.debugf("Found %d templates in-memory for superTemplateId: %d", matchingTemplates.size(), superTemplateId);
 
-        return Uni.createFrom().item(matchingTemplates);
+        // If found in memory, return immediately
+        if (!matchingTemplates.isEmpty()) {
+            return Uni.createFrom().item(matchingTemplates);
+        }
+
+        // Fallback: Check Redis cache for templates with this superTemplateId
+        LOG.debugf("No templates found in-memory for superTemplateId: %d, checking Redis", superTemplateId);
+
+        // Use Redis KEYS pattern to find all matching keys (superTemplateId:templateId format)
+        String pattern = superTemplateId + ":*";
+
+        return keyCommands.keys(pattern)
+                .onItem().transformToUni(keys -> {
+                    if (keys == null || keys.isEmpty()) {
+                        LOG.warnf("No templates found in Redis for superTemplateId: %d", superTemplateId);
+                        return Uni.createFrom().item(Collections.<ThresholdGlobalTemplates>emptyList());
+                    }
+
+                    LOG.debugf("Found %d template keys in Redis for superTemplateId: %d", keys.size(), superTemplateId);
+
+                    // Fetch all templates from Redis
+                    List<Uni<ThresholdGlobalTemplates>> fetches = keys.stream()
+                            .map(key -> valueCommands.get(key)
+                                    .onItem().invoke(template -> {
+                                        if (template != null) {
+                                            // Cache in memory for future lookups
+                                            Long compositeKey = extractCompositeKey(key);
+                                            if (compositeKey != null) {
+                                                inMemoryCache.put(compositeKey, template);
+                                                LOG.debugf("Cached template from Redis to in-memory: %s", key);
+                                            }
+                                        }
+                                    })
+                                    .onFailure().invoke(error ->
+                                            LOG.errorf(error, "Error retrieving template from Redis: %s", key))
+                                    .onFailure().recoverWithNull())
+                            .toList();
+
+                    // Combine all fetch operations
+                    return Uni.combine().all().unis(fetches).combinedWith(results ->
+                            results.stream()
+                                    .filter(obj -> obj instanceof ThresholdGlobalTemplates)
+                                    .map(obj -> (ThresholdGlobalTemplates) obj)
+                                    .toList()
+                    );
+                })
+                .onFailure().invoke(error ->
+                        LOG.errorf(error, "Error retrieving templates from Redis for superTemplateId: %d", superTemplateId))
+                .onFailure().recoverWithItem(Collections.emptyList());
+    }
+
+    /**
+     * Extract composite key (superTemplateId + templateId) from Redis key format.
+     * Redis key format: "superTemplateId:templateId"
+     * Composite key format: superTemplateId concatenated with templateId
+     *
+     * @param redisKey the Redis key (e.g., "1234:5678")
+     * @return composite key as Long (e.g., 12345678) or null if invalid
+     */
+    private Long extractCompositeKey(String redisKey) {
+        try {
+            // Remove any prefix if exists and get the superTemplateId:templateId part
+            String keyPart = redisKey.contains(":") ? redisKey : null;
+            if (keyPart == null) {
+                return null;
+            }
+
+            String[] parts = keyPart.split(":");
+            if (parts.length >= 2) {
+                // Reconstruct the composite key: superTemplateId + templateId
+                Long superTemplateId = Long.parseLong(parts[0]);
+                Long templateId = Long.parseLong(parts[1]);
+                return Long.parseLong(superTemplateId.toString() + templateId.toString());
+            }
+        } catch (NumberFormatException e) {
+            LOG.warnf("Failed to extract composite key from Redis key: %s", redisKey);
+        }
+        return null;
     }
 
     /**
