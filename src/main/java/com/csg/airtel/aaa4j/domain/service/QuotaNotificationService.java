@@ -72,33 +72,39 @@ public class QuotaNotificationService {
         LOG.debugf("Checking thresholds for user=%s, bucket=%s, oldUsage=%.2f%%, newUsage=%.2f%%",
                 userData.getUserName(), balance.getBucketId(), oldUsagePercentage, newUsagePercentage);
 
-        // todo need to get all values prefix values  please complete full operation half complete
-        List<Uni<Void>> notifications = new ArrayList<>();
+        // Get all templates matching the superTemplateId prefix and check each threshold
+        return templateCacheService.getTemplatesBySuperTemplateId(superTemplateId)
+                .onItem().transformToUni(templates -> {
+                    if (templates == null || templates.isEmpty()) {
+                        LOG.debugf("No templates found for superTemplateId: %d", superTemplateId);
+                        return Uni.createFrom().voidItem();
+                    }
 
-            Uni<Void> notification = templateCacheService.getTemplate(superTemplateId)
-                    .onItem().transformToUni(template -> {
-                        if (template != null) {
-                            return checkThreshold(
-                                    userData, balance, template, superTemplateId, oldUsagePercentage, newUsagePercentage, newQuota
-                            );
-                        }
-                        return Uni.createFrom().nullItem();
-                    });
-            notifications.add(notification);
+                    LOG.debugf("Processing %d templates for superTemplateId: %d", templates.size(), superTemplateId);
 
+                    // Create a notification check for each template
+                    List<Uni<Void>> notifications = new ArrayList<>();
+                    for (ThresholdGlobalTemplates template : templates) {
+                        Uni<Void> notification = checkThreshold(
+                                userData, balance, template, superTemplateId,
+                                oldUsagePercentage, newUsagePercentage, newQuota
+                        );
+                        notifications.add(notification);
+                    }
 
-        if (notifications.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
+                    if (notifications.isEmpty()) {
+                        return Uni.createFrom().voidItem();
+                    }
 
-        // Publish all triggered notifications
-        return Uni.join().all(notifications).andFailFast()
-                .replaceWithVoid()
-                .onFailure().invoke(throwable ->
-                    LOG.errorf(throwable, "Failed to publish quota notifications for user: %s",
-                        userData.getUserName()))
-                .onFailure().recoverWithNull()
-                .replaceWithVoid();
+                    // Publish all triggered notifications
+                    return Uni.join().all(notifications).andFailFast()
+                            .replaceWithVoid()
+                            .onFailure().invoke(throwable ->
+                                    LOG.errorf(throwable, "Failed to publish quota notifications for user: %s",
+                                            userData.getUserName()))
+                            .onFailure().recoverWithNull()
+                            .replaceWithVoid();
+                });
     }
 
     /**
