@@ -42,7 +42,6 @@ public class StartHandler {
         this.coaService = coaService;
     }
 
-    //todo need to check UserSessionData.userStatus == BAR if only genarateCDR only
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
@@ -394,6 +393,7 @@ public class StartHandler {
                 request.username());
     }
 
+    @SuppressWarnings("java:S107")
     private UserSessionData buildUserSessionData(
             AccountingRequestDto request,long concurrency,
             List<Balance> balanceList,
@@ -407,7 +407,7 @@ public class StartHandler {
         newUserSessionData.setUserName(request.username());
         newUserSessionData.setConcurrency(concurrency);
         newUserSessionData.setBalance(balanceList);
-        newUserSessionData.setSuperTemplateId(templates);
+        newUserSessionData.setTemplateIds(templates);
         if (!isGroupBalance(highestPriorityBalance, request.username())) {
             newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
         }

@@ -15,8 +15,8 @@ import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.Map;
 
 @ApplicationScoped
 @Startup
@@ -158,112 +158,6 @@ public class MessageTemplateCacheService {
                 .onFailure().invoke(error ->
                         LOG.errorf(error, "Error retrieving template ID %d from Redis", templateId))
                 .onFailure().recoverWithNull();
-    }
-
-    /**
-     * Get multiple templates by superTemplateId (comma-separated template IDs).
-     * Optimized batch retrieval from cache.
-     *
-     * @param superTemplateId comma-separated string of template IDs (e.g., "1,2,3")
-     * @return Uni containing Map of templateId to ThresholdGlobalTemplates
-     */
-    @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
-    )
-    @Retry(
-            maxRetries = 2,
-            delay = 100,
-            maxDuration = 10000
-    )
-    @Timeout(value = 10000)
-    public Uni<Map<Long, ThresholdGlobalTemplates>> getTemplatesBySuperTemplateId(String superTemplateId) {
-        if (superTemplateId == null || superTemplateId.trim().isEmpty()) {
-            return Uni.createFrom().item(Collections.emptyMap());
-        }
-
-        // Parse template IDs
-        List<Long> templateIds = parseTemplateIds(superTemplateId);
-        if (templateIds.isEmpty()) {
-            return Uni.createFrom().item(Collections.emptyMap());
-        }
-
-        LOG.debugf("Fetching %d templates for superTemplateId: %s", templateIds.size(), superTemplateId);
-
-        // First, try to get all templates from in-memory cache
-        Map<Long, ThresholdGlobalTemplates> result = new HashMap<>();
-        List<Long> missingIds = new ArrayList<>();
-
-        for (Long templateId : templateIds) {
-            ThresholdGlobalTemplates template = inMemoryCache.get(templateId);
-            if (template != null) {
-                result.put(templateId, template);
-            } else {
-                missingIds.add(templateId);
-            }
-        }
-
-        // If all templates found in memory, return immediately
-        if (missingIds.isEmpty()) {
-            LOG.debugf("All %d templates found in in-memory cache", result.size());
-            return Uni.createFrom().item(result);
-        }
-
-        LOG.debugf("%d templates found in memory, %d missing - checking Redis", result.size(), missingIds.size());
-
-        // Fetch missing templates from Redis
-        List<Uni<Void>> redisFetches = missingIds.stream()
-                .map(templateId -> {
-                    String cacheKey = CACHE_KEY_PREFIX + templateId;
-                    return valueCommands.get(cacheKey)
-                            .onItem().invoke(template -> {
-                                if (template != null) {
-                                    result.put(templateId, template);
-                                    inMemoryCache.put(templateId, template);
-                                    LOG.debugf("Template ID %d retrieved from Redis and cached in-memory", templateId);
-                                } else {
-                                    LOG.warnf("Template ID %d not found in Redis cache", templateId);
-                                }
-                            })
-                            .onFailure().invoke(error ->
-                                    LOG.errorf(error, "Error retrieving template ID %d from Redis", templateId))
-                            .onFailure().recoverWithNull()
-                            .replaceWithVoid();
-                })
-                .collect(Collectors.toList());
-
-        // Wait for all Redis fetches to complete
-        return Uni.join().all(redisFetches).andFailFast()
-                .replaceWith(result)
-                .onItem().invoke(templates ->
-                        LOG.debugf("Batch retrieval completed: %d templates retrieved", templates.size()));
-    }
-
-    /**
-     * Parse comma-separated template IDs from string.
-     * @param templateIds comma-separated string of template IDs
-     * @return List of parsed template IDs
-     */
-    private List<Long> parseTemplateIds(String templateIds) {
-        if (templateIds == null || templateIds.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
-
-        List<Long> ids = new ArrayList<>();
-        String[] parts = templateIds.split(",");
-
-        for (String part : parts) {
-            try {
-                Long id = Long.parseLong(part.trim());
-                ids.add(id);
-            } catch (NumberFormatException e) {
-                LOG.warnf("Invalid template ID in superTemplateId: %s", part);
-            }
-        }
-
-        return ids;
     }
 
     /**

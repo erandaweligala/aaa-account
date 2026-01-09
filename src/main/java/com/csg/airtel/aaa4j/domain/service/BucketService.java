@@ -21,6 +21,8 @@ import java.util.Objects;
 @ApplicationScoped
 public class BucketService {
     private static final Logger log = Logger.getLogger(BucketService.class);
+    public static final String USER_NOT_FOUND = "User not found";
+    public static final String USERNAME_IS_REQUIRED = "Username is required";
     private final CacheClient cacheClient;
     private final COAService  coaService;
 
@@ -72,7 +74,7 @@ public class BucketService {
     public Uni<ApiResponse<Balance>> addBucketBalance(String userName, BalanceWrapper balance) {
         // Input validation
         if (userName == null || userName.isBlank()) {
-            return Uni.createFrom().item(createErrorResponse("Username is required"));
+            return Uni.createFrom().item(createErrorResponse(USERNAME_IS_REQUIRED));
         }
         if (balance == null) {
             return Uni.createFrom().item(createErrorResponse("Balance is required"));
@@ -134,7 +136,7 @@ public class BucketService {
         log.infof("Updating bucket Balance for user %s", userName);
         // Input validation
         if (userName == null || userName.isBlank()) {
-            return Uni.createFrom().item(createErrorResponse("Username is required"));
+            return Uni.createFrom().item(createErrorResponse(USERNAME_IS_REQUIRED));
         }
         if (balance == null) {
             return Uni.createFrom().item(createErrorResponse("Balance is required"));
@@ -150,7 +152,7 @@ public class BucketService {
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
                     if (userData == null) {
-                        return Uni.createFrom().item(createErrorResponse("User not found"));
+                        return Uni.createFrom().item(createErrorResponse(USER_NOT_FOUND));
                     }
 
                     List<Balance> existingBalances = userData.getBalance() != null
@@ -208,7 +210,7 @@ public class BucketService {
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
                     if (userData == null) {
-                        return Uni.createFrom().item(createErrorResponse("User not found"));
+                        return Uni.createFrom().item(createErrorResponse(USER_NOT_FOUND));
                     }
                    return coaService.clearAllSessionsAndSendCOA(userData,userName,sessionId)
                            .invoke(() -> userData.getSessions().clear())
@@ -236,7 +238,7 @@ public class BucketService {
 
         // Input validation
         if (userName == null || userName.isBlank()) {
-            return Uni.createFrom().item(createErrorResponseString("Username is required"));
+            return Uni.createFrom().item(createErrorResponseString(USERNAME_IS_REQUIRED));
         }
         if (status == null || status.isBlank()) {
             return Uni.createFrom().item(createErrorResponseString("Status is required"));
@@ -250,7 +252,7 @@ public class BucketService {
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
                     if (userData == null) {
-                        return Uni.createFrom().item(createErrorResponseString("User not found"));
+                        return Uni.createFrom().item(createErrorResponseString(USER_NOT_FOUND));
                     }
 
                     String oldStatus = userData.getUserStatus();
