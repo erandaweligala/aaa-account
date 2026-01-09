@@ -15,6 +15,7 @@ import org.eclipse.microprofile.faulttolerance.Retry;
 import org.eclipse.microprofile.faulttolerance.Timeout;
 import org.jboss.logging.Logger;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -178,9 +179,11 @@ public class MessageTemplateCacheService {
      * @param superTemplateId the super template ID to filter by
      * @return List of ThresholdGlobalTemplates matching the superTemplateId
      */
+
+    //todo if dont have  in memory values from get cahce
     public Uni<List<ThresholdGlobalTemplates>> getTemplatesBySuperTemplateId(Long superTemplateId) {
         if (superTemplateId == null) {
-            return Uni.createFrom().item(java.util.Collections.emptyList());
+            return Uni.createFrom().item(Collections.emptyList());
         }
 
         LOG.debugf("Fetching all templates for superTemplateId: %d", superTemplateId);
@@ -196,7 +199,7 @@ public class MessageTemplateCacheService {
                     return keyStr.startsWith(superIdStr);
                 })
                 .map(Map.Entry::getValue)
-                .collect(java.util.stream.Collectors.toList());
+                .toList();
 
         LOG.debugf("Found %d templates for superTemplateId: %d", matchingTemplates.size(), superTemplateId);
 
