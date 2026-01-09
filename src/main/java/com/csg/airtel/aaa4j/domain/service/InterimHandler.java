@@ -103,7 +103,7 @@ public class InterimHandler {
                     }
                     Session newSession = createSession(request);
                     newSession.setGroupId(groupId);
-                    UserSessionData newUserSessionData =  UserSessionData.builder().templateIds(templates)
+                    UserSessionData newUserSessionData =  UserSessionData.builder().superTemplateId(templates)
                             .groupId(groupId).userName(request.username()).concurrency(concurrency)
                             .balance(balanceList).sessions(new ArrayList<>(List.of(newSession))).userStatus(serviceBuckets.getFirst().getUserStatus()).build();
                     return processAccountingRequest(newUserSessionData, request,traceId);

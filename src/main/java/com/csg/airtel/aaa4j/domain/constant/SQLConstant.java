@@ -40,20 +40,12 @@ public class SQLConstant {
             """;
 
     public static final String QUERY_MESSAGE_TEMPLATES = """
-                        SELECT
-                           TEMPLATE_ID,
-                           STATUS,
-                           TEMPLATE_NAME,
-                           MESSAGE_TYPE,
-                           DAYS_TO_EXPIRE,
-                           QUOTA_PERCENTAGE,
-                           MESSAGE_CONTENT,
-                           CREATED_DATE,
-                           CREATED_BY,
-                           MODIFIED_DATE,
-                           MODIFIED_BY
-                        FROM MESSAGE_TEMPLATE
-                        WHERE STATUS = 'ACTIVE'
-                        ORDER BY TEMPLATE_ID
-            """;
+    SELECT
+        ID,
+        MESSAGE_CONTENT,
+        MESSAGE_TYPE,
+        QUOTA_PERCENTAGE,
+        SUPER_TEMPLATE_ID
+    FROM CHILD_TEMPLATE_TABLE
+    """;
 }

@@ -13,17 +13,13 @@ import java.time.LocalDateTime;
 @Setter
 public class MessageTemplate {
 
+    private Long superTemplateId;
     private Long templateId;
-    private String status;
     private String templateName;
     private String messageType;
-    private Integer daysToExpire;
     private Integer quotaPercentage;
     private String messageContent;
-    private LocalDateTime createdDate;
-    private String createdBy;
-    private LocalDateTime modifiedDate;
-    private String modifiedBy;
+
 
     /**
      * Convert to ThresholdGlobalTemplates for quota notification usage.

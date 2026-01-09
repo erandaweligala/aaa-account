@@ -53,16 +53,12 @@ public class QuotaNotificationService {
             return Uni.createFrom().voidItem();
         }
 
-        String templateIds = userData.getTemplateIds();
-        if (templateIds == null || templateIds.trim().isEmpty()) {
-            LOG.debugf("No threshold templates configured for user: %s", userData.getUserName());
-            return Uni.createFrom().voidItem();
-        }
+        Long superTemplateId = userData.getSuperTemplateId();
 
-        List<Long> activeTemplateIds = parseTemplateIds(templateIds);
-        if (activeTemplateIds.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
+//        List<Long> activeTemplateIds = parseTemplateIds(templateIds);
+//        if (activeTemplateIds.isEmpty()) {
+//            return Uni.createFrom().voidItem();
+//        }
 
         long initialBalance = balance.getInitialBalance();
         if (initialBalance <= 0) {
@@ -76,20 +72,20 @@ public class QuotaNotificationService {
         LOG.debugf("Checking thresholds for user=%s, bucket=%s, oldUsage=%.2f%%, newUsage=%.2f%%",
                 userData.getUserName(), balance.getBucketId(), oldUsagePercentage, newUsagePercentage);
 
-        // Check each configured threshold
+        // todo need to get all values prefix values  please complete full operation half complete
         List<Uni<Void>> notifications = new ArrayList<>();
-        for (Long templateId : activeTemplateIds) {
-            Uni<Void> notification = templateCacheService.getTemplate(templateId)
+
+            Uni<Void> notification = templateCacheService.getTemplate(superTemplateId)
                     .onItem().transformToUni(template -> {
                         if (template != null) {
                             return checkThreshold(
-                                    userData, balance, template, templateId, oldUsagePercentage, newUsagePercentage, newQuota
+                                    userData, balance, template, superTemplateId, oldUsagePercentage, newUsagePercentage, newQuota
                             );
                         }
                         return Uni.createFrom().nullItem();
                     });
             notifications.add(notification);
-        }
+
 
         if (notifications.isEmpty()) {
             return Uni.createFrom().voidItem();

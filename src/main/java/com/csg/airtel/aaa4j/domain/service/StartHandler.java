@@ -407,7 +407,7 @@ public class StartHandler {
         newUserSessionData.setUserName(request.username());
         newUserSessionData.setConcurrency(concurrency);
         newUserSessionData.setBalance(balanceList);
-        newUserSessionData.setTemplateIds(templates);
+        newUserSessionData.setSuperTemplateId(templates);
         if (!isGroupBalance(highestPriorityBalance, request.username())) {
             newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
         }

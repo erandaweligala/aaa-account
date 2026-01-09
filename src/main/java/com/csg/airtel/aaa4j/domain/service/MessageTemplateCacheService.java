@@ -94,7 +94,7 @@ public class MessageTemplateCacheService {
         }
 
         ThresholdGlobalTemplates thresholdTemplate = template.toThresholdGlobalTemplates();
-        String cacheKey = CACHE_KEY_PREFIX + template.getTemplateId();
+        String cacheKey = template.getSuperTemplateId() +":"+ template.getTemplateId();
 
         // Cache in Redis (fire and forget for startup performance)
         valueCommands.set(cacheKey, thresholdTemplate)
@@ -106,7 +106,7 @@ public class MessageTemplateCacheService {
                 );
 
         // Cache in memory for fast access
-        inMemoryCache.put(template.getTemplateId(), thresholdTemplate);
+        inMemoryCache.put(template.getSuperTemplateId() + template.getTemplateId(), thresholdTemplate);
 
         LOG.debugf("Cached template ID %d in-memory: %s (%d%%)",
                 template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
