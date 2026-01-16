@@ -120,7 +120,7 @@ public class COAService {
      * @return Uni that completes when the event is sent
      */
 
-
+//todo Duplicated code fragment (20 lines long)
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
         return coaHttpClient.sendDisconnect(event)
                 .onItem().transformToUni(response -> {
