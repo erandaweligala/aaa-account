@@ -94,13 +94,14 @@ quarkus:
     response-timeout: 3000
     connection-timeout: 2000
 
-  # CoA HTTP Client Configuration
-  rest-client:
-    coa-http-client:
-      url: ${COA_NAS_URL:http://localhost:3799}
-      # Non-blocking, no retries for minimal overhead
-      read-timeout: 3000
-      connect-timeout: 2000
+  # CoA HTTP Client Configuration (Vert.x WebClient)
+coa:
+  nas:
+    url: ${COA_NAS_URL:http://localhost:3799}
+  connect:
+    timeout: 2000  # Connection timeout in milliseconds
+  read:
+    timeout: 3000  # Read timeout in milliseconds
 
 
 
