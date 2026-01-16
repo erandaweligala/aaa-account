@@ -119,30 +119,42 @@ public class COAService {
      * @param username the username associated with the session
      * @return Uni that completes when the event is sent
      */
-
-//todo Duplicated code fragment (20 lines long)
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
         return coaHttpClient.sendDisconnect(event)
-                .onItem().transformToUni(response -> {
-                    if (response.isAck()) {
-                        log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
-                        // Record COA request metric
-                        monitoringService.recordCOARequest();
-                        // Generate and send CDR
-                        generateAndSendCoaDisconnectCDR(session, username);
-                        // Clear session from cache after ACK
-                        return clearSessionFromCache(username, session.getSessionId());
-                    } else {
-                        log.warnf("CoA disconnect NACK/Failed for session: %s, status: %s, message: %s",
-                                session.getSessionId(), response.status(), response.message());
-                        return Uni.createFrom().voidItem();
-                    }
-                })
+                .onItem().transformToUni(response -> handleCoADisconnectResponse(response, session, username))
                 .onFailure().invoke(failure ->
                         log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
                 )
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
+    }
+
+    /**
+     * Handle CoA disconnect response - common logic for processing ACK/NACK responses.
+     * This method processes the CoA disconnect response and performs necessary actions:
+     * - Records metrics
+     * - Generates and sends CDR
+     * - Clears session from cache on ACK
+     *
+     * @param response the CoA disconnect response
+     * @param session the session being disconnected
+     * @param username the username associated with the session
+     * @return Uni that completes when response handling is done
+     */
+    private Uni<Void> handleCoADisconnectResponse(CoADisconnectResponse response, Session session, String username) {
+        if (response.isAck()) {
+            log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
+            // Record COA request metric
+            monitoringService.recordCOARequest();
+            // Generate and send CDR
+            generateAndSendCoaDisconnectCDR(session, username);
+            // Clear session from cache after ACK
+            return clearSessionFromCache(username, session.getSessionId());
+        } else {
+            log.warnf("CoA disconnect NACK/Failed for session: %s, status: %s, message: %s",
+                    session.getSessionId(), response.status(), response.message());
+            return Uni.createFrom().voidItem();
+        }
     }
 
     /**
@@ -195,21 +207,7 @@ public class COAService {
 
                     // Send HTTP request (non-blocking)
                     return coaHttpClient.sendDisconnect(request)
-                            .onItem().transformToUni(response -> {
-                                if (response.isAck()) {
-                                    log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
-                                    // Record metric
-                                    monitoringService.recordCOARequest();
-                                    // Generate and send CDR
-                                    generateAndSendCoaDisconnectCDR(session, username);
-                                    // Clear session from cache after ACK
-                                    return clearSessionFromCache(username, session.getSessionId());
-                                } else {
-                                    log.warnf("CoA disconnect NACK/Failed for session: %s, status: %s, message: %s",
-                                            session.getSessionId(), response.status(), response.message());
-                                    return Uni.createFrom().voidItem();
-                                }
-                            })
+                            .onItem().transformToUni(response -> handleCoADisconnectResponse(response, session, username))
                             .onFailure().invoke(failure ->
                                     log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
                             )
