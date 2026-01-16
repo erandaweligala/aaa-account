@@ -68,6 +68,35 @@ public class BucketResource {
                 });
     }
 
+    /**
+     * Terminate sessions via HTTP-based CoA disconnect (non-blocking, no Kafka overhead).
+     * Sends CoA disconnect directly to NAS via HTTP POST.
+     * After receiving ACK, sessions are automatically cleared from cache.
+     *
+     * @param userName the username
+     * @param sessionId specific session to disconnect (or "all" for all sessions)
+     * @return Response with operation result
+     */
+    @PATCH
+    @Path("/terminate-sessions-http/{userName}/{sessionId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<Response> terminateViaHttp(@PathParam("userName") String userName,
+                                          @PathParam("sessionId") String sessionId) {
+        log.infof("HTTP CoA disconnect started for user: %s, sessionId: %s", userName, sessionId);
+
+        // Convert "all" to null for disconnecting all sessions
+        String sessionIdParam = "all".equalsIgnoreCase(sessionId) ? null : sessionId;
+
+        return bucketService.terminateSessionsViaHttp(userName, sessionIdParam)
+                .onItem().transform(apiResponse -> {
+                    log.infof("HTTP CoA disconnect completed for user: %s", userName);
+                    return Response.status(apiResponse.getStatus())
+                            .entity(apiResponse)
+                            .build();
+                });
+    }
+
     @PATCH
     @Path("/patchStatus/{userName}/{status}")
     @Produces(MediaType.APPLICATION_JSON)
