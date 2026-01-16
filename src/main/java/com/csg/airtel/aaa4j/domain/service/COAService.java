@@ -119,6 +119,8 @@ public class COAService {
      * @param username the username associated with the session
      * @return Uni that completes when the event is sent
      */
+
+
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
         return accountProducer.produceAccountingResponseEvent(event)
                 .invoke(() -> {
@@ -127,6 +129,8 @@ public class COAService {
                     generateAndSendCoaDisconnectCDR(session, username);
                 });
     }
+
+    //todo need to implement line 124 to 131 with http request for single coa and cdr genaration
 
     /**
      * Send CoA Disconnect via HTTP (non-blocking, no overhead).
@@ -144,6 +148,7 @@ public class COAService {
      * @param sessionId specific session to disconnect (null for all sessions)
      * @return Uni that completes when all disconnects are sent and cache is cleared
      */
+    //todo need send cdr for this request
     public Uni<Void> sendCoADisconnectViaHttp(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
@@ -168,13 +173,13 @@ public class COAService {
         // Send HTTP disconnect for each session in parallel (non-blocking)
         return Multi.createFrom().iterable(sessions)
                 .onItem().transformToUni(session -> {
-                    // Create disconnect request
-                    CoADisconnectRequest request = CoADisconnectRequest.of(
+
+                    AccountingResponseEvent request = MappingUtil.createResponse(
                             session.getSessionId(),
-                            session.getUserName() != null ? session.getUserName() : username,
+                            AppConstant.DISCONNECT_ACTION,
                             session.getNasIp(),
-                            session.getFramedId()
-                    );
+                            session.getFramedId(),
+                            session.getUserName() != null ? session.getUserName() : username);
 
                     // Send HTTP request (non-blocking)
                     return coaHttpClient.sendDisconnect(request)

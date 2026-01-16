@@ -1,50 +1,69 @@
 package com.csg.airtel.aaa4j.config;
 
-import io.vertx.core.Vertx;
-import io.vertx.ext.web.client.WebClient;
-import io.vertx.ext.web.client.WebClientOptions;
-import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.enterprise.inject.Produces;
-import jakarta.inject.Named;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import io.smallrye.config.ConfigMapping;
+import io.smallrye.config.WithDefault;
 
 /**
- * Configuration for Vert.x WebClient
- * Provides a configured WebClient bean for making HTTP requests
+ * Configuration for WebClient connection pool settings optimized for high throughput.
+ * Pool sizing rationale:
+ * - HTTP/1.1 pool: 250 connections (fallback for non-HTTP/2 servers)
+ * - HTTP/2 pool: 250 connections with 100 streams each = 25,000 concurrent requests
+ * - With HTTP/2 multiplexing, fewer connections needed for high throughput
  */
-@ApplicationScoped
-public class WebClientConfig {
-
-    @ConfigProperty(name = "coa.nas.url", defaultValue = "http://localhost:3799")
-    String coaNasUrl;
-
-    @ConfigProperty(name = "coa.connect.timeout", defaultValue = "2000")
-    int connectTimeout;
-
-    @ConfigProperty(name = "coa.read.timeout", defaultValue = "3000")
-    int readTimeout;
+@ConfigMapping(prefix = "webclient")
+public interface WebClientConfig {
 
     /**
-     * Produces a configured WebClient bean for CoA HTTP requests
-     * Features:
-     * - Connection timeout: 2 seconds
-     * - Read timeout: 3 seconds
-     * - Keep-alive enabled
-     * - Pipelining enabled for performance
+     * HTTP/1.1 connection pool size (fallback for non-HTTP/2 servers)
      */
-    @Produces
-    @Named("coaWebClient")
-    @ApplicationScoped
-    public WebClient createWebClient(Vertx vertx) {
-        WebClientOptions options = new WebClientOptions()
-                .setConnectTimeout(connectTimeout)
-                .setIdleTimeout(readTimeout)
-                .setKeepAlive(true)
-                .setPipelining(true)
-                .setTryUseCompression(true)
-                .setFollowRedirects(false)
-                .setMaxPoolSize(50);
+    @WithDefault("250")
+    int maxPoolSize();
 
-        return WebClient.create(vertx, options);
-    }
+    /**
+     * Connection timeout in milliseconds
+     */
+    @WithDefault("5000")
+    int connectTimeout();
+
+    /**
+     * Idle timeout in milliseconds - keep connections warm
+     */
+    @WithDefault("60000")
+    int idleTimeout();
+
+    /**
+     * Keep connections alive for reuse
+     */
+    @WithDefault("true")
+    boolean keepAlive();
+
+    /**
+     * Enable HTTP pipelining for HTTP/1.1
+     */
+    @WithDefault("true")
+    boolean pipelining();
+
+    /**
+     * HTTP pipelining limit
+     */
+    @WithDefault("10")
+    int pipeliningLimit();
+
+    /**
+     * HTTP/2 connection pool size (primary for high throughput)
+     */
+    @WithDefault("250")
+    int http2MaxPoolSize();
+
+    /**
+     * HTTP/2 streams per connection (multiplexing)
+     */
+    @WithDefault("100")
+    int http2MultiplexingLimit();
+
+    /**
+     * HTTP/2 connection keep-alive interval in seconds
+     */
+    @WithDefault("60")
+    int http2KeepAliveTimeout();
 }

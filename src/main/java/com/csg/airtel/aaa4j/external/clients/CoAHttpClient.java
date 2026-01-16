@@ -1,5 +1,7 @@
 package com.csg.airtel.aaa4j.external.clients;
 
+import com.csg.airtel.aaa4j.config.WebClientProvider;
+import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectRequest;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import io.smallrye.mutiny.Uni;
@@ -33,25 +35,20 @@ public class CoAHttpClient {
 
     private static final Logger log = Logger.getLogger(CoAHttpClient.class);
 
-    private final WebClient webClient;
+    private final WebClientProvider webClientProvider;
     private final String nasHost;
     private final int nasPort;
     private final boolean isHttps;
 
-    @Inject
-    public CoAHttpClient(
-            @Named("coaWebClient") WebClient webClient,
-            @ConfigProperty(name = "coa.nas.url", defaultValue = "http://localhost:3799") String nasUrl) {
-        this.webClient = webClient;
-
-        // Parse URL to extract host, port, and protocol
-        URI uri = URI.create(nasUrl);
-        this.nasHost = uri.getHost();
-        this.nasPort = uri.getPort() != -1 ? uri.getPort() : (uri.getScheme().equals("https") ? 443 : 80);
-        this.isHttps = "https".equalsIgnoreCase(uri.getScheme());
-
-        log.infof("CoAHttpClient initialized: host=%s, port=%d, https=%b", nasHost, nasPort, isHttps);
+    public CoAHttpClient(WebClientProvider webClientProvider, String nasHost, int nasPort, boolean isHttps) {
+        this.webClientProvider = webClientProvider;
+        this.nasHost = nasHost;
+        this.nasPort = nasPort;
+        this.isHttps = isHttps;
     }
+
+
+
 
     /**
      * Send CoA Disconnect request to NAS server via HTTP.
@@ -60,10 +57,10 @@ public class CoAHttpClient {
      * @param request CoA disconnect request with session details
      * @return Uni containing the disconnect response with ACK/NACK status
      */
-    public Uni<CoADisconnectResponse> sendDisconnect(CoADisconnectRequest request) {
-        log.debugf("Sending CoA disconnect request: sessionId=%s, userName=%s",
-                request.sessionId(), request.userName());
-
+    public Uni<CoADisconnectResponse> sendDisconnect(AccountingResponseEvent request) {
+        log.debugf("Sending CoA disconnect request: sessionId=%s",
+                request.sessionId());
+        WebClient webClient = webClientProvider.getClient();
         return Uni.createFrom().emitter(emitter -> {
             try {
                 // Serialize request to JSON
