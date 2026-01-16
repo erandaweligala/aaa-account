@@ -26,17 +26,12 @@ public class MessageTemplateRepository {
     private static final Logger LOG = Logger.getLogger(MessageTemplateRepository.class);
 
     // Column name constants for MESSAGE_TEMPLATE table
-    private static final String COL_TEMPLATE_ID = "TEMPLATE_ID";
-    private static final String COL_STATUS = "STATUS";
+    private static final String COL_TEMPLATE_ID = "ID";
     private static final String COL_TEMPLATE_NAME = "TEMPLATE_NAME";
     private static final String COL_MESSAGE_TYPE = "MESSAGE_TYPE";
-    private static final String COL_DAYS_TO_EXPIRE = "DAYS_TO_EXPIRE";
     private static final String COL_QUOTA_PERCENTAGE = "QUOTA_PERCENTAGE";
     private static final String COL_MESSAGE_CONTENT = "MESSAGE_CONTENT";
-    private static final String COL_CREATED_DATE = "CREATED_DATE";
-    private static final String COL_CREATED_BY = "CREATED_BY";
-    private static final String COL_MODIFIED_DATE = "MODIFIED_DATE";
-    private static final String COL_MODIFIED_BY = "MODIFIED_BY";
+
 
     private static final int DEFAULT_TEMPLATE_LIST_CAPACITY = 20;
 
@@ -91,7 +86,6 @@ public class MessageTemplateRepository {
             MessageTemplate template = new MessageTemplate();
             template.setSuperTemplateId(row.getLong("SUPER_TEMPLATE_ID"));
             template.setTemplateId(row.getLong(COL_TEMPLATE_ID));
-            template.setTemplateName(row.getString(COL_TEMPLATE_NAME));
             template.setMessageType(row.getString(COL_MESSAGE_TYPE));
             Integer quotaPercentage = row.getInteger(COL_QUOTA_PERCENTAGE);
             template.setQuotaPercentage(quotaPercentage);

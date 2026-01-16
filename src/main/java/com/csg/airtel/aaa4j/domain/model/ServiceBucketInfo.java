@@ -30,7 +30,7 @@ public class ServiceBucketInfo {
     private boolean isUnlimited;
     private boolean isGroup;
     private long concurrency;
-    private String notificationTemplates;
+    private long notificationTemplates;
     private String userStatus;
 
 }

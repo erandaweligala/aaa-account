@@ -120,54 +120,6 @@ public class MessageTemplateCacheService {
     }
 
     /**
-     *
-     * @param templateId the template ID
-     * @return Uni containing ThresholdGlobalTemplates or null if not found
-     */
-    @CircuitBreaker(
-            requestVolumeThreshold = 10,
-            failureRatio = 0.5,
-            delay = 5000,
-            successThreshold = 2
-    )
-    @Retry(
-            maxRetries = 2,
-            delay = 100,
-            maxDuration = 10000
-    )
-    @Timeout(value = 10000)
-    public Uni<ThresholdGlobalTemplates> getTemplate(Long templateId) {
-        if (templateId == null) {
-            return Uni.createFrom().nullItem();
-        }
-
-        // Fast path: check in-memory cache first
-        ThresholdGlobalTemplates inMemoryTemplate = inMemoryCache.get(templateId);
-        if (inMemoryTemplate != null) {
-            LOG.debugf("Template ID %d found in in-memory cache", templateId);
-            return Uni.createFrom().item(inMemoryTemplate);
-        }
-
-        // Fallback: check Redis cache
-        String cacheKey = CACHE_KEY_PREFIX + templateId;
-        LOG.debugf("Template ID %d not in memory, checking Redis", templateId);
-
-        return valueCommands.get(cacheKey)
-                .onItem().invoke(template -> {
-                    if (template != null) {
-                        // Update in-memory cache
-                        inMemoryCache.put(templateId, template);
-                        LOG.debugf("Template ID %d found in Redis and cached in-memory", templateId);
-                    } else {
-                        LOG.warnf("Template ID %d not found in cache", templateId);
-                    }
-                })
-                .onFailure().invoke(error ->
-                        LOG.errorf(error, "Error retrieving template ID %d from Redis", templateId))
-                .onFailure().recoverWithNull();
-    }
-
-    /**
      * Get all cached templates as a map.
      * Returns in-memory cache for performance.
      *
@@ -247,8 +199,8 @@ public class MessageTemplateCacheService {
                     // Combine all fetch operations
                     return Uni.combine().all().unis(fetches).with(results ->
                             results.stream()
-                                    .filter(obj -> obj instanceof ThresholdGlobalTemplates)
-                                    .map(obj -> (ThresholdGlobalTemplates) obj)
+                                    .filter(ThresholdGlobalTemplates.class::isInstance)
+                                    .map(ThresholdGlobalTemplates.class::cast)
                                     .toList()
                     );
                 })

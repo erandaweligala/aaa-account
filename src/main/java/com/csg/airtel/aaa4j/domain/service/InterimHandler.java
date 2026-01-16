@@ -91,7 +91,7 @@ public class InterimHandler {
                     List<Balance> balanceList = new ArrayList<>(bucketCount);
                     String groupId = null;
                     long concurrency = 0;
-                    String templates = null;
+                    Long templates = null;
                     for (ServiceBucketInfo bucket : serviceBuckets) {
                         if(!Objects.equals(bucket.getBucketUser(), request.username())){
                             groupId = bucket.getBucketUser();

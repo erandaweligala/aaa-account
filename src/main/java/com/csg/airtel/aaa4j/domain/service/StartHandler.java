@@ -334,7 +334,7 @@ public class StartHandler {
         List<Balance> balanceList = new ArrayList<>(serviceBuckets.size());
         List<Balance> balanceGroupList = new ArrayList<>();
         String groupId = null;
-        String templates = null;
+        Long templates = null;
         long concurrency = 0;
         for (ServiceBucketInfo bucket : serviceBuckets) {
             Balance balance = MappingUtil.createBalance(bucket);
@@ -399,7 +399,7 @@ public class StartHandler {
             List<Balance> balanceList,
             String groupId,
             Session session,
-            Balance highestPriorityBalance,String templates,String userStatus) {
+            Balance highestPriorityBalance,long templates,String userStatus) {
 
         UserSessionData newUserSessionData = new UserSessionData();
         newUserSessionData.setUserStatus(userStatus);
@@ -497,7 +497,7 @@ public class StartHandler {
             List<Balance> balanceList,
             List<Balance> balanceGroupList,
             String groupId,
-            double totalQuota,long concurrency,String templates,String userStatus) {
+            double totalQuota,long concurrency,long templates,String userStatus) {
     }
 
     private static String getGroupId(AccountingRequestDto request, ServiceBucketInfo bucket, List<Balance> balanceGroupList, Balance balance, String groupId, List<Balance> balanceList) {

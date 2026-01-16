@@ -17,8 +17,8 @@ quarkus:
     username: aaa
     password: Aaa!89nky78D
     reactive:
-      url: oracle:thin:@localhost:1521/FREEPDB1
-#      url: oracle:thin:@localhost:1522/ORCL
+      #url: oracle:thin:@localhost:1521/FREEPDB1
+      url: oracle:thin:@localhost:1522/ORCL
 
   # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   vertx:

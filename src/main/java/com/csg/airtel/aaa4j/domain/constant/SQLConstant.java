@@ -5,7 +5,7 @@ public class SQLConstant {
     }
     public static final String QUERY_BALANCE = """
                         WITH target_user AS (
-                            SELECT USER_NAME, SESSION_TIMEOUT, CONCURRENCY, NOTIFICATION_TEMPLATES, group_id,STATUS
+                            SELECT USER_NAME, SESSION_TIMEOUT, CONCURRENCY, TEMPLATE_ID, group_id,STATUS
                             FROM AAA_USER
                             WHERE USER_NAME = :1
                         )
@@ -30,7 +30,7 @@ public class SQLConstant {
                            b.IS_UNLIMITED,
                            s.IS_GROUP,
                            u.CONCURRENCY,
-                           u.NOTIFICATION_TEMPLATES
+                           u.TEMPLATE_ID
                         FROM target_user u
                         JOIN SERVICE_INSTANCE s
                           ON s.USERNAME = u.USER_NAME
