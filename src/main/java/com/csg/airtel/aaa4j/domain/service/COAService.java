@@ -13,7 +13,6 @@ import com.csg.airtel.aaa4j.external.clients.CoAHttpClient;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
-import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
@@ -33,7 +32,7 @@ public class COAService {
 
     public COAService(AccountProducer accountProducer,
                       MonitoringService monitoringService,
-                      @RestClient CoAHttpClient coaHttpClient,
+                      CoAHttpClient coaHttpClient,
                       CacheClient cacheClient) {
         this.accountProducer = accountProducer;
         this.monitoringService = monitoringService;
