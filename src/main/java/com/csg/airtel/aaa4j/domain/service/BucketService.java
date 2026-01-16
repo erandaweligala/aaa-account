@@ -230,6 +230,40 @@ public class BucketService {
                 });
     }
 
+    /**
+     * Terminate sessions using HTTP-based CoA disconnect (non-blocking, no overhead).
+     * This method sends CoA disconnect via direct HTTP POST to NAS without Kafka overhead.
+     * After receiving ACK, sessions are cleared from cache automatically.
+     *
+     * @param userName the username
+     * @param sessionId specific session to disconnect (null for all sessions)
+     * @return ApiResponse with operation result
+     */
+    public Uni<ApiResponse<Balance>> terminateSessionsViaHttp(String userName, String sessionId) {
+        log.infof("Terminating sessions via HTTP for user %s, sessionId: %s", userName, sessionId);
+
+        return cacheClient.getUserData(userName)
+                .onItem().transformToUni(userData -> {
+                    if (userData == null) {
+                        return Uni.createFrom().item(createErrorResponse(USER_NOT_FOUND));
+                    }
+
+                    // Send HTTP CoA disconnect (non-blocking, cache cleared after ACK)
+                    return coaService.sendCoADisconnectViaHttp(userData, userName, sessionId)
+                            .onItem().transform(result -> {
+                                log.infof("HTTP CoA disconnect sent successfully for user %s", userName);
+                                return createSuccessResponse(null, "HTTP CoA disconnect sent successfully");
+                            });
+                })
+                .onFailure().recoverWithItem(throwable -> {
+                    log.errorf("Failed to send HTTP CoA disconnect for user %s: %s",
+                            userName, throwable.getMessage(), throwable);
+                    return createErrorResponse(
+                            "Failed to send HTTP CoA disconnect: " + throwable.getMessage()
+                    );
+                });
+    }
+
 
 
 

@@ -3,17 +3,23 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
+import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectRequest;
+import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
+import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import com.csg.airtel.aaa4j.external.clients.CoAHttpClient;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 
 @ApplicationScoped
@@ -22,10 +28,17 @@ public class COAService {
 
     private final AccountProducer accountProducer;
     private final MonitoringService monitoringService;
+    private final CoAHttpClient coaHttpClient;
+    private final CacheClient cacheClient;
 
-    public COAService(AccountProducer accountProducer, MonitoringService monitoringService) {
+    public COAService(AccountProducer accountProducer,
+                      MonitoringService monitoringService,
+                      @RestClient CoAHttpClient coaHttpClient,
+                      CacheClient cacheClient) {
         this.accountProducer = accountProducer;
         this.monitoringService = monitoringService;
+        this.coaHttpClient = coaHttpClient;
+        this.cacheClient = cacheClient;
     }
 
     public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username,String sessionId) {
@@ -114,6 +127,120 @@ public class COAService {
                     monitoringService.recordCOARequest();
                     generateAndSendCoaDisconnectCDR(session, username);
                 });
+    }
+
+    /**
+     * Send CoA Disconnect via HTTP (non-blocking, no overhead).
+     * This method sends CoA disconnect requests directly to NAS via HTTP without Kafka overhead.
+     * After receiving ACK response, it clears the session from cache.
+     *
+     * Features:
+     * - Non-blocking reactive operation
+     * - No retry, circuit breaker, or fallback overhead
+     * - Direct HTTP POST to NAS endpoint
+     * - Automatic cache cleanup on ACK
+     *
+     * @param userSessionData the user session data
+     * @param username the username
+     * @param sessionId specific session to disconnect (null for all sessions)
+     * @return Uni that completes when all disconnects are sent and cache is cleared
+     */
+    public Uni<Void> sendCoADisconnectViaHttp(UserSessionData userSessionData, String username, String sessionId) {
+        List<Session> sessions = userSessionData.getSessions();
+        if (sessions == null || sessions.isEmpty()) {
+            log.debugf("No sessions to disconnect for user: %s", username);
+            return Uni.createFrom().voidItem();
+        }
+
+        // Filter sessions if specific sessionId is provided
+        if (sessionId != null) {
+            sessions = sessions.stream()
+                    .filter(s -> Objects.equals(s.getSessionId(), sessionId))
+                    .collect(Collectors.toList());
+        }
+
+        if (sessions.isEmpty()) {
+            log.debugf("No matching sessions found for user: %s, sessionId: %s", username, sessionId);
+            return Uni.createFrom().voidItem();
+        }
+
+        log.infof("Sending HTTP CoA disconnect for user: %s, session count: %d", username, sessions.size());
+
+        // Send HTTP disconnect for each session in parallel (non-blocking)
+        return Multi.createFrom().iterable(sessions)
+                .onItem().transformToUni(session -> {
+                    // Create disconnect request
+                    CoADisconnectRequest request = CoADisconnectRequest.of(
+                            session.getSessionId(),
+                            session.getUserName() != null ? session.getUserName() : username,
+                            session.getNasIp(),
+                            session.getFramedId()
+                    );
+
+                    // Send HTTP request (non-blocking)
+                    return coaHttpClient.sendDisconnect(request)
+                            .onItem().transformToUni(response -> {
+                                if (response.isAck()) {
+                                    log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
+                                    // Record metric
+                                    monitoringService.recordCOARequest();
+                                    // Clear session from cache after ACK
+                                    return clearSessionFromCache(username, session.getSessionId());
+                                } else {
+                                    log.warnf("CoA disconnect NACK/Failed for session: %s, status: %s, message: %s",
+                                            session.getSessionId(), response.status(), response.message());
+                                    return Uni.createFrom().voidItem();
+                                }
+                            })
+                            .onFailure().invoke(failure ->
+                                    log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
+                            )
+                            .onFailure().recoverWithNull(); // Continue with other sessions on failure
+                })
+                .merge() // Parallel execution for all sessions
+                .collect().asList()
+                .replaceWithVoid();
+    }
+
+    /**
+     * Clear specific session from cache.
+     * Removes the session from user's session list and updates cache.
+     *
+     * @param username the username
+     * @param sessionId the session ID to clear
+     * @return Uni that completes when cache is updated
+     */
+    private Uni<Void> clearSessionFromCache(String username, String sessionId) {
+        return cacheClient.getUserData(username)
+                .onItem().transformToUni(userData -> {
+                    if (userData == null || userData.getSessions() == null) {
+                        log.debugf("No user data found for username: %s", username);
+                        return Uni.createFrom().voidItem();
+                    }
+
+                    // Remove session from list
+                    List<Session> updatedSessions = userData.getSessions().stream()
+                            .filter(s -> !Objects.equals(s.getSessionId(), sessionId))
+                            .collect(Collectors.toList());
+
+                    // Update user data with modified sessions
+                    UserSessionData updatedUserData = userData.toBuilder()
+                            .sessions(updatedSessions)
+                            .build();
+
+                    log.infof("Clearing session from cache: user=%s, sessionId=%s, remaining sessions=%d",
+                            username, sessionId, updatedSessions.size());
+
+                    // Update cache
+                    return cacheClient.updateUserAndRelatedCaches(username, updatedUserData)
+                            .replaceWithVoid();
+                })
+                .onFailure().invoke(failure ->
+                        log.errorf(failure, "Failed to clear session from cache: user=%s, sessionId=%s",
+                                username, sessionId)
+                )
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
 
 }
