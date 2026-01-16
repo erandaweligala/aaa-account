@@ -122,15 +122,28 @@ public class COAService {
 
 
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
-        return accountProducer.produceAccountingResponseEvent(event)
-                .invoke(() -> {
-                    // Record COA request metric
-                    monitoringService.recordCOARequest();
-                    generateAndSendCoaDisconnectCDR(session, username);
-                });
+        return coaHttpClient.sendDisconnect(event)
+                .onItem().transformToUni(response -> {
+                    if (response.isAck()) {
+                        log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
+                        // Record COA request metric
+                        monitoringService.recordCOARequest();
+                        // Generate and send CDR
+                        generateAndSendCoaDisconnectCDR(session, username);
+                        // Clear session from cache after ACK
+                        return clearSessionFromCache(username, session.getSessionId());
+                    } else {
+                        log.warnf("CoA disconnect NACK/Failed for session: %s, status: %s, message: %s",
+                                session.getSessionId(), response.status(), response.message());
+                        return Uni.createFrom().voidItem();
+                    }
+                })
+                .onFailure().invoke(failure ->
+                        log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
+                )
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
-
-    //todo need to implement line 124 to 131 with http request for single coa and cdr genaration
 
     /**
      * Send CoA Disconnect via HTTP (non-blocking, no overhead).
@@ -148,7 +161,6 @@ public class COAService {
      * @param sessionId specific session to disconnect (null for all sessions)
      * @return Uni that completes when all disconnects are sent and cache is cleared
      */
-    //todo need send cdr for this request
     public Uni<Void> sendCoADisconnectViaHttp(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
@@ -188,6 +200,8 @@ public class COAService {
                                     log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
                                     // Record metric
                                     monitoringService.recordCOARequest();
+                                    // Generate and send CDR
+                                    generateAndSendCoaDisconnectCDR(session, username);
                                     // Clear session from cache after ACK
                                     return clearSessionFromCache(username, session.getSessionId());
                                 } else {
