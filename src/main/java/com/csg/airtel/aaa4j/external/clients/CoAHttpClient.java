@@ -65,12 +65,14 @@ public class CoAHttpClient {
                             try {
                                 CoADisconnectResponse response = handleHttpResponse(ar.result(), sessionId);
                                 emitter.complete(response);
-                            } catch (CoAResponseParsingException | CoADisconnectException e) {
-                                emitter.fail(e);
                             } catch (Exception e) {
-                                log.errorf(e, "Unexpected error handling CoA response for session: %s", sessionId);
-                                emitter.fail(new CoAResponseParsingException(
-                                    "Unexpected error handling CoA response: " + e.getMessage(), e));
+                                if (e instanceof CoAResponseParsingException || e instanceof CoADisconnectException) {
+                                    emitter.fail(e);
+                                } else {
+                                    log.errorf(e, "Unexpected error handling CoA response for session: %s", sessionId);
+                                    emitter.fail(new CoAResponseParsingException(
+                                        "Unexpected error handling CoA response: " + e.getMessage(), e));
+                                }
                             }
                         } else {
                             log.errorf(ar.cause(), "HTTP request failed for session: %s", sessionId);
@@ -113,8 +115,7 @@ public class CoAHttpClient {
                     coaResponse.status(), coaResponse.sessionId());
             return coaResponse;
         } catch (DecodeException e) {
-            String errorMsg = String.format("Failed to parse CoA response for session %s: %s",
-                    sessionId, response.bodyAsString());
+            String errorMsg = "Failed to parse CoA response for session " + sessionId + ": " + response.bodyAsString();
             log.errorf(e, errorMsg);
             throw new CoAResponseParsingException(errorMsg, e);
         }
@@ -134,8 +135,7 @@ public class CoAHttpClient {
      */
     private CoADisconnectResponse handleErrorResponse(io.vertx.ext.web.client.HttpResponse<io.vertx.core.buffer.Buffer> response,
                                                        int statusCode) {
-        String errorMsg = String.format("CoA disconnect failed with status %d: %s",
-                statusCode, response.bodyAsString());
+        String errorMsg = "CoA disconnect failed with status " + statusCode + ": " + response.bodyAsString();
         log.warnf(errorMsg);
         throw new CoADisconnectException(errorMsg, Response.Status.fromStatusCode(statusCode));
     }
