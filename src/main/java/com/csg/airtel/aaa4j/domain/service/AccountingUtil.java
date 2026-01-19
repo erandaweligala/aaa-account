@@ -971,9 +971,9 @@ public class AccountingUtil {
                                 updatedUserData.getSessions().size() : 0);
                     }
                     return updateBalanceInDatabase(foundBalance, result.newQuota(),
-                            request.sessionId(), bucketUsername, username);
+                            request.sessionId(), bucketUsername, username)
+                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
                 })
-                .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData))// todo need to update updatedUserData
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
                         log.debugf(err, "Error clearing sessions and updating balance for user: %s", username);
@@ -1018,9 +1018,9 @@ public class AccountingUtil {
                                 updatedUserData.getSessions().size() : 0);
                     }
                     return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
-                            request.sessionId(), bucketUsername, username);
+                            request.sessionId(), bucketUsername, username)
+                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
                 })
-                .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData)) // todo need to update updatedUserData
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
                         log.debugf(err, "Error disconnecting sessions for consumption limit exceeded, user: %s", username);
