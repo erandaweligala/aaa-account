@@ -14,8 +14,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
 /**
- * HTTP Client for sending CoA (Change of Authorization) Disconnect requests to NAS servers.
- * This implementation uses Vert.x WebClient for non-blocking, reactive HTTP operations.
+ * HTTP Client for sending CoA (Change of Authorization) Disconnect requests to servers.
  */
 @ApplicationScoped
 public class CoAHttpClient {
@@ -34,19 +33,17 @@ public class CoAHttpClient {
     public CoAHttpClient(WebClientProvider webClientProvider) {
         this.webClientProvider = webClientProvider;
     }
-
-
+    
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final String COA_ENDPOINT = "/api/coa/";
     private static final String NAK_STATUS = "NAK";
     private static final String SESSION_DISCONNECTED_MESSAGE = "Session already disconnected (404 from NAS)";
 
     /**
-     * Send CoA Disconnect request to NAS server via HTTP.
-     * Optimized for high throughput with reduced cognitive complexity.
+     * Send CoA Disconnect request to  server via HTTP.
      *
      * @param request CoA disconnect request with session details
-     * @return Uni containing the disconnect response with ACK/NACK status
+     * @return Uni containing the disconnect response with ACK/NAK status
      */
     public Uni<CoADisconnectResponse> sendDisconnect(AccountingResponseEvent request) {
         log.debugf("Sending CoA disconnect request: sessionId=%s", request.sessionId());
@@ -87,7 +84,6 @@ public class CoAHttpClient {
 
     /**
      * Handle HTTP response and convert to CoADisconnectResponse.
-     * Extracted method to reduce cognitive complexity.
      */
     private CoADisconnectResponse handleHttpResponse(io.vertx.ext.web.client.HttpResponse<io.vertx.core.buffer.Buffer> response,
                                                       String sessionId) {

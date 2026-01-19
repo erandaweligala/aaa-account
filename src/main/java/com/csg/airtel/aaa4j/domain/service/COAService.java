@@ -3,7 +3,6 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
-import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectRequest;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -18,7 +17,7 @@ import org.jboss.logging.Logger;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
+
 
 
 @ApplicationScoped
@@ -40,49 +39,49 @@ public class COAService {
         this.cacheClient = cacheClient;
     }
 
-//    public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username,String sessionId) {
-//        List<Session> sessions = userSessionData.getSessions();
-//        if (sessions == null || sessions.isEmpty()) {
-//            return Uni.createFrom().voidItem();
-//        }
-//        if(sessionId != null){
-//            sessions = sessions.stream().filter(rs -> Objects.equals(rs.getSessionId(), sessionId))
-//                    .toList();
-//        }
-//
-//        // Use merge instead of concatenate for parallel execution (better throughput)
-//        return Multi.createFrom().iterable(sessions)
-//                .onItem().transformToUni(session ->
-//                        accountProducer.produceAccountingResponseEvent(
-//                                        MappingUtil.createResponse(
-//                                                session.getSessionId(),
-//                                                AppConstant.DISCONNECT_ACTION,
-//                                                session.getNasIp(),
-//                                                session.getFramedId(),
-//                                                session.getUserName() !=null ?session.getUserName():username
-//                                        )
-//                                )
-//                                .invoke(() -> {
-//                                    // Record COA request metric
-//                                    monitoringService.recordCOARequest();
-//                                    generateAndSendCoaDisconnectCDR(session, username);
-//                                })
-//                                .onFailure().retry()
-//                                .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
-//                                .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
-//                                .onFailure().invoke(failure -> {
-//                                    if (log.isDebugEnabled()) {
-//                                        log.debugf(failure, "Failed to produce disconnect event for session: %s",
-//                                                session.getSessionId());
-//                                    }
-//                                })
-//                                .onFailure().recoverWithNull()
-//                )
-//                .merge() // Parallel execution instead of sequential
-//                .collect().asList()
-//                .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
-//                .replaceWithVoid();
-//    }
+    public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username,String sessionId) {
+        List<Session> sessions = userSessionData.getSessions();
+        if (sessions == null || sessions.isEmpty()) {
+            return Uni.createFrom().voidItem();
+        }
+        if(sessionId != null){
+            sessions = sessions.stream().filter(rs -> Objects.equals(rs.getSessionId(), sessionId))
+                    .toList();
+        }
+
+        // Use merge instead of concatenate for parallel execution (better throughput)
+        return Multi.createFrom().iterable(sessions)
+                .onItem().transformToUni(session ->
+                        accountProducer.produceAccountingResponseEvent(
+                                        MappingUtil.createResponse(
+                                                session.getSessionId(),
+                                                AppConstant.DISCONNECT_ACTION,
+                                                session.getNasIp(),
+                                                session.getFramedId(),
+                                                session.getUserName() !=null ?session.getUserName():username
+                                        )
+                                )
+                                .invoke(() -> {
+                                    // Record COA request metric
+                                    monitoringService.recordCOARequest();
+                                    generateAndSendCoaDisconnectCDR(session, username);
+                                })
+                                .onFailure().retry()
+                                .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
+                                .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
+                                .onFailure().invoke(failure -> {
+                                    if (log.isDebugEnabled()) {
+                                        log.debugf(failure, "Failed to produce disconnect event for session: %s",
+                                                session.getSessionId());
+                                    }
+                                })
+                                .onFailure().recoverWithNull()
+                )
+                .merge() // Parallel execution instead of sequential
+                .collect().asList()
+                .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
+                .replaceWithVoid();
+    }
 
 
 
@@ -141,6 +140,7 @@ public class COAService {
      * @param username the username associated with the session
      * @return Uni that completes when response handling is done
      */
+    //todo one buy one no need to cache update do the onetime operation
     private Uni<Void> handleCoADisconnectResponse(CoADisconnectResponse response, Session session, String username) {
         if (response.isAck()) {
             log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
@@ -151,7 +151,7 @@ public class COAService {
             // Clear session from cache after ACK
             return clearSessionFromCache(username, session.getSessionId());
         } else {
-            log.warnf("CoA disconnect NACK/Failed for session: %s, status: %s, message: %s",
+            log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
                     session.getSessionId(), response.status(), response.message());
             return Uni.createFrom().voidItem();
         }
@@ -179,7 +179,7 @@ public class COAService {
         if (sessionId != null) {
             sessions = sessions.stream()
                     .filter(s -> Objects.equals(s.getSessionId(), sessionId))
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         if (sessions.isEmpty()) {
@@ -232,7 +232,7 @@ public class COAService {
                     // Remove session from list
                     List<Session> updatedSessions = userData.getSessions().stream()
                             .filter(s -> !Objects.equals(s.getSessionId(), sessionId))
-                            .collect(Collectors.toList());
+                            .toList();
 
                     // Update user data with modified sessions
                     UserSessionData updatedUserData = userData.toBuilder()

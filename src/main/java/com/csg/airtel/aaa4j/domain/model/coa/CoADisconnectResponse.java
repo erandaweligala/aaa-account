@@ -22,6 +22,6 @@ public record CoADisconnectResponse(
      * Check if the disconnect was rejected
      */
     public boolean isNack() {
-        return "NACK".equalsIgnoreCase(status) || "FAILED".equalsIgnoreCase(status);
+        return "NAK".equalsIgnoreCase(status) || "FAILED".equalsIgnoreCase(status);
     }
 }

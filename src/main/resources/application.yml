@@ -100,7 +100,16 @@ coa:
     host: localhost
     port: 8088
 
-
+webclient:
+  max-pool-size: 50
+  connect-timeout: 5000
+  idle-timeout: 60000
+  keep-alive: true
+  pipelining: true
+  pipelining-limit: 10
+  http2-max-pool-size: 250
+  http2-multiplexing-limit: 100
+  http2-keep-alive-timeout: 60
 
 
 # Pool Configuration

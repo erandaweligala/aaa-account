@@ -961,15 +961,17 @@ public class AccountingUtil {
         }
 
         // Clear all sessions and send COA disconnect for all sessions
+
+
         return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .chain(() -> updateBalanceInDatabase(foundBalance, result.newQuota(),
                         request.sessionId(), bucketUsername, username))
-                .invoke(() -> {
-                    if (log.isTraceEnabled()) {
-                        log.tracef("Successfully cleared all sessions and updated balance for user: %s", username);
-                    }
-                    userData.getSessions().clear();
-                })
+//                .invoke(() -> {
+//                    if (log.isTraceEnabled()) {
+//                        log.tracef("Successfully cleared all sessions and updated balance for user: %s", username);
+//                    }
+//                    userData.getSessions().clear();
+//                })
                 .chain(() -> cacheClient.updateUserAndRelatedCaches(username, userData))
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
@@ -1010,13 +1012,13 @@ public class AccountingUtil {
         return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .chain(() -> updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                         request.sessionId(), bucketUsername, username))
-                .invoke(() -> {
-                    if (log.isTraceEnabled()) {
-                        log.tracef("Successfully disconnected all sessions for user: %s due to consumption limit exceeded",
-                                username);
-                    }
-                    userData.getSessions().clear();
-                })
+//                .invoke(() -> {
+//                    if (log.isTraceEnabled()) {
+//                        log.tracef("Successfully disconnected all sessions for user: %s due to consumption limit exceeded",
+//                                username);
+//                    }
+//                    userData.getSessions().clear();
+//                })
                 .chain(() -> cacheClient.updateUserAndRelatedCaches(username, userData))
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
