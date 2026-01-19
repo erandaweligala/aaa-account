@@ -116,16 +116,15 @@ public class COAService {
      * @param event the accounting response event to send
      * @param session the session being disconnected
      * @param username the username associated with the session
-     * @return Uni that completes when the event is sent
+     * @return Uni<UserSessionData> with updated session data after the event is processed
      */
-    public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
+    public Uni<UserSessionData> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
         return coaHttpClient.sendDisconnect(event)
                 .onItem().transformToUni(response -> handleCoADisconnectResponse(response, session, username))
                 .onFailure().invoke(failure ->
                         log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
                 )
-                .onFailure().recoverWithNull()
-                .replaceWithVoid();
+                .onFailure().recoverWithNull();
     }
 
     /**
@@ -138,21 +137,21 @@ public class COAService {
      * @param response the CoA disconnect response
      * @param session the session being disconnected
      * @param username the username associated with the session
-     * @return Uni that completes when response handling is done
+     * @return Uni<UserSessionData> with updated session data after response handling
      */
-    private Uni<Void> handleCoADisconnectResponse(CoADisconnectResponse response, Session session, String username) {
+    private Uni<UserSessionData> handleCoADisconnectResponse(CoADisconnectResponse response, Session session, String username) {
         if (response.isAck()) {
             log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
             // Record COA request metric
             monitoringService.recordCOARequest();
             // Generate and send CDR
             generateAndSendCoaDisconnectCDR(session, username);
-            // Clear session from cache after ACK
+            // Clear session from cache after ACK and return updated user data
             return clearSessionFromCache(username, session.getSessionId());
         } else {
             log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
                     session.getSessionId(), response.status(), response.message());
-            return Uni.createFrom().voidItem();
+            return Uni.createFrom().nullItem();
         }
     }
 
@@ -165,14 +164,13 @@ public class COAService {
      * @param userSessionData the user session data
      * @param username the username
      * @param sessionId specific session to disconnect (null for all sessions)
-     * @return Uni that completes when all disconnects are sent and cache is cleared
+     * @return Uni<UserSessionData> with updated session data after disconnects are sent and cache is cleared
      */
-    //todo need to return after operation UserSessionData
-    public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
+    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
             log.debugf("No sessions to disconnect for user: %s", username);
-            return Uni.createFrom().voidItem();
+            return Uni.createFrom().item(userSessionData);
         }
 
         // Filter sessions if specific sessionId is provided
@@ -184,7 +182,7 @@ public class COAService {
 
         if (sessions.isEmpty()) {
             log.debugf("No matching sessions found for user: %s, sessionId: %s", username, sessionId);
-            return Uni.createFrom().voidItem();
+            return Uni.createFrom().item(userSessionData);
         }
 
         log.infof("Sending HTTP CoA disconnect for user: %s, session count: %d", username, sessions.size());
@@ -210,7 +208,8 @@ public class COAService {
                 })
                 .merge() // Parallel execution for all sessions
                 .collect().asList()
-                .replaceWithVoid();
+                .onItem().transformToUni(v -> cacheClient.getUserData(username))
+                .onItem().transform(updatedUserData -> updatedUserData != null ? updatedUserData : userSessionData);
     }
 
     /**
@@ -219,14 +218,14 @@ public class COAService {
      *
      * @param username the username
      * @param sessionId the session ID to clear
-     * @return Uni that completes when cache is updated
+     * @return Uni<UserSessionData> with updated session data after cache is updated
      */
-    private Uni<Void> clearSessionFromCache(String username, String sessionId) {
+    private Uni<UserSessionData> clearSessionFromCache(String username, String sessionId) {
         return cacheClient.getUserData(username)
                 .onItem().transformToUni(userData -> {
                     if (userData == null || userData.getSessions() == null) {
                         log.debugf("No user data found for username: %s", username);
-                        return Uni.createFrom().voidItem();
+                        return Uni.createFrom().nullItem();
                     }
 
                     // Remove session from list
@@ -242,16 +241,15 @@ public class COAService {
                     log.infof("Clearing session from cache: user=%s, sessionId=%s, remaining sessions=%d",
                             username, sessionId, updatedSessions.size());
 
-                    // Update cache
+                    // Update cache and return updated user data
                     return cacheClient.updateUserAndRelatedCaches(username, updatedUserData)
-                            .replaceWithVoid();
+                            .replaceWith(updatedUserData);
                 })
                 .onFailure().invoke(failure ->
                         log.errorf(failure, "Failed to clear session from cache: user=%s, sessionId=%s",
                                 username, sessionId)
                 )
-                .onFailure().recoverWithNull()
-                .replaceWithVoid();
+                .onFailure().recoverWithNull();
     }
 
 }

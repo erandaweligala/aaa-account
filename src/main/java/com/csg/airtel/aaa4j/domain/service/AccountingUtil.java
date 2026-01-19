@@ -964,14 +964,15 @@ public class AccountingUtil {
 
 
         return coaService.clearAllSessionsAndSendCOA(userData, username,null)
-                .chain(() -> updateBalanceInDatabase(foundBalance, result.newQuota(),
-                        request.sessionId(), bucketUsername, username))
-//                .invoke(() -> {
-//                    if (log.isTraceEnabled()) {
-//                        log.tracef("Successfully cleared all sessions and updated balance for user: %s", username);
-//                    }
-//                    userData.getSessions().clear();
-//                })
+                .onItem().transformToUni(updatedUserData -> {
+                    if (log.isTraceEnabled()) {
+                        log.tracef("Successfully cleared all sessions for user: %s, remaining sessions: %d",
+                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
+                                updatedUserData.getSessions().size() : 0);
+                    }
+                    return updateBalanceInDatabase(foundBalance, result.newQuota(),
+                            request.sessionId(), bucketUsername, username);
+                })
                 .chain(() -> cacheClient.updateUserAndRelatedCaches(username, userData))
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
@@ -1010,15 +1011,15 @@ public class AccountingUtil {
 
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
         return coaService.clearAllSessionsAndSendCOA(userData, username,null)
-                .chain(() -> updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
-                        request.sessionId(), bucketUsername, username))
-//                .invoke(() -> {
-//                    if (log.isTraceEnabled()) {
-//                        log.tracef("Successfully disconnected all sessions for user: %s due to consumption limit exceeded",
-//                                username);
-//                    }
-//                    userData.getSessions().clear();
-//                })
+                .onItem().transformToUni(updatedUserData -> {
+                    if (log.isTraceEnabled()) {
+                        log.tracef("Successfully disconnected all sessions for user: %s due to consumption limit exceeded, remaining sessions: %d",
+                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
+                                updatedUserData.getSessions().size() : 0);
+                    }
+                    return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
+                            request.sessionId(), bucketUsername, username);
+                })
                 .chain(() -> cacheClient.updateUserAndRelatedCaches(username, userData))
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
