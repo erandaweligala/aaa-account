@@ -2,19 +2,12 @@ package com.csg.airtel.aaa4j.external.clients;
 
 import com.csg.airtel.aaa4j.config.WebClientProvider;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
-import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectRequest;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import io.smallrye.mutiny.Uni;
 import io.vertx.core.json.Json;
-import io.vertx.ext.web.client.WebClient;
-import io.vertx.mutiny.core.buffer.Buffer;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
-
-import java.net.URI;
 
 /**
  * HTTP Client for sending CoA (Change of Authorization) Disconnect requests to NAS servers.
@@ -39,71 +32,93 @@ public class CoAHttpClient {
     }
 
 
+    private static final String CONTENT_TYPE_JSON = "application/json";
+    private static final String COA_ENDPOINT = "/api/coa/";
+    private static final String NAK_STATUS = "NAK";
+    private static final String SESSION_DISCONNECTED_MESSAGE = "Session already disconnected (404 from NAS)";
+
     /**
      * Send CoA Disconnect request to NAS server via HTTP.
-     * This is a non-blocking operation that returns immediately.
+     * Optimized for high throughput with reduced cognitive complexity.
      *
      * @param request CoA disconnect request with session details
      * @return Uni containing the disconnect response with ACK/NACK status
      */
-    //todo need improve performance and handle high throughput and remove any overhead operations
-    //todo Cognitive Complexity of methods should not be too high
     public Uni<CoADisconnectResponse> sendDisconnect(AccountingResponseEvent request) {
-        log.debugf("Sending CoA disconnect request: sessionId=%s",
-                request.sessionId());
-        WebClient webClient = webClientProvider.getClient();
-        return Uni.createFrom().emitter(emitter -> {
-            try {
-                // Serialize request to JSON
-                String jsonBody = Json.encode(request);
+        log.debugf("Sending CoA disconnect request: sessionId=%s", request.sessionId());
 
-                // Create request
-                var httpRequest = webClient
-                        .post(port, host, "/api/coa/")
-                        .putHeader("Content-Type", "application/json")
-                        .putHeader("Accept", "application/json");
+        String jsonBody = Json.encode(request);
+        io.vertx.core.buffer.Buffer buffer = io.vertx.core.buffer.Buffer.buffer(jsonBody);
+        String sessionId = request.sessionId();
 
-                // Send request
-                httpRequest.sendBuffer(io.vertx.core.buffer.Buffer.buffer(jsonBody), ar -> {
-                    if (ar.succeeded()) {
-                        var response = ar.result();
-                        int statusCode = response.statusCode();
-
-                        if (statusCode >= 200 && statusCode < 300) {
+        return Uni.createFrom().emitter(emitter ->
+            webClientProvider.getClient()
+                    .post(port, host, COA_ENDPOINT)
+                    .putHeader("Content-Type", CONTENT_TYPE_JSON)
+                    .putHeader("Accept", CONTENT_TYPE_JSON)
+                    .sendBuffer(buffer, ar -> {
+                        if (ar.succeeded()) {
                             try {
-                                // Parse response
-                                CoADisconnectResponse coaResponse = response.bodyAsJson(CoADisconnectResponse.class);
-                                log.debugf("CoA disconnect response received: status=%s, sessionId=%s",
-                                        coaResponse.status(), coaResponse.sessionId());
-                                emitter.complete(coaResponse);
+                                CoADisconnectResponse response = handleHttpResponse(ar.result(), sessionId);
+                                emitter.complete(response);
                             } catch (Exception e) {
-                                log.errorf(e, "Failed to parse CoA response for session: %s", request.sessionId());
                                 emitter.fail(e);
                             }
-                        } else if (statusCode == 404) {
-                            // 404 means session doesn't exist or already disconnected - treat as successful disconnect
-                            log.warnf("CoA disconnect received 404 for session %s - session already disconnected or doesn't exist, treating as success",
-                                    request.sessionId());
-                            CoADisconnectResponse successResponse = new CoADisconnectResponse(
-                                    "NAK",
-                                    request.sessionId(),
-                                    "Session already disconnected (404 from NAS)");
-                            emitter.complete(successResponse);
                         } else {
-                            String errorMsg = String.format("CoA disconnect failed with status %d: %s",
-                                    statusCode, response.bodyAsString());
-                            log.warnf(errorMsg);
-                            emitter.fail(new RuntimeException(errorMsg));
+                            log.errorf(ar.cause(), "HTTP request failed for session: %s", sessionId);
+                            emitter.fail(ar.cause());
                         }
-                    } else {
-                        log.errorf(ar.cause(), "HTTP request failed for session: %s", request.sessionId());
-                        emitter.fail(ar.cause());
-                    }
-                });
-            } catch (Exception e) {
-                log.errorf(e, "Error creating CoA disconnect request for session: %s", request.sessionId());
-                emitter.fail(e);
-            }
-        });
+                    })
+        );
+    }
+
+    /**
+     * Handle HTTP response and convert to CoADisconnectResponse.
+     * Extracted method to reduce cognitive complexity.
+     */
+    private CoADisconnectResponse handleHttpResponse(io.vertx.ext.web.client.HttpResponse<io.vertx.core.buffer.Buffer> response,
+                                                      String sessionId) {
+        int statusCode = response.statusCode();
+
+        if (statusCode >= 200 && statusCode < 300) {
+            return parseSuccessResponse(response, sessionId);
+        }
+
+        if (statusCode == 404) {
+            return handle404Response(sessionId);
+        }
+
+        return handleErrorResponse(response, statusCode);
+    }
+
+    /**
+     * Parse successful 2xx response.
+     */
+    private CoADisconnectResponse parseSuccessResponse(io.vertx.ext.web.client.HttpResponse<io.vertx.core.buffer.Buffer> response,
+                                                         String sessionId) {
+        CoADisconnectResponse coaResponse = response.bodyAsJson(CoADisconnectResponse.class);
+        log.debugf("CoA disconnect response received: status=%s, sessionId=%s",
+                coaResponse.status(), coaResponse.sessionId());
+        return coaResponse;
+    }
+
+    /**
+     * Handle 404 response - session already disconnected.
+     */
+    private CoADisconnectResponse handle404Response(String sessionId) {
+        log.warnf("CoA disconnect received 404 for session %s - session already disconnected or doesn't exist, treating as success",
+                sessionId);
+        return new CoADisconnectResponse(NAK_STATUS, sessionId, SESSION_DISCONNECTED_MESSAGE);
+    }
+
+    /**
+     * Handle error responses with non-success status codes.
+     */
+    private CoADisconnectResponse handleErrorResponse(io.vertx.ext.web.client.HttpResponse<io.vertx.core.buffer.Buffer> response,
+                                                       int statusCode) {
+        String errorMsg = String.format("CoA disconnect failed with status %d: %s",
+                statusCode, response.bodyAsString());
+        log.warnf(errorMsg);
+        throw new RuntimeException(errorMsg);
     }
 }
