@@ -7,7 +7,6 @@ import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
-import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.clients.CoAHttpClient;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
@@ -27,16 +26,13 @@ public class COAService {
     private final AccountProducer accountProducer;
     private final MonitoringService monitoringService;
     private final CoAHttpClient coaHttpClient;
-    private final CacheClient cacheClient;
 
     public COAService(AccountProducer accountProducer,
                       MonitoringService monitoringService,
-                      CoAHttpClient coaHttpClient,
-                      CacheClient cacheClient) {
+                      CoAHttpClient coaHttpClient) {
         this.accountProducer = accountProducer;
         this.monitoringService = monitoringService;
         this.coaHttpClient = coaHttpClient;
-        this.cacheClient = cacheClient;
     }
 
     public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username,String sessionId) {
@@ -111,60 +107,49 @@ public class COAService {
 
     /**
      * Produce accounting response event and generate COA disconnect CDR.
-     * This method sends an accounting response event and then generates a COA disconnect CDR for the session.
+     * This method sends disconnect request to NAS for session rejection scenarios.
+     * Used when rejecting new sessions (concurrency exceeded, no balance, etc.).
      *
      * @param event the accounting response event to send
-     * @param session the session being disconnected
+     * @param session the session being rejected
      * @param username the username associated with the session
-     * @return Uni<UserSessionData> with updated session data after the event is processed
+     * @return Uni<Void> after the disconnect request is sent
      */
-    public Uni<UserSessionData> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
+    public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
         return coaHttpClient.sendDisconnect(event)
-                .onItem().transformToUni(response -> handleCoADisconnectResponse(response, session, username))
+                .onItem().invoke(response -> {
+                    if (response.isAck()) {
+                        log.infof("CoA disconnect ACK received for rejected session: %s", session.getSessionId());
+                        monitoringService.recordCOARequest();
+                        generateAndSendCoaDisconnectCDR(session, username);
+                    } else {
+                        log.warnf("CoA disconnect NAK/Failed for rejected session: %s, status: %s",
+                                session.getSessionId(), response.status());
+                    }
+                })
                 .onFailure().invoke(failure ->
                         log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
                 )
-                .onFailure().recoverWithNull();
+                .replaceWithVoid();
     }
 
     /**
-     * Handle CoA disconnect response - common logic for processing ACK/NACK responses.
-     * This method processes the CoA disconnect response and performs necessary actions:
-     * - Records metrics
-     * - Generates and sends CDR
-     * - Clears session from cache on ACK
-     *
-     * @param response the CoA disconnect response
-     * @param session the session being disconnected
-     * @param username the username associated with the session
-     * @return Uni<UserSessionData> with updated session data after response handling
+     * Response data holder for CoA disconnect operations.
+     * Contains the session ID and whether it received ACK response.
      */
-    private Uni<UserSessionData> handleCoADisconnectResponse(CoADisconnectResponse response, Session session, String username) {
-        if (response.isAck()) {
-            log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
-            // Record COA request metric
-            monitoringService.recordCOARequest();
-            // Generate and send CDR
-            generateAndSendCoaDisconnectCDR(session, username);
-            // Clear session from cache after ACK and return updated user data
-            return clearSessionFromCache(username, session.getSessionId());
-        } else {
-            log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
-                    session.getSessionId(), response.status(), response.message());
-            return Uni.createFrom().nullItem();
-        }
-    }
+    private record CoAResult(String sessionId, boolean isAck) {}
 
     /**
-     * Send CoA Disconnect via HTTP (non-blocking, no overhead).
-     * This method sends CoA disconnect requests directly to NAS via HTTP without Kafka overhead.
-     * After receiving ACK response, it clears the session from cache.
-
+     * Send CoA Disconnect via HTTP (non-blocking).
+     * This method sends CoA disconnect requests directly to NAS via HTTP.
+     * Returns UserSessionData with sessions removed based on ACK responses:
+     * - ACK: Session removed from the list
+     * - NAK: Session remains in the list
      *
      * @param userSessionData the user session data
      * @param username the username
      * @param sessionId specific session to disconnect (null for all sessions)
-     * @return Uni<UserSessionData> with updated session data after disconnects are sent and cache is cleared
+     * @return Uni<UserSessionData> with sessions removed/kept based on ACK/NAK responses
      */
     public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
@@ -174,23 +159,25 @@ public class COAService {
         }
 
         // Filter sessions if specific sessionId is provided
+        List<Session> sessionsToDisconnect;
         if (sessionId != null) {
-            sessions = sessions.stream()
+            sessionsToDisconnect = sessions.stream()
                     .filter(s -> Objects.equals(s.getSessionId(), sessionId))
                     .toList();
+        } else {
+            sessionsToDisconnect = sessions;
         }
 
-        if (sessions.isEmpty()) {
+        if (sessionsToDisconnect.isEmpty()) {
             log.debugf("No matching sessions found for user: %s, sessionId: %s", username, sessionId);
             return Uni.createFrom().item(userSessionData);
         }
 
-        log.infof("Sending HTTP CoA disconnect for user: %s, session count: %d", username, sessions.size());
+        log.infof("Sending HTTP CoA disconnect for user: %s, session count: %d", username, sessionsToDisconnect.size());
 
         // Send HTTP disconnect for each session in parallel (non-blocking)
-        return Multi.createFrom().iterable(sessions)
+        return Multi.createFrom().iterable(sessionsToDisconnect)
                 .onItem().transformToUni(session -> {
-
                     AccountingResponseEvent request = MappingUtil.createResponse(
                             session.getSessionId(),
                             AppConstant.DISCONNECT_ACTION,
@@ -198,59 +185,52 @@ public class COAService {
                             session.getFramedId(),
                             session.getUserName() != null ? session.getUserName() : username);
 
-                    // Send HTTP request (non-blocking)
+                    // Send HTTP request and track ACK/NAK result
                     return coaHttpClient.sendDisconnect(request)
-                            .onItem().transformToUni(response -> handleCoADisconnectResponse(response, session, username))
+                            .onItem().transform(response -> {
+                                if (response.isAck()) {
+                                    log.infof("CoA disconnect ACK received for session: %s", session.getSessionId());
+                                    monitoringService.recordCOARequest();
+                                    generateAndSendCoaDisconnectCDR(session, username);
+                                    return new CoAResult(session.getSessionId(), true);
+                                } else {
+                                    log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
+                                            session.getSessionId(), response.status(), response.message());
+                                    return new CoAResult(session.getSessionId(), false);
+                                }
+                            })
                             .onFailure().invoke(failure ->
                                     log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
                             )
-                            .onFailure().recoverWithNull(); // Continue with other sessions on failure
+                            .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // NAK on failure
                 })
                 .merge() // Parallel execution for all sessions
                 .collect().asList()
-                .onItem().transformToUni(v -> cacheClient.getUserData(username))
-                .onItem().transform(updatedUserData -> updatedUserData != null ? updatedUserData : userSessionData);
-    }
-
-    /**
-     * Clear specific session from cache.
-     * Removes the session from user's session list and updates cache.
-     *
-     * @param username the username
-     * @param sessionId the session ID to clear
-     * @return Uni<UserSessionData> with updated session data after cache is updated
-     */
-    //todo need to remove UserSessionData.sessions if ACK remove Session IF NAK no need to remove.
-    private Uni<UserSessionData> clearSessionFromCache(String username, String sessionId) {
-        return cacheClient.getUserData(username)
-                .onItem().transformToUni(userData -> {
-                    if (userData == null || userData.getSessions() == null) {
-                        log.debugf("No user data found for username: %s", username);
-                        return Uni.createFrom().nullItem();
-                    }
-
-                    // Remove session from list
-                    List<Session> updatedSessions = userData.getSessions().stream()
-                            .filter(s -> !Objects.equals(s.getSessionId(), sessionId))
+                .onItem().transform(results -> {
+                    // Collect session IDs that got ACK
+                    List<String> ackedSessionIds = results.stream()
+                            .filter(CoAResult::isAck)
+                            .map(CoAResult::sessionId)
                             .toList();
 
-                    // Update user data with modified sessions
-                    UserSessionData updatedUserData = userData.toBuilder()
-                            .sessions(updatedSessions)
+                    if (ackedSessionIds.isEmpty()) {
+                        log.infof("No sessions received ACK for user: %s, returning original data", username);
+                        return userSessionData;
+                    }
+
+                    // Remove sessions that got ACK from the list
+                    List<Session> remainingSessions = userSessionData.getSessions().stream()
+                            .filter(s -> !ackedSessionIds.contains(s.getSessionId()))
+                            .toList();
+
+                    log.infof("Removed %d sessions from user: %s, remaining sessions: %d",
+                            ackedSessionIds.size(), username, remainingSessions.size());
+
+                    // Return updated UserSessionData with ACKed sessions removed
+                    return userSessionData.toBuilder()
+                            .sessions(remainingSessions)
                             .build();
-
-                    log.infof("Clearing session from cache: user=%s, sessionId=%s, remaining sessions=%d",
-                            username, sessionId, updatedSessions.size());
-
-                    // Update cache and return updated user data
-                    return cacheClient.updateUserAndRelatedCaches(username, updatedUserData)
-                            .replaceWith(updatedUserData);
-                })
-                .onFailure().invoke(failure ->
-                        log.errorf(failure, "Failed to clear session from cache: user=%s, sessionId=%s",
-                                username, sessionId)
-                )
-                .onFailure().recoverWithNull();
+                });
     }
 
 }
