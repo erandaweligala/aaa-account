@@ -220,6 +220,7 @@ public class COAService {
      * @param sessionId the session ID to clear
      * @return Uni<UserSessionData> with updated session data after cache is updated
      */
+    //todo need to remove UserSessionData.sessions if ACK remove Session IF NAK no need to remove.
     private Uni<UserSessionData> clearSessionFromCache(String username, String sessionId) {
         return cacheClient.getUserData(username)
                 .onItem().transformToUni(userData -> {
