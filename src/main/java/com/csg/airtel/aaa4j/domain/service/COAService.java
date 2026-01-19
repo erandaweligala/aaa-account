@@ -167,7 +167,7 @@ public class COAService {
      * @param sessionId specific session to disconnect (null for all sessions)
      * @return Uni that completes when all disconnects are sent and cache is cleared
      */
-    //todo one by one no need to cache update do the onetime operation can return updated UserSessionData entry
+    //todo need to return after operation UserSessionData
     public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
