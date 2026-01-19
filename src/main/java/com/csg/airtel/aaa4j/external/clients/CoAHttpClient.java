@@ -89,6 +89,15 @@ public class CoAHttpClient {
                                 log.errorf(e, "Failed to parse CoA response for session: %s", request.sessionId());
                                 emitter.fail(e);
                             }
+                        } else if (statusCode == 404) {
+                            // 404 means session doesn't exist or already disconnected - treat as successful disconnect
+                            log.warnf("CoA disconnect received 404 for session %s - session already disconnected or doesn't exist, treating as success",
+                                    request.sessionId());
+                            CoADisconnectResponse successResponse = new CoADisconnectResponse(
+                                    "ACK",
+                                    request.sessionId(),
+                                    "Session already disconnected (404 from NAS)");
+                            emitter.complete(successResponse);
                         } else {
                             String errorMsg = String.format("CoA disconnect failed with status %d: %s",
                                     statusCode, response.bodyAsString());
