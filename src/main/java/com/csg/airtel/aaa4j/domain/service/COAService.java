@@ -140,7 +140,6 @@ public class COAService {
      * @param username the username associated with the session
      * @return Uni that completes when response handling is done
      */
-    //todo one buy one no need to cache update do the onetime operation
     private Uni<Void> handleCoADisconnectResponse(CoADisconnectResponse response, Session session, String username) {
         if (response.isAck()) {
             log.infof("CoA disconnect ACK received for session: %s, clearing cache", session.getSessionId());
@@ -168,6 +167,7 @@ public class COAService {
      * @param sessionId specific session to disconnect (null for all sessions)
      * @return Uni that completes when all disconnects are sent and cache is cleared
      */
+    //todo one by one no need to cache update do the onetime operation can return updated UserSessionData entry
     public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
