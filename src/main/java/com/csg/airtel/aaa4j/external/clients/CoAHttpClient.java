@@ -19,16 +19,6 @@ import java.net.URI;
 /**
  * HTTP Client for sending CoA (Change of Authorization) Disconnect requests to NAS servers.
  * This implementation uses Vert.x WebClient for non-blocking, reactive HTTP operations.
- *
- * Configuration:
- * - coa.nas.url: NAS server endpoint URL
- * - coa.connect.timeout: Connection timeout in milliseconds
- * - coa.read.timeout: Read timeout in milliseconds
- *
- * Features:
- * - Non-blocking reactive operations using Mutiny Uni
- * - Direct HTTP POST to NAS endpoint
- * - Minimal latency with no circuit breaker or retry overhead
  */
 @ApplicationScoped
 public class CoAHttpClient {
@@ -36,18 +26,17 @@ public class CoAHttpClient {
     private static final Logger log = Logger.getLogger(CoAHttpClient.class);
 
     private final WebClientProvider webClientProvider;
-    private final String nasHost;
-    private final int nasPort;
-    private final boolean isHttps;
 
-    public CoAHttpClient(WebClientProvider webClientProvider, String nasHost, int nasPort, boolean isHttps) {
+
+    @ConfigProperty(name = "coa.nas.host")
+    String host;
+
+    @ConfigProperty(name = "coa.nas.port")
+    Integer port;
+
+    public CoAHttpClient(WebClientProvider webClientProvider) {
         this.webClientProvider = webClientProvider;
-        this.nasHost = nasHost;
-        this.nasPort = nasPort;
-        this.isHttps = isHttps;
     }
-
-
 
 
     /**
@@ -57,6 +46,8 @@ public class CoAHttpClient {
      * @param request CoA disconnect request with session details
      * @return Uni containing the disconnect response with ACK/NACK status
      */
+    //todo need improve performance and handle high throughput and remove any overhead operations
+    //todo Cognitive Complexity of methods should not be too high
     public Uni<CoADisconnectResponse> sendDisconnect(AccountingResponseEvent request) {
         log.debugf("Sending CoA disconnect request: sessionId=%s",
                 request.sessionId());
@@ -68,7 +59,7 @@ public class CoAHttpClient {
 
                 // Create request
                 var httpRequest = webClient
-                        .post(nasPort, nasHost, "/coa/disconnect")
+                        .post(port, host, "/api/coa/")
                         .putHeader("Content-Type", "application/json")
                         .putHeader("Accept", "application/json");
 
@@ -94,7 +85,7 @@ public class CoAHttpClient {
                             log.warnf("CoA disconnect received 404 for session %s - session already disconnected or doesn't exist, treating as success",
                                     request.sessionId());
                             CoADisconnectResponse successResponse = new CoADisconnectResponse(
-                                    "ACK",
+                                    "NAK",
                                     request.sessionId(),
                                     "Session already disconnected (404 from NAS)");
                             emitter.complete(successResponse);

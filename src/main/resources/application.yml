@@ -97,11 +97,9 @@ quarkus:
   # CoA HTTP Client Configuration (Vert.x WebClient)
 coa:
   nas:
-    url: ${COA_NAS_URL:http://localhost:3799}
-  connect:
-    timeout: 2000  # Connection timeout in milliseconds
-  read:
-    timeout: 3000  # Read timeout in milliseconds
+    host: localhost
+    port: 8088
+
 
 
 

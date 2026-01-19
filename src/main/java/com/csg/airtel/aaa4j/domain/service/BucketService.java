@@ -249,7 +249,7 @@ public class BucketService {
                     }
 
                     // Send HTTP CoA disconnect (non-blocking, cache cleared after ACK)
-                    return coaService.sendCoADisconnectViaHttp(userData, userName, sessionId)
+                    return coaService.clearAllSessionsAndSendCOA(userData, userName, sessionId)
                             .onItem().transform(result -> {
                                 log.infof("HTTP CoA disconnect sent successfully for user %s", userName);
                                 return createSuccessResponse(null, "HTTP CoA disconnect sent successfully");

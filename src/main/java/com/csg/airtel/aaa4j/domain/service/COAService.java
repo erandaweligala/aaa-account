@@ -40,49 +40,49 @@ public class COAService {
         this.cacheClient = cacheClient;
     }
 
-    public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username,String sessionId) {
-        List<Session> sessions = userSessionData.getSessions();
-        if (sessions == null || sessions.isEmpty()) {
-            return Uni.createFrom().voidItem();
-        }
-        if(sessionId != null){
-            sessions = sessions.stream().filter(rs -> Objects.equals(rs.getSessionId(), sessionId))
-                    .toList();
-        }
-
-        // Use merge instead of concatenate for parallel execution (better throughput)
-        return Multi.createFrom().iterable(sessions)
-                .onItem().transformToUni(session ->
-                        accountProducer.produceAccountingResponseEvent(
-                                        MappingUtil.createResponse(
-                                                session.getSessionId(),
-                                                AppConstant.DISCONNECT_ACTION,
-                                                session.getNasIp(),
-                                                session.getFramedId(),
-                                                session.getUserName() !=null ?session.getUserName():username
-                                        )
-                                )
-                                .invoke(() -> {
-                                    // Record COA request metric
-                                    monitoringService.recordCOARequest();
-                                    generateAndSendCoaDisconnectCDR(session, username);
-                                })
-                                .onFailure().retry()
-                                .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
-                                .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
-                                .onFailure().invoke(failure -> {
-                                    if (log.isDebugEnabled()) {
-                                        log.debugf(failure, "Failed to produce disconnect event for session: %s",
-                                                session.getSessionId());
-                                    }
-                                })
-                                .onFailure().recoverWithNull()
-                )
-                .merge() // Parallel execution instead of sequential
-                .collect().asList()
-                .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
-                .replaceWithVoid();
-    }
+//    public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username,String sessionId) {
+//        List<Session> sessions = userSessionData.getSessions();
+//        if (sessions == null || sessions.isEmpty()) {
+//            return Uni.createFrom().voidItem();
+//        }
+//        if(sessionId != null){
+//            sessions = sessions.stream().filter(rs -> Objects.equals(rs.getSessionId(), sessionId))
+//                    .toList();
+//        }
+//
+//        // Use merge instead of concatenate for parallel execution (better throughput)
+//        return Multi.createFrom().iterable(sessions)
+//                .onItem().transformToUni(session ->
+//                        accountProducer.produceAccountingResponseEvent(
+//                                        MappingUtil.createResponse(
+//                                                session.getSessionId(),
+//                                                AppConstant.DISCONNECT_ACTION,
+//                                                session.getNasIp(),
+//                                                session.getFramedId(),
+//                                                session.getUserName() !=null ?session.getUserName():username
+//                                        )
+//                                )
+//                                .invoke(() -> {
+//                                    // Record COA request metric
+//                                    monitoringService.recordCOARequest();
+//                                    generateAndSendCoaDisconnectCDR(session, username);
+//                                })
+//                                .onFailure().retry()
+//                                .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
+//                                .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
+//                                .onFailure().invoke(failure -> {
+//                                    if (log.isDebugEnabled()) {
+//                                        log.debugf(failure, "Failed to produce disconnect event for session: %s",
+//                                                session.getSessionId());
+//                                    }
+//                                })
+//                                .onFailure().recoverWithNull()
+//                )
+//                .merge() // Parallel execution instead of sequential
+//                .collect().asList()
+//                .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
+//                .replaceWithVoid();
+//    }
 
 
 
@@ -161,19 +161,14 @@ public class COAService {
      * Send CoA Disconnect via HTTP (non-blocking, no overhead).
      * This method sends CoA disconnect requests directly to NAS via HTTP without Kafka overhead.
      * After receiving ACK response, it clears the session from cache.
-     *
-     * Features:
-     * - Non-blocking reactive operation
-     * - No retry, circuit breaker, or fallback overhead
-     * - Direct HTTP POST to NAS endpoint
-     * - Automatic cache cleanup on ACK
+
      *
      * @param userSessionData the user session data
      * @param username the username
      * @param sessionId specific session to disconnect (null for all sessions)
      * @return Uni that completes when all disconnects are sent and cache is cleared
      */
-    public Uni<Void> sendCoADisconnectViaHttp(UserSessionData userSessionData, String username, String sessionId) {
+    public Uni<Void> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
             log.debugf("No sessions to disconnect for user: %s", username);

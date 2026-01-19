@@ -12,7 +12,7 @@ public record AccountingResponseEvent(
         @JsonProperty("action") ResponseAction action,
         @JsonProperty("message") String message,
         @JsonProperty("totalQuotaBalance") Long totalQuotaBalance,
-        @JsonProperty("fupProfileId") Map<String,String> qosParameters
+        @JsonProperty("qosParameters") Map<String,String> qosParameters
 ) {
     public enum ResponseAction {
         DISCONNECT,
