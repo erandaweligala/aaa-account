@@ -108,7 +108,8 @@ public class CacheClient {
 
 
     /**
-     * Update user data and related caches in Redis.
+     * Update user data in Redis one-by-one without caching.
+     * Returns the updated UserSessionData entry.
      */
     @Retry(
             maxRetries = 1,
@@ -116,16 +117,16 @@ public class CacheClient {
             maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)                 // Reduced from 2000ms - faster timeout
-    public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
+    public Uni<UserSessionData> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
-            log.debugf("Updating user data and related caches for userId: %s", userId);
+            log.debugf("Updating user data one-by-one for userId: %s", userId);
         }
         String userKey = KEY_PREFIX + userId;
 
         return reactiveRedisDataSource.value(UserSessionData.class)
                 .set(userKey, userData)
                 .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
-                .replaceWithVoid();
+                .replaceWith(userData);
     }
 
 

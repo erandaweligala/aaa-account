@@ -1221,7 +1221,8 @@ public class AccountingUtil {
                         log.debugf(throwable, "Failed to update cache group for balance update, groupId: %s",
                                 bucketUsername);
                     }
-                });
+                })
+                .replaceWithVoid();
     }
 
     /**

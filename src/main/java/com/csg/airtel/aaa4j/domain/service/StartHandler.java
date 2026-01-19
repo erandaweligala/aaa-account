@@ -490,7 +490,8 @@ public class StartHandler {
 
         log.infof("Group session data already exists for groupId: %s", groupId);
         return utilCache.updateUserAndRelatedCaches(groupId, existingData)
-                .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", groupId));
+                .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", groupId))
+                .replaceWithVoid();
     }
 
     private record BucketProcessingResult(
