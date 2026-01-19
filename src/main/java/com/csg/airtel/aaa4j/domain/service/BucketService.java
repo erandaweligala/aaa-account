@@ -213,10 +213,10 @@ public class BucketService {
                         return Uni.createFrom().item(createErrorResponse(USER_NOT_FOUND));
                     }
                    return coaService.clearAllSessionsAndSendCOA(userData,userName,sessionId)
-                           .invoke(() -> userData.getSessions().clear())
-                           .onItem().transform(result -> {
-                               log.infof("Sessions Terminated successfully for user %s",
-                                       userName);
+                           .onItem().transform(updatedUserData -> {
+                               log.infof("Sessions Terminated successfully for user %s, updated session count: %d",
+                                       userName, updatedUserData != null && updatedUserData.getSessions() != null ?
+                                       updatedUserData.getSessions().size() : 0);
                                return createSuccessResponse(null,"Terminated successfully");
                            });
 
@@ -250,8 +250,10 @@ public class BucketService {
 
                     // Send HTTP CoA disconnect (non-blocking, cache cleared after ACK)
                     return coaService.clearAllSessionsAndSendCOA(userData, userName, sessionId)
-                            .onItem().transform(result -> {
-                                log.infof("HTTP CoA disconnect sent successfully for user %s", userName);
+                            .onItem().transform(updatedUserData -> {
+                                log.infof("HTTP CoA disconnect sent successfully for user %s, updated session count: %d",
+                                        userName, updatedUserData != null && updatedUserData.getSessions() != null ?
+                                        updatedUserData.getSessions().size() : 0);
                                 return createSuccessResponse(null, "HTTP CoA disconnect sent successfully");
                             });
                 })
@@ -304,7 +306,8 @@ public class BucketService {
                                 if (userData.getSessions() != null && !userData.getSessions().isEmpty()) {
                                     log.infof("User status changed from %s to %s, sending COA to update %d active sessions for user %s",
                                             oldStatus, status, userData.getSessions().size(), userName);
-                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null);
+                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                            .replaceWithVoid();
                                 }
                                 return Uni.createFrom().voidItem();
                             })
