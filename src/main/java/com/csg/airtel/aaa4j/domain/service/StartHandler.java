@@ -109,12 +109,14 @@ public class StartHandler {
 
         // Check if concurrency limit is reached
         if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
-            // Check if any existing session has the same nasPortId
-            boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
-                    .anyMatch(session -> session.getNasPortId() != null &&
-                                       session.getNasPortId().equals(request.nasPortId()));
+            // Find session with matching nasPortId
+            Session existingSessionOnPort = userSessionData.getSessions().stream()
+                    .filter(session -> session.getNasPortId() != null &&
+                                     session.getNasPortId().equals(request.nasPortId()))
+                    .findFirst()
+                    .orElse(null);
 
-            if (!hasMatchingNasPortId) {
+            if (existingSessionOnPort == null) {
                 // No matching nasPortId found, reject the session
                 log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
                 return coaService.produceAccountingResponseEvent(
@@ -125,9 +127,10 @@ public class StartHandler {
                         request.username());
             }
 
-            // Matching nasPortId found, allow session creation (reconnection on same port)
-            log.infof("Allowing session creation for user: %s, reconnection on same NAS port: %s",
-                     request.username(), request.nasPortId());
+            // Matching nasPortId found, remove the old session and allow new session creation
+            log.infof("Replacing existing session for user: %s on NAS port: %s, old sessionId: %s, new sessionId: %s",
+                     request.username(), request.nasPortId(), existingSessionOnPort.getSessionId(), request.sessionId());
+            userSessionData.getSessions().remove(existingSessionOnPort);
         }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
