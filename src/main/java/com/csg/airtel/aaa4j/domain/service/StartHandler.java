@@ -127,9 +127,14 @@ public class StartHandler {
                         request.username());
             }
 
-            // Matching nasPortId found, remove the old session and allow new session creation
+            // Matching nasPortId found, properly terminate the old session before replacement
             log.infof("Replacing existing session for user: %s on NAS port: %s, old sessionId: %s, new sessionId: %s",
                      request.username(), request.nasPortId(), existingSessionOnPort.getSessionId(), request.sessionId());
+
+            // Terminate old session with lifecycle callback
+            terminateReplacedSession(request.username(), existingSessionOnPort);
+
+            // Remove from session list
             userSessionData.getSessions().remove(existingSessionOnPort);
         }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
@@ -556,6 +561,30 @@ public class StartHandler {
                 request.username(),
                 null
         );
+    }
+
+    /**
+     * Terminates a session that is being replaced due to reconnection on the same NAS port.
+     * This method performs necessary cleanup operations without blocking the new session creation.
+     *
+     * @param username The username associated with the session
+     * @param session The session being terminated
+     */
+    private void terminateReplacedSession(String username, Session session) {
+        try {
+            // Notify external systems about session termination
+            sessionLifecycleManager.onSessionTerminated(username, session.getSessionId())
+                    .subscribe().with(
+                            success -> log.debugf("Lifecycle termination callback completed for replaced session: %s", session.getSessionId()),
+                            failure -> log.warnf(failure, "Lifecycle termination callback failed for replaced session: %s", session.getSessionId())
+                    );
+
+            log.infof("Terminated replaced session: %s for user: %s on NAS port: %s",
+                     session.getSessionId(), username, session.getNasPortId());
+        } catch (Exception e) {
+            // Don't fail the new session creation if cleanup fails
+            log.warnf(e, "Error during replaced session termination for session: %s", session.getSessionId());
+        }
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
