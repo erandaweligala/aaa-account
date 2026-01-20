@@ -27,7 +27,6 @@ import java.util.stream.Collectors;
 public class MessageTemplateCacheService {
 
     private static final Logger LOG = Logger.getLogger(MessageTemplateCacheService.class);
-    private static final String CACHE_KEY_PREFIX = "template:";
 
     private final MessageTemplateRepository templateRepository;
 

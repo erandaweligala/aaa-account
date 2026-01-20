@@ -55,11 +55,6 @@ public class QuotaNotificationService {
 
         Long superTemplateId = userData.getSuperTemplateId();
 
-//        List<Long> activeTemplateIds = parseTemplateIds(templateIds);
-//        if (activeTemplateIds.isEmpty()) {
-//            return Uni.createFrom().voidItem();
-//        }
-
         long initialBalance = balance.getInitialBalance();
         if (initialBalance <= 0) {
             return Uni.createFrom().voidItem();

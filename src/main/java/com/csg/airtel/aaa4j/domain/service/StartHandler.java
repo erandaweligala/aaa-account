@@ -107,8 +107,11 @@ public class StartHandler {
             UserSessionData userSessionData,
             List<Balance> balanceList) {
 
-        // todo need to implement userSessionData.getSessions().nasPortId == AccountingRequestDto.nasPortId can allow create session
-        if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
+        boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
+                .anyMatch(session -> session.getNasPortId() != null &&
+                        session.getNasPortId().equals(request.nasPortId()));
+
+        if(hasMatchingNasPortId || userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",

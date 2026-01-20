@@ -27,7 +27,6 @@ public class MessageTemplateRepository {
 
     // Column name constants for MESSAGE_TEMPLATE table
     private static final String COL_TEMPLATE_ID = "ID";
-    private static final String COL_TEMPLATE_NAME = "TEMPLATE_NAME";
     private static final String COL_MESSAGE_TYPE = "MESSAGE_TYPE";
     private static final String COL_QUOTA_PERCENTAGE = "QUOTA_PERCENTAGE";
     private static final String COL_MESSAGE_CONTENT = "MESSAGE_CONTENT";

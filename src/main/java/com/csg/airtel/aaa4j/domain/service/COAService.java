@@ -206,7 +206,7 @@ public class COAService {
                 .merge() // Parallel execution for all sessions
                 .collect().asList()
                 .onItem().transform(results -> {
-                    // Collect session IDs that got ACK
+                    //todo need to Collect NAK sessionIds remove in NAK session Only
                     List<String> ackedSessionIds = results.stream()
                             .filter(CoAResult::isAck)
                             .map(CoAResult::sessionId)
