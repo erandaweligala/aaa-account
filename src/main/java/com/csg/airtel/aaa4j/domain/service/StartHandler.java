@@ -107,15 +107,27 @@ public class StartHandler {
             UserSessionData userSessionData,
             List<Balance> balanceList) {
 
-        // todo need to implement userSessionData.getSessions().nasPortId == AccountingRequestDto.nasPortId can allow create session
+        // Check if concurrency limit is reached
         if(userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
-            log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
-            return coaService.produceAccountingResponseEvent(
-                    MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
-                            AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT),
-                    createSession(request),
-                    request.username());
+            // Check if any existing session has the same nasPortId
+            boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
+                    .anyMatch(session -> session.getNasPortId() != null &&
+                                       session.getNasPortId().equals(request.nasPortId()));
+
+            if (!hasMatchingNasPortId) {
+                // No matching nasPortId found, reject the session
+                log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
+                return coaService.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),
+                        createSession(request),
+                        request.username());
+            }
+
+            // Matching nasPortId found, allow session creation (reconnection on same port)
+            log.infof("Allowing session creation for user: %s, reconnection on same NAS port: %s",
+                     request.username(), request.nasPortId());
         }
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
