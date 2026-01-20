@@ -1,6 +1,6 @@
 package com.csg.airtel.aaa4j.external.clients;
 
-import com.csg.airtel.aaa4j.config.WebClientProvider;
+import com.csg.airtel.aaa4j.application.config.WebClientProvider;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import com.csg.airtel.aaa4j.exception.CoADisconnectException;

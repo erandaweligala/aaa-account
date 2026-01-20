@@ -9,23 +9,20 @@ quarkus:
     idle-timeout: 10M
     read-timeout: 30S
 
-
-
-  # Database Configuration - HIGH TPS OPTIMIZED for 2500 TPS
-#  datasource:
-#    db-kind: oracle
-#    username: aaa
-#    password: Aaa!89nky78D
-#    reactive:
-#      #url: oracle:thin:@localhost:1521/FREEPDB1
-#      url: oracle:thin:@localhost:1522/ORCL
-
   datasource:
     db-kind: oracle
-    username: CYA_AAA_OPS
-    password: UkkaNk8KnAPp19!
+    username: aaa
+    password: Aaa!89nky78D
     reactive:
-      url: oracle:thin:@172.24.0.203:1908/AAA
+      #url: oracle:thin:@localhost:1521/FREEPDB1
+      url: oracle:thin:@localhost:1522/ORCL
+
+#  datasource:
+#    db-kind: oracle
+#    username: CYA_AAA_OPS
+#    password: UkkaNk8KnAPp19!
+#    reactive:
+#      url: oracle:thin:@172.24.0.203:1908/AAA
 
   # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
   vertx:
@@ -89,23 +86,8 @@ quarkus:
         enabled: true
         path: /q/metrics
 
-#  redis:
-#    hosts: redis://localhost:6379
-#    max-pool-size: 600
-#    max-waiting-handlers: 12000
-#    max-pool-waiting: 3000
-#    pool-recycle-timeout: 240000
-#    reconnect-attempts: 3
-#    reconnect-interval: 500
-#    pool-cleaner-interval: 20000
-#    response-timeout: 3000
-#    connection-timeout: 2000
   redis:
-    client-type: sentinel
-    hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
-    master-name: mymaster
-    role: master
-    password: S3cure_Redis_Pass_w0rd!
+    hosts: redis://localhost:6379
     max-pool-size: 600
     max-waiting-handlers: 12000
     max-pool-waiting: 3000
@@ -113,7 +95,22 @@ quarkus:
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    timeout: 120000
+    response-timeout: 3000
+    connection-timeout: 2000
+#  redis:
+#    client-type: sentinel
+#    hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
+#    master-name: mymaster
+#    role: master
+#    password: S3cure_Redis_Pass_w0rd!
+#    max-pool-size: 600
+#    max-waiting-handlers: 12000
+#    max-pool-waiting: 3000
+#    pool-recycle-timeout: 240000
+#    reconnect-attempts: 3
+#    reconnect-interval: 500
+#    pool-cleaner-interval: 20000
+#    timeout: 120000
 
   # CoA HTTP Client Configuration (Vert.x WebClient)
 coa:
@@ -157,14 +154,14 @@ idle-session:
   batch-size: 1000
 
   # Process 1000 sessions per batch (increased for scale)
-kafka:
-  bootstrap:
-    servers: >
-      confluent-ctrl-0-svc.csg-aaa-query-cache.svc.cluster.local:9092,
-      confluent-ctrl-1-svc.csg-aaa-query-cache.svc.cluster.local:9092,
-      confluent-ctrl-2-svc.csg-aaa-query-cache.svc.cluster.local:9092,
-      confluent-ctrl-3-svc.csg-aaa-query-cache.svc.cluster.local:9092,
-      confluent-ctrl-4-svc.csg-aaa-query-cache.svc.cluster.local:9092
+#kafka:
+#  bootstrap:
+#    servers: >
+#      confluent-ctrl-0-svc.csg-aaa-query-cache.svc.cluster.local:9092,
+#      confluent-ctrl-1-svc.csg-aaa-query-cache.svc.cluster.local:9092,
+#      confluent-ctrl-2-svc.csg-aaa-query-cache.svc.cluster.local:9092,
+#      confluent-ctrl-3-svc.csg-aaa-query-cache.svc.cluster.local:9092,
+#      confluent-ctrl-4-svc.csg-aaa-query-cache.svc.cluster.local:9092
 
 # Kafka Producer/Consumer Configuration - HIGH TPS OPTIMIZED for 2500 TPS
 mp:
