@@ -141,14 +141,14 @@ public class COAService {
     /**
      * Send CoA Disconnect via HTTP (non-blocking).
      * This method sends CoA disconnect requests directly to NAS via HTTP.
-     * Returns UserSessionData with sessions removed based on ACK responses:
-     * - ACK: Session removed from the list
-     * - NAK: Session remains in the list
+     * Returns UserSessionData with sessions removed based on NAK responses:
+     * - ACK: Session remains in the list (successfully disconnected)
+     * - NAK: Session removed from the list (failed to disconnect)
      *
      * @param userSessionData the user session data
      * @param username the username
      * @param sessionId specific session to disconnect (null for all sessions)
-     * @return Uni<UserSessionData> with sessions removed/kept based on ACK/NAK responses
+     * @return Uni<UserSessionData> with sessions removed/kept based on NAK/ACK responses
      */
     public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
@@ -206,26 +206,26 @@ public class COAService {
                 .merge() // Parallel execution for all sessions
                 .collect().asList()
                 .onItem().transform(results -> {
-                    //todo need to Collect NAK sessionIds remove in NAK session Only
-                    List<String> ackedSessionIds = results.stream()
-                            .filter(CoAResult::isAck)
+                    // Collect NAK session IDs (failed disconnects)
+                    List<String> nakSessionIds = results.stream()
+                            .filter(result -> !result.isAck())
                             .map(CoAResult::sessionId)
                             .toList();
 
-                    if (ackedSessionIds.isEmpty()) {
-                        log.infof("No sessions received ACK for user: %s, returning original data", username);
+                    if (nakSessionIds.isEmpty()) {
+                        log.infof("No sessions received NAK for user: %s, returning original data", username);
                         return userSessionData;
                     }
 
-                    // Remove sessions that got ACK from the list
+                    // Remove sessions that got NAK from the list
                     List<Session> remainingSessions = userSessionData.getSessions().stream()
-                            .filter(s -> !ackedSessionIds.contains(s.getSessionId()))
+                            .filter(s -> !nakSessionIds.contains(s.getSessionId()))
                             .toList();
 
-                    log.infof("Removed %d sessions from user: %s, remaining sessions: %d",
-                            ackedSessionIds.size(), username, remainingSessions.size());
+                    log.infof("Removed %d NAK sessions from user: %s, remaining sessions: %d",
+                            nakSessionIds.size(), username, remainingSessions.size());
 
-                    // Return updated UserSessionData with ACKed sessions removed
+                    // Return updated UserSessionData with NAK sessions removed
                     return userSessionData.toBuilder()
                             .sessions(remainingSessions)
                             .build();
