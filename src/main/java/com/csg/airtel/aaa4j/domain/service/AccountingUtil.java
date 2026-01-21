@@ -945,7 +945,52 @@ public class AccountingUtil {
     }
 
     /**
+     * Determine the target for session termination based on balance type and user context.
+     * This method decides whether to terminate sessions for an individual user or for the entire group.
+     *
+     * For group balances (isGroup = true):
+     * - If the bucketUsername matches the request username, terminate all group sessions
+     * - Otherwise, terminate only the individual user's sessions
+     *
+     * For individual balances (isGroup = false):
+     * - Always terminate only the individual user's sessions
+     *
+     * @param userData user session data
+     * @param balance the balance being evaluated
+     * @param username the username from the request
+     * @return the target username for session termination (either individual user or group bucket owner)
+     */
+    private String determineSessionTerminationTarget(UserSessionData userData, Balance balance, String username) {
+        String bucketUsername = balance.getBucketUsername();
+
+        // For group balances, check if we should terminate all group sessions or just individual user sessions
+        if (balance.isGroup()) {
+            // If the request is coming from the group bucket owner (group user), terminate all group sessions
+            if (bucketUsername.equals(username)) {
+                if (log.isDebugEnabled()) {
+                    log.debugf("Group balance - terminating all group sessions for group: %s", bucketUsername);
+                }
+                return bucketUsername; // Terminate all group sessions
+            } else {
+                // Request from individual user in the group - terminate only that user's sessions
+                if (log.isDebugEnabled()) {
+                    log.debugf("Group balance - terminating only individual user sessions for: %s in group: %s",
+                            username, bucketUsername);
+                }
+                return username; // Terminate only individual user's sessions
+            }
+        } else {
+            // Individual balance - always terminate only the individual user's sessions
+            if (log.isDebugEnabled()) {
+                log.debugf("Individual balance - terminating sessions for user: %s", username);
+            }
+            return username;
+        }
+    }
+
+    /**
      * Handle session disconnect.
+     * Supports termination for both individual user sessions and group sessions.
      */
     private Uni<UpdateResult> handleSessionDisconnect(
             UserSessionData userData,
@@ -960,23 +1005,30 @@ public class AccountingUtil {
             userData.getBalance().remove(foundBalance);
         }
 
-        // Clear all sessions and send COA disconnect for all sessions
+        // Determine termination scope: individual user or group
+        String terminationTarget = determineSessionTerminationTarget(userData, foundBalance, username);
+        boolean isGroupTermination = foundBalance.isGroup() && bucketUsername.equals(terminationTarget);
 
+        if (log.isDebugEnabled()) {
+            log.debugf("Session disconnect - user: %s, bucketUsername: %s, terminationTarget: %s, isGroup: %b",
+                    username, bucketUsername, terminationTarget, isGroupTermination);
+        }
 
-        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
+        return coaService.clearAllSessionsAndSendCOA(userData, terminationTarget, null)
                 .onItem().transformToUni(updatedUserData -> {
                     if (log.isTraceEnabled()) {
-                        log.tracef("Successfully cleared all sessions for user: %s, remaining sessions: %d",
-                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
+                        log.tracef("Successfully cleared sessions for target: %s (group: %b), remaining sessions: %d",
+                                terminationTarget, isGroupTermination,
+                                updatedUserData != null && updatedUserData.getSessions() != null ?
                                 updatedUserData.getSessions().size() : 0);
                     }
                     return updateBalanceInDatabase(foundBalance, result.newQuota(),
                             request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
+                            .chain(() -> cacheClient.updateUserAndRelatedCaches(terminationTarget, updatedUserData));
                 })
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
-                        log.debugf(err, "Error clearing sessions and updating balance for user: %s", username);
+                        log.debugf(err, "Error clearing sessions and updating balance for target: %s", terminationTarget);
                     }
                 })
                 .replaceWith(result);
@@ -984,6 +1036,7 @@ public class AccountingUtil {
 
     /**
      * Handle consumption limit exceeded scenario.
+     * Supports termination for both individual user sessions and group sessions.
      *
      * @param userData user session data
      * @param request accounting request
@@ -1001,7 +1054,7 @@ public class AccountingUtil {
         String bucketUsername = foundBalance.getBucketUsername();
 
         if (log.isDebugEnabled()) {
-            log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Disconnecting all sessions.",
+            log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Disconnecting sessions.",
                     username, foundBalance.getBucketId());
         }
 
@@ -1009,21 +1062,30 @@ public class AccountingUtil {
             userData.getBalance().remove(foundBalance);
         }
 
-        // Clear all sessions and send COA disconnect for all sessions due to consumption limit
-        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
+        // Determine termination scope: individual user or group
+        String terminationTarget = determineSessionTerminationTarget(userData, foundBalance, username);
+        boolean isGroupTermination = foundBalance.isGroup() && bucketUsername.equals(terminationTarget);
+
+        if (log.isDebugEnabled()) {
+            log.debugf("Consumption limit termination - user: %s, bucketUsername: %s, terminationTarget: %s, isGroup: %b",
+                    username, bucketUsername, terminationTarget, isGroupTermination);
+        }
+
+        return coaService.clearAllSessionsAndSendCOA(userData, terminationTarget, null)
                 .onItem().transformToUni(updatedUserData -> {
                     if (log.isTraceEnabled()) {
-                        log.tracef("Successfully disconnected all sessions for user: %s due to consumption limit exceeded, remaining sessions: %d",
-                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
+                        log.tracef("Successfully disconnected sessions for target: %s (group: %b) due to consumption limit, remaining sessions: %d",
+                                terminationTarget, isGroupTermination,
+                                updatedUserData != null && updatedUserData.getSessions() != null ?
                                 updatedUserData.getSessions().size() : 0);
                     }
                     return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                             request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
+                            .chain(() -> cacheClient.updateUserAndRelatedCaches(terminationTarget, updatedUserData));
                 })
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
-                        log.debugf(err, "Error disconnecting sessions for consumption limit exceeded, user: %s", username);
+                        log.debugf(err, "Error disconnecting sessions for consumption limit exceeded, target: %s", terminationTarget);
                     }
                 })
                 .replaceWith(result);
