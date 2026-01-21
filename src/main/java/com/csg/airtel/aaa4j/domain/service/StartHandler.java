@@ -107,15 +107,14 @@ public class StartHandler {
             UserSessionData userSessionData,
             List<Balance> balanceList) {
 
-        boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
-                .anyMatch(session -> session.getNasPortId() != null &&
-                        session.getNasPortId().equals(request.nasPortId()));
-
-        //todo concurency handling this logic is wrong need to cover this case scenarios same nasPortId can create session and diffenr nasPortId comming need to check concureny
-        if(hasMatchingNasPortId || userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
-            log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
+        // Check if we're already at or over the concurrency limit
+        // Note: Same nasPortId can be reused for different sessions, so we only check session count
+        if(userSessionData.getSessions().size() >= userSessionData.getConcurrency()) {
+            log.errorf("Maximum concurrent sessions exceeded for user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                    request.username(), userSessionData.getSessions().size(),
+                    userSessionData.getConcurrency(), request.nasPortId());
             return coaService.produceAccountingResponseEvent(
-                    MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
+                    MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                     createSession(request),
