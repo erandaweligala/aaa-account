@@ -150,7 +150,7 @@ pool:
 idle-session:
   enabled: true
   timeout-minutes: 60       # 1 hour default - sessions older than this will be terminated
-  scheduler-interval: 60m    # Run every 60 minutes
+  scheduler-interval: 10m    # Run every 60 minutes
   batch-size: 1000
 
   # Process 1000 sessions per batch (increased for scale)

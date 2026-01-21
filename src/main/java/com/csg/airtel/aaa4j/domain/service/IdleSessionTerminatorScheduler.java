@@ -18,6 +18,7 @@ import org.jboss.logging.Logger;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -418,10 +419,10 @@ public class IdleSessionTerminatorScheduler {
             long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
 
             // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
-            java.time.LocalDateTime sessionExpiryTime = session.getSessionInitiatedTime().plusMinutes(timeoutMinutes);
+            LocalDateTime sessionExpiryTime = session.getSessionInitiatedTime().plusMinutes(timeoutMinutes);
 
             // Check if current time has exceeded the expiry time
-            java.time.LocalDateTime currentTime = java.time.LocalDateTime.now();
+            LocalDateTime currentTime = LocalDateTime.now();
             boolean isExpired = currentTime.isAfter(sessionExpiryTime);
 
             if (isExpired) {

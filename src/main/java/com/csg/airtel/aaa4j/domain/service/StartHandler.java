@@ -111,6 +111,7 @@ public class StartHandler {
                 .anyMatch(session -> session.getNasPortId() != null &&
                         session.getNasPortId().equals(request.nasPortId()));
 
+        //todo concurency handling this logic is wrong need to cover this case scenarios same nasPortId can create session and diffenr nasPortId comming need to check concureny
         if(hasMatchingNasPortId || userSessionData.getConcurrency() <= userSessionData.getSessions().size()) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return coaService.produceAccountingResponseEvent(

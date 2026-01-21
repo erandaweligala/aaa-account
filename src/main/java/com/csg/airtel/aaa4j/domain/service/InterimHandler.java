@@ -144,7 +144,7 @@ public class InterimHandler {
                 .anyMatch(ses -> ses.getNasPortId() != null &&
                         ses.getNasPortId().equals(request.nasPortId()));
 
-        if(hasMatchingNasPortId || userData.getConcurrency() < userData.getSessions().size()+i) {
+        if(!hasMatchingNasPortId || userData.getConcurrency() < userData.getSessions().size()+i) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
                     AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
