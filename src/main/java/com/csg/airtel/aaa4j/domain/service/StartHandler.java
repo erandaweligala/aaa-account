@@ -194,7 +194,7 @@ public class StartHandler {
         }
 
         return updateCachesForSession(request, userSessionData, newSession, isGroupBalance)
-                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession, userSessionData.getSessionTimeOut()))
+                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
                 .invoke(() -> {
                     log.infof("cdr write event started for user: %s", request.username());
                     generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId());
@@ -379,9 +379,8 @@ public class StartHandler {
         }
 
         final Session finalSession = session;
-        final UserSessionData finalUserSessionData = newUserSessionData;
         return userStorageUni
-                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession, finalUserSessionData.getSessionTimeOut()))
+                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
                 .onItem().invoke(unused -> {
                     log.infof("CDR write event started for user: %s", request.username());
                     generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());

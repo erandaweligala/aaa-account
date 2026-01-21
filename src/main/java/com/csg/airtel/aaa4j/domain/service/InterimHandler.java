@@ -147,7 +147,7 @@ public class InterimHandler {
         } else {
             Session finalSession = session;
             return accountingUtil.updateSessionAndBalance(userData, session, request,null)
-                    .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId(), userData.getSessionTimeOut()))
+                    .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {
                             log.warnf("update failed for sessionId: %s", request.sessionId());
