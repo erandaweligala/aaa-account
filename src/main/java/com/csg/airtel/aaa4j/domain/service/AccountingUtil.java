@@ -1084,6 +1084,7 @@ public class AccountingUtil {
         }
 
         if(!foundBalance.getBucketUsername().equals(request.username()) ) {
+            //todo remove userData.getBalance() if groupId == true all balances
             userData.getBalance().remove(foundBalance);
             userData.getSessions().remove(currentSession);
             // Fetch current group data to update sessions as well
