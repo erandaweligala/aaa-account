@@ -419,7 +419,7 @@ public class IdleSessionTerminatorScheduler {
             long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
 
             // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
-            LocalDateTime sessionExpiryTime = session.getSessionInitiatedTime().plusMinutes(timeoutMinutes);
+            LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
 
             // Check if current time has exceeded the expiry time
             LocalDateTime currentTime = LocalDateTime.now();

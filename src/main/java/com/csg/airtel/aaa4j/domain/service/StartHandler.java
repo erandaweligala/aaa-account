@@ -107,19 +107,24 @@ public class StartHandler {
             UserSessionData userSessionData,
             List<Balance> balanceList) {
 
-        // Check if we're already at or over the concurrency limit
-        // Note: Same nasPortId can be reused for different sessions, so we only check session count
-        if(userSessionData.getSessions().size() >= userSessionData.getConcurrency()) {
-            log.errorf("Maximum concurrent sessions exceeded for user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
-                    request.username(), userSessionData.getSessions().size(),
-                    userSessionData.getConcurrency(), request.nasPortId());
-            return coaService.produceAccountingResponseEvent(
-                    MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
-                            AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT),
-                    createSession(request),
-                    request.username());
-        }
+
+        boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
+                .anyMatch(session -> session.getNasPortId() != null &&
+                        session.getNasPortId().equals(request.nasPortId()));
+
+
+        if (!hasMatchingNasPortId && userSessionData.getSessions().size() >= userSessionData.getConcurrency()) {
+                log.errorf("Maximum concurrent sessions exceeded for user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                        request.username(), userSessionData.getSessions().size(),
+                        userSessionData.getConcurrency(), request.nasPortId());
+                return coaService.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),
+                        createSession(request),
+                        request.username());
+            }
+
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
         Uni<Void> validationResult = validateBalanceAndSession(request, userSessionData, combinedBalances);
@@ -533,6 +538,7 @@ public class StartHandler {
     private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
+                LocalDateTime.now(),
                 LocalDateTime.now(),
                 null,
                 0,

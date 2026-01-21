@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 public class Session {
     private String sessionId;
     private LocalDateTime sessionInitiatedTime;
+    private LocalDateTime sessionStartTime;
     private String previousUsageBucketId;
     private Integer sessionTime;
     private Long previousTotalUsageQuotaValue;

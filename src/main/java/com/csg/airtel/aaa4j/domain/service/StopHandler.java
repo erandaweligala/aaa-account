@@ -135,6 +135,7 @@ public class StopHandler {
         return new Session(
                 request.sessionId(),
                 LocalDateTime.now(),
+                LocalDateTime.now(),
                 null,
                 request.sessionTime(),
                 0L,

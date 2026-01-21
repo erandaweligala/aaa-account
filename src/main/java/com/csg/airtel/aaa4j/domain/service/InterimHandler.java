@@ -127,24 +127,24 @@ public class InterimHandler {
             i = 1;
         }
 
-        // Check for absolute session timeout
-        if (session.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null) {
-            if (isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut())) {
+        //todo need to implement Absolute session terminate before camming request calculate octects and after termainte session
+        if (session.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null && isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut())) {
                 log.warnf("Absolute session timeout exceeded for user: %s, sessionId: %s",
                         request.username(), request.sessionId());
+
                 return coaService.produceAccountingResponseEvent(
                         MappingUtil.createResponse(request, "Session absolute timeout exceeded",
                                 AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT),
                         session, request.username());
             }
-        }
+
 
         boolean hasMatchingNasPortId = userData.getSessions().stream()
                 .anyMatch(ses -> ses.getNasPortId() != null &&
                         ses.getNasPortId().equals(request.nasPortId()));
 
-        if(!hasMatchingNasPortId || userData.getConcurrency() < userData.getSessions().size()+i) {
+        if(!hasMatchingNasPortId && userData.getConcurrency() < userData.getSessions().size()+i) {
             log.errorf("Maximum number of concurrency sessions exceeded for user: %s", request.username());
             return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, DATA_QUOTA_ZERO_MSG, AccountingResponseEvent.EventType.COA,
                     AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
@@ -195,6 +195,7 @@ public class InterimHandler {
         return new Session(
                 request.sessionId(),
                 LocalDateTime.now(),
+                LocalDateTime.now(),
                 null,
                 request.sessionTime() - 1,
                 0L,
@@ -230,14 +231,14 @@ public class InterimHandler {
             long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
 
             // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
-            LocalDateTime sessionExpiryTime = session.getSessionInitiatedTime().plusMinutes(timeoutMinutes);
+            LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
 
             // Check if current time has exceeded the expiry time
             LocalDateTime currentTime = LocalDateTime.now();
             boolean isExpired = currentTime.isAfter(sessionExpiryTime);
 
             if (log.isDebugEnabled()) {
-                log.debugf("Session timeout check - SessionId: %s, InitiatedTime: %s, TimeoutMinutes: %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
+                log.debugf("Session timeout check - SessionId: %s, InitiatedTime: %s, Timeout : %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
                         session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes,
                         sessionExpiryTime, currentTime, isExpired);
             }
