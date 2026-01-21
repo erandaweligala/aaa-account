@@ -945,52 +945,7 @@ public class AccountingUtil {
     }
 
     /**
-     * Determine the target for session termination based on balance type and user context.
-     * This method decides whether to terminate sessions for an individual user or for the entire group.
-     *
-     * For group balances (isGroup = true):
-     * - If the bucketUsername matches the request username, terminate all group sessions
-     * - Otherwise, terminate only the individual user's sessions
-     *
-     * For individual balances (isGroup = false):
-     * - Always terminate only the individual user's sessions
-     *
-     * @param userData user session data
-     * @param balance the balance being evaluated
-     * @param username the username from the request
-     * @return the target username for session termination (either individual user or group bucket owner)
-     */
-    private String determineSessionTerminationTarget(UserSessionData userData, Balance balance, String username) {
-        String bucketUsername = balance.getBucketUsername();
-
-        // For group balances, check if we should terminate all group sessions or just individual user sessions
-        if (balance.isGroup()) {
-            // If the request is coming from the group bucket owner (group user), terminate all group sessions
-            if (bucketUsername.equals(username)) {
-                if (log.isDebugEnabled()) {
-                    log.debugf("Group balance - terminating all group sessions for group: %s", bucketUsername);
-                }
-                return bucketUsername; // Terminate all group sessions
-            } else {
-                // Request from individual user in the group - terminate only that user's sessions
-                if (log.isDebugEnabled()) {
-                    log.debugf("Group balance - terminating only individual user sessions for: %s in group: %s",
-                            username, bucketUsername);
-                }
-                return username; // Terminate only individual user's sessions
-            }
-        } else {
-            // Individual balance - always terminate only the individual user's sessions
-            if (log.isDebugEnabled()) {
-                log.debugf("Individual balance - terminating sessions for user: %s", username);
-            }
-            return username;
-        }
-    }
-
-    /**
      * Handle session disconnect.
-     * Supports termination for both individual user sessions and group sessions.
      */
     private Uni<UpdateResult> handleSessionDisconnect(
             UserSessionData userData,
@@ -1005,30 +960,22 @@ public class AccountingUtil {
             userData.getBalance().remove(foundBalance);
         }
 
-        // Determine termination scope: individual user or group
-        String terminationTarget = determineSessionTerminationTarget(userData, foundBalance, username);
-        boolean isGroupTermination = foundBalance.isGroup() && bucketUsername.equals(terminationTarget);
+        // Clear all sessions and send COA disconnect for all sessions
 
-        if (log.isDebugEnabled()) {
-            log.debugf("Session disconnect - user: %s, bucketUsername: %s, terminationTarget: %s, isGroup: %b",
-                    username, bucketUsername, terminationTarget, isGroupTermination);
-        }
-
-        return coaService.clearAllSessionsAndSendCOA(userData, terminationTarget, null)
+        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .onItem().transformToUni(updatedUserData -> {
                     if (log.isTraceEnabled()) {
-                        log.tracef("Successfully cleared sessions for target: %s (group: %b), remaining sessions: %d",
-                                terminationTarget, isGroupTermination,
-                                updatedUserData != null && updatedUserData.getSessions() != null ?
+                        log.tracef("Successfully cleared all sessions for user: %s, remaining sessions: %d",
+                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
                                 updatedUserData.getSessions().size() : 0);
                     }
                     return updateBalanceInDatabase(foundBalance, result.newQuota(),
                             request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(terminationTarget, updatedUserData));
+                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
                 })
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
-                        log.debugf(err, "Error clearing sessions and updating balance for target: %s", terminationTarget);
+                        log.debugf(err, "Error clearing sessions and updating balance for user: %s", username);
                     }
                 })
                 .replaceWith(result);
@@ -1036,7 +983,6 @@ public class AccountingUtil {
 
     /**
      * Handle consumption limit exceeded scenario.
-     * Supports termination for both individual user sessions and group sessions.
      *
      * @param userData user session data
      * @param request accounting request
@@ -1054,7 +1000,7 @@ public class AccountingUtil {
         String bucketUsername = foundBalance.getBucketUsername();
 
         if (log.isDebugEnabled()) {
-            log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Disconnecting sessions.",
+            log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Disconnecting all sessions.",
                     username, foundBalance.getBucketId());
         }
 
@@ -1062,30 +1008,21 @@ public class AccountingUtil {
             userData.getBalance().remove(foundBalance);
         }
 
-        // Determine termination scope: individual user or group
-        String terminationTarget = determineSessionTerminationTarget(userData, foundBalance, username);
-        boolean isGroupTermination = foundBalance.isGroup() && bucketUsername.equals(terminationTarget);
-
-        if (log.isDebugEnabled()) {
-            log.debugf("Consumption limit termination - user: %s, bucketUsername: %s, terminationTarget: %s, isGroup: %b",
-                    username, bucketUsername, terminationTarget, isGroupTermination);
-        }
-
-        return coaService.clearAllSessionsAndSendCOA(userData, terminationTarget, null)
+        // Clear all sessions and send COA disconnect for all sessions due to consumption limit
+        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .onItem().transformToUni(updatedUserData -> {
                     if (log.isTraceEnabled()) {
-                        log.tracef("Successfully disconnected sessions for target: %s (group: %b) due to consumption limit, remaining sessions: %d",
-                                terminationTarget, isGroupTermination,
-                                updatedUserData != null && updatedUserData.getSessions() != null ?
+                        log.tracef("Successfully disconnected all sessions for user: %s due to consumption limit exceeded, remaining sessions: %d",
+                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
                                 updatedUserData.getSessions().size() : 0);
                     }
                     return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                             request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(terminationTarget, updatedUserData));
+                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
                 })
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
-                        log.debugf(err, "Error disconnecting sessions for consumption limit exceeded, target: %s", terminationTarget);
+                        log.debugf(err, "Error disconnecting sessions for consumption limit exceeded, user: %s", username);
                     }
                 })
                 .replaceWith(result);
@@ -1121,6 +1058,8 @@ public class AccountingUtil {
     }
 
     private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
+
+        //todo implement isSessionAbsoluteTimeoutExceeded check this position
         if(!foundBalance.getBucketUsername().equals(request.username()) ) {
             userData.getBalance().remove(foundBalance);
             userData.getSessions().remove(currentSession);
@@ -1370,6 +1309,45 @@ public class AccountingUtil {
                 })
                 .onFailure().recoverWithNull();
     }
+
+
+    /**
+     * Checks if a session has exceeded its absolute timeout based on sessionInitiatedTime and sessionTimeOut.
+     *
+     * @param session The session to check
+     * @param sessionTimeOut The timeout value as a string (in minutes)
+     * @return true if the session has exceeded the absolute timeout, false otherwise
+     */
+    private boolean isSessionAbsoluteTimeoutExceeded(Session session, String sessionTimeOut) {
+        if (session == null || session.getSessionInitiatedTime() == null || sessionTimeOut == null) {
+            return false;
+        }
+
+        try {
+            // Parse sessionTimeOut as minutes
+            long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
+
+            // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
+            LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
+
+            // Check if current time has exceeded the expiry time
+            LocalDateTime currentTime = LocalDateTime.now();
+            boolean isExpired = currentTime.isAfter(sessionExpiryTime);
+
+            if (log.isDebugEnabled()) {
+                log.debugf("Session timeout check - SessionId: %s, InitiatedTime: %s, Timeout : %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
+                        session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes,
+                        sessionExpiryTime, currentTime, isExpired);
+            }
+
+            return isExpired;
+        } catch (NumberFormatException e) {
+            log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
+                    sessionTimeOut, e.getMessage());
+            return false;
+        }
+    }
+
 
 
 }

@@ -126,6 +126,10 @@ public class InterimHandler {
             session.setGroupId(userData.getGroupId());
             i = 1;
         }
+
+
+
+
         boolean hasMatchingNasPortId = userData.getSessions().stream()
                 .anyMatch(ses -> ses.getNasPortId() != null &&
                         ses.getNasPortId().equals(request.nasPortId()));
@@ -159,6 +163,7 @@ public class InterimHandler {
                                 System.currentTimeMillis() - startTime);
                         generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
                         return Uni.createFrom().voidItem();
+
                     });
         }
     }
@@ -199,44 +204,6 @@ public class InterimHandler {
         CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent, serviceId, bucketId);
     }
 
-    /**
-     * Checks if a session has exceeded its absolute timeout based on sessionInitiatedTime and sessionTimeOut.
-     *
-     * @param session The session to check
-     * @param sessionTimeOut The timeout value as a string (in minutes)
-     * @return true if the session has exceeded the absolute timeout, false otherwise
-     */
-
-    //todo this method support for group and individual user sessions terminate need to set accountUtil class
-    private boolean isSessionAbsoluteTimeoutExceeded(Session session, String sessionTimeOut) {
-        if (session == null || session.getSessionInitiatedTime() == null || sessionTimeOut == null) {
-            return false;
-        }
-
-        try {
-            // Parse sessionTimeOut as minutes
-            long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
-
-            // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
-            LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
-
-            // Check if current time has exceeded the expiry time
-            LocalDateTime currentTime = LocalDateTime.now();
-            boolean isExpired = currentTime.isAfter(sessionExpiryTime);
-
-            if (log.isDebugEnabled()) {
-                log.debugf("Session timeout check - SessionId: %s, InitiatedTime: %s, Timeout : %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
-                        session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes,
-                        sessionExpiryTime, currentTime, isExpired);
-            }
-
-            return isExpired;
-        } catch (NumberFormatException e) {
-            log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
-                    sessionTimeOut, e.getMessage());
-            return false;
-        }
-    }
 
 
 }
