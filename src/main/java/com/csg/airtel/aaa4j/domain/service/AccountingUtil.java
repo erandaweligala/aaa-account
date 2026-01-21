@@ -1084,8 +1084,9 @@ public class AccountingUtil {
         }
 
         if(!foundBalance.getBucketUsername().equals(request.username()) ) {
-            //todo remove userData.getBalance() if groupId == true all balances
-            userData.getBalance().remove(foundBalance);
+            //todo final keyword doent work why
+            final UserSessionData userSessionData = userData;
+            userData.getBalance().removeIf(Balance::isGroup);
             userData.getSessions().remove(currentSession);
             // Fetch current group data to update sessions as well
             return cacheClient.getUserData(foundBalance.getBucketUsername())
@@ -1093,7 +1094,8 @@ public class AccountingUtil {
                     .onItem().transformToUni(existingGroupData -> {
 
                         UserSessionData userSessionGroupData = prepareGroupDataWithSession(
-                                existingGroupData, foundBalance, currentSession,request);
+                                existingGroupData, foundBalance, currentSession,request,userSessionData);
+
 
                         // Update both group and user caches in parallel for better performance
                         return Uni.combine().all().unis(
@@ -1123,9 +1125,11 @@ public class AccountingUtil {
      * @param session the session to add/update (may be null)
      * @return UserSessionData with updated balance and sessions
      */
-    public UserSessionData prepareGroupDataWithSession(UserSessionData existingGroupData, Balance balance, Session session,AccountingRequestDto request) {
-        UserSessionData groupData = new UserSessionData();
-        groupData.setBalance(List.of(balance));
+    public UserSessionData prepareGroupDataWithSession(UserSessionData existingGroupData, Balance balance, Session session,AccountingRequestDto request,UserSessionData currentUserData) {
+        currentUserData.getBalance().removeIf(rs ->!rs.isGroup() || rs.getBucketId().equals(balance.getBucketId()));
+        final UserSessionData userSessionGroupData = currentUserData;
+        userSessionGroupData.getBalance().add(balance);
+
 
         if (session != null) {
             List<Session> groupSessions = new ArrayList<>();
@@ -1142,7 +1146,7 @@ public class AccountingUtil {
             if(!AccountingRequestDto.ActionType.STOP.equals(request.actionType())) {
                 groupSessions.add(session);
             }
-            groupData.setSessions(groupSessions);
+            userSessionGroupData.setSessions(groupSessions);
 
             if (log.isDebugEnabled()) {
                 log.debugf("Updated group bucket sessions: total=%d, added/updated sessionId=%s",
@@ -1150,15 +1154,15 @@ public class AccountingUtil {
             }
         } else if (existingGroupData != null && existingGroupData.getSessions() != null) {
             // Preserve existing sessions if no session to add/update
-            groupData.setSessions(existingGroupData.getSessions());
+            userSessionGroupData.setSessions(existingGroupData.getSessions());
         }
 
         // Preserve groupId if it exists in the existing data
         if (existingGroupData != null && existingGroupData.getGroupId() != null) {
-            groupData.setGroupId(existingGroupData.getGroupId());
+            userSessionGroupData.setGroupId(existingGroupData.getGroupId());
         }
 
-        return groupData;
+        return userSessionGroupData;
     }
 
     private long getNewQuota(Session sessionData, Balance foundBalance, long totalUsage) {
