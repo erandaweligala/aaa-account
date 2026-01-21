@@ -1059,7 +1059,30 @@ public class AccountingUtil {
 
     private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
 
-        //todo implement isSessionAbsoluteTimeoutExceeded check this position
+        // Check if session has exceeded absolute timeout
+        if (isSessionAbsoluteTimeoutExceeded(currentSession, userData.getSessionTimeOut())) {
+            log.infof("Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
+                    request.username(), currentSession.getSessionId());
+
+            // Remove session from userData and send COA disconnect
+            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId())
+                    .onItem().transformToUni(updatedUserData -> {
+                        if (log.isTraceEnabled()) {
+                            log.tracef("Successfully disconnected timed-out session for user: %s, sessionId: %s",
+                                    request.username(), currentSession.getSessionId());
+                        }
+                        // Update cache with the modified userData (session removed)
+                        return cacheClient.updateUserAndRelatedCaches(request.username(), updatedUserData)
+                                .onFailure().invoke(err ->
+                                        log.errorf(err, "Error updating cache after session timeout for user: %s", request.username()))
+                                .replaceWith(UpdateResult.failure("Session absolute timeout exceeded"));
+                    })
+                    .onFailure().invoke(err ->
+                            log.errorf(err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
+                                    request.username(), currentSession.getSessionId()))
+                    .onFailure().recoverWithItem(UpdateResult.failure("Failed to disconnect timed-out session"));
+        }
+
         if(!foundBalance.getBucketUsername().equals(request.username()) ) {
             userData.getBalance().remove(foundBalance);
             userData.getSessions().remove(currentSession);
