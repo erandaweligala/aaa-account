@@ -127,16 +127,42 @@ public class InterimHandler {
             i = 1;
         }
 
-        //todo need to implement Absolute session terminate before camming request calculate octects and after termainte session
+        // Implement Absolute session terminate before COA request: calculate octets and update balance before terminating session
         if (session.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null && isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut())) {
-                log.warnf("Absolute session timeout exceeded for user: %s, sessionId: %s",
+                log.warnf("Absolute session timeout exceeded for user: %s, sessionId: %s. Calculating final octets before termination.",
                         request.username(), request.sessionId());
 
-                return coaService.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "Session absolute timeout exceeded",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT),
-                        session, request.username());
+                // Calculate octets and update session/balance before terminating
+                Session finalSession = session;
+                return accountingUtil.updateSessionAndBalance(userData, session, request, null)
+                        .onItem().transformToUni(updateResult -> {
+                            if (updateResult.success()) {
+                                log.infof("Final octets calculated and balance updated for session: %s before absolute timeout termination. Quota: %d",
+                                        request.sessionId(), updateResult.newQuota());
+
+                                // Generate CDR with final usage
+                                generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
+                            } else {
+                                log.warnf("Failed to update balance for session: %s before absolute timeout termination", request.sessionId());
+                            }
+
+                            // Now terminate the session with COA disconnect
+                            return coaService.produceAccountingResponseEvent(
+                                    MappingUtil.createResponse(request, "Session absolute timeout exceeded",
+                                            AccountingResponseEvent.EventType.COA,
+                                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                                    finalSession, request.username());
+                        })
+                        .onFailure().recoverWithUni(throwable -> {
+                            log.errorf(throwable, "Error calculating octets before absolute timeout termination for session: %s. Proceeding with termination.",
+                                    request.sessionId());
+                            // Proceed with termination even if octets calculation fails
+                            return coaService.produceAccountingResponseEvent(
+                                    MappingUtil.createResponse(request, "Session absolute timeout exceeded",
+                                            AccountingResponseEvent.EventType.COA,
+                                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                                    finalSession, request.username());
+                        });
             }
 
 
