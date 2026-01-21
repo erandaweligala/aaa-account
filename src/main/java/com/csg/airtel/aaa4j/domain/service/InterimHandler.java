@@ -127,7 +127,6 @@ public class InterimHandler {
             i = 1;
         }
 
-        //todo need to implement Absolute session terminate before camming request calculate octects and after termainte session
         if (session.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null && isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut())) {
                 log.warnf("Absolute session timeout exceeded for user: %s, sessionId: %s",
                         request.username(), request.sessionId());
@@ -169,6 +168,7 @@ public class InterimHandler {
                         if (!updateResult.success()) {
                             log.warnf("update failed for sessionId: %s", request.sessionId());
                         }
+                        //todo need to implement isSessionAbsoluteTimeoutExceeded validate
                         log.infof("Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
                         generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
