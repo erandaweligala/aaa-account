@@ -168,7 +168,20 @@ public class InterimHandler {
                         if (!updateResult.success()) {
                             log.warnf("update failed for sessionId: %s", request.sessionId());
                         }
-                        //todo need to implement isSessionAbsoluteTimeoutExceeded validate
+
+                        // Validate if session absolute timeout is exceeded after update
+                        if (finalSession.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null &&
+                            isSessionAbsoluteTimeoutExceeded(finalSession, userData.getSessionTimeOut())) {
+                            log.warnf("Absolute session timeout exceeded after update for user: %s, sessionId: %s",
+                                    request.username(), request.sessionId());
+                            generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
+                            return coaService.produceAccountingResponseEvent(
+                                    MappingUtil.createResponse(request, "Session absolute timeout exceeded",
+                                            AccountingResponseEvent.EventType.COA,
+                                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                                    finalSession, request.username());
+                        }
+
                         log.infof("Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
                         generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
