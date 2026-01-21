@@ -348,7 +348,7 @@ public class StartHandler {
             totalQuota += bucket.getCurrentBalance();
         }
 
-        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota,concurrency,templates,serviceBuckets.getFirst().getUserStatus());
+        return new BucketProcessingResult(balanceList, balanceGroupList, groupId, totalQuota,concurrency,templates,serviceBuckets.getFirst().getUserStatus(),serviceBuckets.getFirst().getSessionTimeout());
     }
 
 
@@ -369,7 +369,7 @@ public class StartHandler {
         Session session = createSessionWithBalance(request, highestPriorityBalance);
         session.setGroupId(result.groupId());
         UserSessionData newUserSessionData = buildUserSessionData(
-                request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates,result.userStatus);
+                request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates,result.userStatus,result.sessionTimeOut);
 
         Uni<Void> userStorageUni = storeUserSessionData(request.username(), newUserSessionData);
 
@@ -403,7 +403,7 @@ public class StartHandler {
             List<Balance> balanceList,
             String groupId,
             Session session,
-            Balance highestPriorityBalance,long templates,String userStatus) {
+            Balance highestPriorityBalance,long templates,String userStatus,String sessionTimeOut) {
 
         UserSessionData newUserSessionData = new UserSessionData();
         newUserSessionData.setUserStatus(userStatus);
@@ -412,6 +412,7 @@ public class StartHandler {
         newUserSessionData.setConcurrency(concurrency);
         newUserSessionData.setBalance(balanceList);
         newUserSessionData.setSuperTemplateId(templates);
+        newUserSessionData.setSessionTimeOut(sessionTimeOut);
         if (!isGroupBalance(highestPriorityBalance, request.username())) {
             newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
         }
@@ -501,7 +502,7 @@ public class StartHandler {
             List<Balance> balanceList,
             List<Balance> balanceGroupList,
             String groupId,
-            double totalQuota,long concurrency,long templates,String userStatus) {
+            double totalQuota,long concurrency,long templates,String userStatus,String sessionTimeOut) {
     }
 
     private static String getGroupId(AccountingRequestDto request, ServiceBucketInfo bucket, List<Balance> balanceGroupList, Balance balance, String groupId, List<Balance> balanceList) {

@@ -218,6 +218,7 @@ public class IdleSessionTerminatorScheduler {
      * Process expired sessions for a single user.
      * This method removes expired sessions from cache and triggers DB write operations
      * to persist balance updates for terminated sessions.
+     * Also checks for absolute session timeout based on sessionInitiatedTime and sessionTimeOut.
      */
     private Uni<Void> processUserExpiredSessions(UserSessionData userData,
                                                   List<SessionExpiryEntry> expiredSessionEntries,
@@ -237,9 +238,12 @@ public class IdleSessionTerminatorScheduler {
         }
 
         // Find sessions to terminate - using efficient loop instead of stream
+        // Check both idle timeout (from index) and absolute timeout (from sessionInitiatedTime)
         List<Session> sessionsToTerminate = new ArrayList<>();
         for (Session session : sessions) {
-            if (expiredSessionIds.contains(session.getSessionId())) {
+            boolean shouldTerminate = expiredSessionIds.contains(session.getSessionId()) ||
+                    isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut());
+            if (shouldTerminate) {
                 sessionsToTerminate.add(session);
             }
         }
@@ -395,6 +399,42 @@ public class IdleSessionTerminatorScheduler {
                         v -> {},
                         e -> log.warnf("Failed to get expired count: %s", e.getMessage())
                 );
+    }
+
+    /**
+     * Checks if a session has exceeded its absolute timeout based on sessionInitiatedTime and sessionTimeOut.
+     *
+     * @param session The session to check
+     * @param sessionTimeOut The timeout value as a string (in minutes)
+     * @return true if the session has exceeded the absolute timeout, false otherwise
+     */
+    private boolean isSessionAbsoluteTimeoutExceeded(Session session, String sessionTimeOut) {
+        if (session == null || session.getSessionInitiatedTime() == null || sessionTimeOut == null) {
+            return false;
+        }
+
+        try {
+            // Parse sessionTimeOut as minutes
+            long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
+
+            // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
+            java.time.LocalDateTime sessionExpiryTime = session.getSessionInitiatedTime().plusMinutes(timeoutMinutes);
+
+            // Check if current time has exceeded the expiry time
+            java.time.LocalDateTime currentTime = java.time.LocalDateTime.now();
+            boolean isExpired = currentTime.isAfter(sessionExpiryTime);
+
+            if (isExpired) {
+                log.infof("Absolute timeout exceeded for session: %s, initiated: %s, timeout: %d minutes, expiry: %s",
+                        session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes, sessionExpiryTime);
+            }
+
+            return isExpired;
+        } catch (NumberFormatException e) {
+            log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
+                    sessionTimeOut, e.getMessage());
+            return false;
+        }
     }
 
 }

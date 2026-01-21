@@ -105,7 +105,10 @@ public class InterimHandler {
                     newSession.setGroupId(groupId);
                     UserSessionData newUserSessionData =  UserSessionData.builder().superTemplateId(templates)
                             .groupId(groupId).userName(request.username()).concurrency(concurrency)
-                            .balance(balanceList).sessions(new ArrayList<>(List.of(newSession))).userStatus(serviceBuckets.getFirst().getUserStatus()).build();
+                            .balance(balanceList).sessions(new ArrayList<>(List.of(newSession)))
+                            .userStatus(serviceBuckets.getFirst().getUserStatus())
+                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
+                            .build();
                     return processAccountingRequest(newUserSessionData, request,traceId);
 
                 });
@@ -123,6 +126,20 @@ public class InterimHandler {
             session.setGroupId(userData.getGroupId());
             i = 1;
         }
+
+        // Check for absolute session timeout
+        if (session.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null) {
+            if (isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut())) {
+                log.warnf("Absolute session timeout exceeded for user: %s, sessionId: %s",
+                        request.username(), request.sessionId());
+                return coaService.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "Session absolute timeout exceeded",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),
+                        session, request.username());
+            }
+        }
+
         boolean hasMatchingNasPortId = userData.getSessions().stream()
                 .anyMatch(ses -> ses.getNasPortId() != null &&
                         ses.getNasPortId().equals(request.nasPortId()));
@@ -194,6 +211,43 @@ public class InterimHandler {
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
         CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent, serviceId, bucketId);
+    }
+
+    /**
+     * Checks if a session has exceeded its absolute timeout based on sessionInitiatedTime and sessionTimeOut.
+     *
+     * @param session The session to check
+     * @param sessionTimeOut The timeout value as a string (in minutes)
+     * @return true if the session has exceeded the absolute timeout, false otherwise
+     */
+    private boolean isSessionAbsoluteTimeoutExceeded(Session session, String sessionTimeOut) {
+        if (session == null || session.getSessionInitiatedTime() == null || sessionTimeOut == null) {
+            return false;
+        }
+
+        try {
+            // Parse sessionTimeOut as minutes
+            long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
+
+            // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
+            LocalDateTime sessionExpiryTime = session.getSessionInitiatedTime().plusMinutes(timeoutMinutes);
+
+            // Check if current time has exceeded the expiry time
+            LocalDateTime currentTime = LocalDateTime.now();
+            boolean isExpired = currentTime.isAfter(sessionExpiryTime);
+
+            if (log.isDebugEnabled()) {
+                log.debugf("Session timeout check - SessionId: %s, InitiatedTime: %s, TimeoutMinutes: %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
+                        session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes,
+                        sessionExpiryTime, currentTime, isExpired);
+            }
+
+            return isExpired;
+        } catch (NumberFormatException e) {
+            log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
+                    sessionTimeOut, e.getMessage());
+            return false;
+        }
     }
 
 
