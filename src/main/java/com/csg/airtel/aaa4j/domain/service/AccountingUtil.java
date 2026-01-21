@@ -1084,8 +1084,12 @@ public class AccountingUtil {
         }
 
         if(!foundBalance.getBucketUsername().equals(request.username()) ) {
-            //todo final keyword doent work why
-            final UserSessionData userSessionData = userData;
+            // Create a deep copy of userData to preserve original data for group update
+            UserSessionData originalUserData = userData.toBuilder()
+                    .balance(new ArrayList<>(userData.getBalance()))
+                    .sessions(new ArrayList<>(userData.getSessions()))
+                    .build();
+
             userData.getBalance().removeIf(Balance::isGroup);
             userData.getSessions().remove(currentSession);
             // Fetch current group data to update sessions as well
@@ -1094,7 +1098,7 @@ public class AccountingUtil {
                     .onItem().transformToUni(existingGroupData -> {
 
                         UserSessionData userSessionGroupData = prepareGroupDataWithSession(
-                                existingGroupData, foundBalance, currentSession,request,userSessionData);
+                                existingGroupData, foundBalance, currentSession,request,originalUserData);
 
 
                         // Update both group and user caches in parallel for better performance
