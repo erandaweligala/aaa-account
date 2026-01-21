@@ -126,19 +126,6 @@ public class InterimHandler {
             session.setGroupId(userData.getGroupId());
             i = 1;
         }
-
-        if (session.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null && isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut())) {
-                log.warnf("Absolute session timeout exceeded for user: %s, sessionId: %s",
-                        request.username(), request.sessionId());
-
-                return coaService.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "Session absolute timeout exceeded",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT),
-                        session, request.username());
-            }
-
-
         boolean hasMatchingNasPortId = userData.getSessions().stream()
                 .anyMatch(ses -> ses.getNasPortId() != null &&
                         ses.getNasPortId().equals(request.nasPortId()));
@@ -168,25 +155,10 @@ public class InterimHandler {
                         if (!updateResult.success()) {
                             log.warnf("update failed for sessionId: %s", request.sessionId());
                         }
-
-                        // Validate if session absolute timeout is exceeded after update
-                        if (finalSession.getSessionInitiatedTime() != null && userData.getSessionTimeOut() != null &&
-                            isSessionAbsoluteTimeoutExceeded(finalSession, userData.getSessionTimeOut())) {
-                            log.warnf("Absolute session timeout exceeded after update for user: %s, sessionId: %s",
-                                    request.username(), request.sessionId());
-                            generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
-                            return coaService.produceAccountingResponseEvent(
-                                    MappingUtil.createResponse(request, "Session absolute timeout exceeded",
-                                            AccountingResponseEvent.EventType.COA,
-                                            AccountingResponseEvent.ResponseAction.DISCONNECT),
-                                    finalSession, request.username());
-                        }
-
                         log.infof("Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
                         generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
                         return Uni.createFrom().voidItem();
-
                     });
         }
     }
@@ -234,6 +206,8 @@ public class InterimHandler {
      * @param sessionTimeOut The timeout value as a string (in minutes)
      * @return true if the session has exceeded the absolute timeout, false otherwise
      */
+
+    //todo this method support for group and individual user sessions terminate need to set accountUtil class
     private boolean isSessionAbsoluteTimeoutExceeded(Session session, String sessionTimeOut) {
         if (session == null || session.getSessionInitiatedTime() == null || sessionTimeOut == null) {
             return false;
