@@ -87,13 +87,27 @@ public class StopHandler {
                 .invoke(() -> userSessionData.getSessions().remove(finalSession))
                 .call(() -> {
                     log.infof("[traceId: %s] Updating cache for user: %s", request.username());
-                    // Update cache
-                    return cacheUtil.updateUserAndRelatedCaches(request.username(), userSessionData)
-                            .onFailure().invoke(throwable ->
-                                    log.errorf(throwable, "Failed to update cache for user: %s",
-                                            request.username())
-                            )
-                            .onFailure().recoverWithNull(); // Cache failure can still be swallowed
+
+                    String groupId = userSessionData.getGroupId();
+                    boolean hasGroupId = groupId != null && !"1".equals(groupId);
+
+                    // Update cache - both user and group if applicable
+                    if (hasGroupId) {
+                        return updateUserAndGroupCaches(request.username(), groupId,
+                                userSessionData, finalSession.getSessionId())
+                                .onFailure().invoke(throwable ->
+                                        log.errorf(throwable, "Failed to update cache for user: %s",
+                                                request.username())
+                                )
+                                .onFailure().recoverWithNull(); // Cache failure can still be swallowed
+                    } else {
+                        return cacheUtil.updateUserAndRelatedCaches(request.username(), userSessionData)
+                                .onFailure().invoke(throwable ->
+                                        log.errorf(throwable, "Failed to update cache for user: %s",
+                                                request.username())
+                                )
+                                .onFailure().recoverWithNull(); // Cache failure can still be swallowed
+                    }
                 })
                 .call(() -> sessionLifecycleManager.onSessionTerminated(request.username(), request.sessionId()))
                 .invoke(() ->
@@ -147,6 +161,54 @@ public class StopHandler {
                 request.username(),
                 null
         );
+    }
+
+    /**
+     * Update both user and group caches when a user's session is removed.
+     * Removes the specified session from the group's session list.
+     *
+     * @param username the username of the user
+     * @param groupUsername the username of the group
+     * @param updatedUserData the updated user session data
+     * @param sessionId the session ID that was removed
+     * @return Uni<Void> when both caches are updated
+     */
+    private Uni<Void> updateUserAndGroupCaches(String username, String groupUsername,
+                                               UserSessionData updatedUserData,
+                                               String sessionId) {
+        // Fetch current group data from cache
+        return cacheUtil.getUserData(groupUsername)
+                .onFailure().recoverWithNull()
+                .onItem().transformToUni(existingGroupData -> {
+                    if (existingGroupData != null && sessionId != null) {
+                        // Remove session from group's session list
+                        List<Session> groupSessions = existingGroupData.getSessions();
+                        if (groupSessions != null && !groupSessions.isEmpty()) {
+                            groupSessions.removeIf(session -> sessionId.equals(session.getSessionId()));
+
+                            if (log.isDebugEnabled()) {
+                                log.debugf("Removed session %s from group cache for groupId: %s",
+                                        sessionId, groupUsername);
+                            }
+                        }
+
+                        // Update both user and group caches in parallel
+                        return Uni.combine().all().unis(
+                                cacheUtil.updateUserAndRelatedCaches(groupUsername, existingGroupData)
+                                        .onFailure().invoke(err ->
+                                                log.errorf(err, "Error updating group cache for groupId: %s", groupUsername)),
+                                cacheUtil.updateUserAndRelatedCaches(username, updatedUserData)
+                                        .onFailure().invoke(err ->
+                                                log.errorf(err, "Error updating user cache for user: %s", username))
+                        ).discardItems();
+                    } else {
+                        // Group data not found or no session to remove, just update user cache
+                        if (log.isDebugEnabled()) {
+                            log.debugf("Group data not found for groupId: %s, updating only user cache", groupUsername);
+                        }
+                        return cacheUtil.updateUserAndRelatedCaches(username, updatedUserData);
+                    }
+                });
     }
 
 }

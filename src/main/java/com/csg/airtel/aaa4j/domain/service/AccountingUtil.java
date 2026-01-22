@@ -976,8 +976,13 @@ public class AccountingUtil {
             userData.getBalance().remove(foundBalance);
         }
 
+        // Capture session IDs before clearing for group cache update
+        List<String> clearedSessionIds = userData.getSessions() != null ?
+                userData.getSessions().stream()
+                        .map(Session::getSessionId)
+                        .toList() : Collections.emptyList();
+
         // Clear all sessions and send COA disconnect for all sessions
-        // todo need to cahce update if have group id  update cache peticuler group Id
         return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .onItem().transformToUni(updatedUserData -> {
                     if (log.isTraceEnabled()) {
@@ -987,7 +992,15 @@ public class AccountingUtil {
                     }
                     return updateBalanceInDatabase(foundBalance, result.newQuota(),
                             request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
+                            .chain(() -> {
+                                // Update both user and group caches if group balance is used
+                                if (!bucketUsername.equals(username)) {
+                                    return updateUserAndGroupCaches(username, bucketUsername,
+                                            updatedUserData, clearedSessionIds);
+                                } else {
+                                    return cacheClient.updateUserAndRelatedCaches(username, updatedUserData);
+                                }
+                            });
                 })
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
@@ -1024,6 +1037,12 @@ public class AccountingUtil {
             userData.getBalance().remove(foundBalance);
         }
 
+        // Capture session IDs before clearing for group cache update
+        List<String> clearedSessionIds = userData.getSessions() != null ?
+                userData.getSessions().stream()
+                        .map(Session::getSessionId)
+                        .toList() : Collections.emptyList();
+
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
         return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .onItem().transformToUni(updatedUserData -> {
@@ -1034,7 +1053,15 @@ public class AccountingUtil {
                     }
                     return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                             request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
+                            .chain(() -> {
+                                // Update both user and group caches if group balance is used
+                                if (!bucketUsername.equals(username)) {
+                                    return updateUserAndGroupCaches(username, bucketUsername,
+                                            updatedUserData, clearedSessionIds);
+                                } else {
+                                    return cacheClient.updateUserAndRelatedCaches(username, updatedUserData);
+                                }
+                            });
                 })
                 .onFailure().invoke(err -> {
                     if (log.isDebugEnabled()) {
@@ -1080,6 +1107,9 @@ public class AccountingUtil {
             log.infof("Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
                     request.username(), currentSession.getSessionId());
 
+            String bucketUsername = foundBalance.getBucketUsername();
+            List<String> clearedSessionIds = List.of(currentSession.getSessionId());
+
             // Remove session from userData and send COA disconnect
             return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId())
                     .onItem().transformToUni(updatedUserData -> {
@@ -1088,7 +1118,16 @@ public class AccountingUtil {
                                     request.username(), currentSession.getSessionId());
                         }
                         // Update cache with the modified userData (session removed)
-                        return cacheClient.updateUserAndRelatedCaches(request.username(), updatedUserData)
+                        // Update both user and group caches if group balance is used
+                        Uni<Void> cacheUpdateUni;
+                        if (!bucketUsername.equals(request.username())) {
+                            cacheUpdateUni = updateUserAndGroupCaches(request.username(), bucketUsername,
+                                    updatedUserData, clearedSessionIds);
+                        } else {
+                            cacheUpdateUni = cacheClient.updateUserAndRelatedCaches(request.username(), updatedUserData);
+                        }
+
+                        return cacheUpdateUni
                                 .onFailure().invoke(err ->
                                         log.errorf(err, "Error updating cache after session timeout for user: %s", request.username()))
                                 .replaceWith(UpdateResult.failure("Session absolute timeout exceeded"));
@@ -1269,6 +1308,56 @@ public class AccountingUtil {
                     if (log.isDebugEnabled()) {
                         log.debugf(throwable, "Failed to update cache group for balance update, groupId: %s",
                                 bucketUsername);
+                    }
+                });
+    }
+
+    /**
+     * Update both user and group caches when a user's session uses a group balance.
+     * Removes the specified sessions from the group's session list.
+     *
+     * @param username the username of the user
+     * @param groupUsername the username of the group (bucket owner)
+     * @param updatedUserData the updated user session data
+     * @param clearedSessionIds list of session IDs that were cleared
+     * @return Uni<Void> when both caches are updated
+     */
+    private Uni<Void> updateUserAndGroupCaches(String username, String groupUsername,
+                                               UserSessionData updatedUserData,
+                                               List<String> clearedSessionIds) {
+        // Fetch current group data from cache
+        return cacheClient.getUserData(groupUsername)
+                .onFailure().recoverWithNull()
+                .onItem().transformToUni(existingGroupData -> {
+                    if (existingGroupData != null && clearedSessionIds != null && !clearedSessionIds.isEmpty()) {
+                        // Remove cleared sessions from group's session list
+                        List<Session> groupSessions = existingGroupData.getSessions();
+                        if (groupSessions != null && !groupSessions.isEmpty()) {
+                            groupSessions.removeIf(session ->
+                                    clearedSessionIds.contains(session.getSessionId()));
+
+                            if (log.isDebugEnabled()) {
+                                log.debugf("Removed %d session(s) from group cache for groupId: %s",
+                                        clearedSessionIds.size(), groupUsername);
+                            }
+                        }
+
+                        // Update both user and group caches in parallel
+                        return Uni.combine().all().unis(
+                                cacheClient.updateUserAndRelatedCaches(groupUsername, existingGroupData)
+                                        .onFailure().invoke(err ->
+                                                log.errorf(err, "Error updating group cache for groupId: %s", groupUsername)),
+                                cacheClient.updateUserAndRelatedCaches(username, updatedUserData)
+                                        .onFailure().invoke(err ->
+                                                log.errorf(err, "Error updating user cache for user: %s", username))
+                        ).discardItems();
+                    } else {
+                        // Group data not found or no sessions to clear, just update user cache
+                        if (log.isDebugEnabled()) {
+                            log.debugf("Group data not found or no sessions to clear for groupId: %s, " +
+                                    "updating only user cache", groupUsername);
+                        }
+                        return cacheClient.updateUserAndRelatedCaches(username, updatedUserData);
                     }
                 });
     }
