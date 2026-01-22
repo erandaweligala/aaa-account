@@ -582,6 +582,7 @@ public class AccountingUtil {
      * Synchronously combine balances from user and group data.
      * If a balance with the same bucketId exists in both user and group balances,
      * only the group balance is included to avoid duplicates.
+     * Optimized for high TPS with O(n+m) complexity using HashSet for bucketId lookups.
      *
      * @param userBalances user's balances
      * @param groupData group bucket data (may be null)
@@ -594,20 +595,20 @@ public class AccountingUtil {
 
         List<Balance> combined = new ArrayList<>(userSize + groupSize);
 
+        // Build HashSet of group bucketIds for O(1) lookup - optimized for high TPS
+        java.util.Set<String> groupBucketIds = null;
+        if (groupBalances != null && !groupBalances.isEmpty()) {
+            groupBucketIds = new java.util.HashSet<>(groupSize);
+            for (Balance groupBalance : groupBalances) {
+                groupBucketIds.add(groupBalance.getBucketId());
+            }
+        }
+
         // Add user balances only if they don't have a matching bucketId in group balances
+        // O(n) instead of O(n*m) due to HashSet lookup
         if (userBalances != null) {
             for (Balance userBalance : userBalances) {
-                boolean existsInGroup = false;
-                if (groupBalances != null) {
-                    for (Balance groupBalance : groupBalances) {
-                        if (userBalance.getBucketId().equals(groupBalance.getBucketId())) {
-                            existsInGroup = true;
-                            break;
-                        }
-                    }
-                }
-                // Only add user balance if it doesn't exist in group balances
-                if (!existsInGroup) {
+                if (groupBucketIds == null || !groupBucketIds.contains(userBalance.getBucketId())) {
                     combined.add(userBalance);
                 }
             }
