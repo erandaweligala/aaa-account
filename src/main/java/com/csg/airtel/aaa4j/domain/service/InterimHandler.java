@@ -126,10 +126,7 @@ public class InterimHandler {
             session.setGroupId(userData.getGroupId());
             i = 1;
         }
-
-
-
-
+        
         boolean hasMatchingNasPortId = userData.getSessions().stream()
                 .anyMatch(ses -> ses.getNasPortId() != null &&
                         ses.getNasPortId().equals(request.nasPortId()));

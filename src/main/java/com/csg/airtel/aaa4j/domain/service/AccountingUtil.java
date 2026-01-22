@@ -261,7 +261,7 @@ public class AccountingUtil {
             UserSessionData groupData) {
 
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
-
+        userData.setBalance(combinedBalances); //eranda-0
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
 
         List<Session> sessionsToCheck = (foundBalance != null && foundBalance.isGroup()
@@ -693,6 +693,8 @@ public class AccountingUtil {
     /**
      * Handle the case when no valid balance is found.
      */
+
+    //todo need to initated COA Disconnect request
     private Uni<UpdateResult> handleNoValidBalance(AccountingRequestDto request) {
         if (log.isDebugEnabled()) {
             log.debugf("No valid balance found for user: %s", request.username());
@@ -1084,8 +1086,11 @@ public class AccountingUtil {
         }
 
         if(!foundBalance.getBucketUsername().equals(request.username()) ) {
-            //todo final keyword doent work why
-            final UserSessionData userSessionData = userData;
+
+            UserSessionData originalUserData = userData.toBuilder().userStatus(null).concurrency(0).userName(null).sessionTimeOut(null)
+                    .balance(new ArrayList<>(userData.getBalance()))
+                    .sessions(new ArrayList<>(userData.getSessions()))
+                    .build();
             userData.getBalance().removeIf(Balance::isGroup);
             userData.getSessions().remove(currentSession);
             // Fetch current group data to update sessions as well
@@ -1094,7 +1099,7 @@ public class AccountingUtil {
                     .onItem().transformToUni(existingGroupData -> {
 
                         UserSessionData userSessionGroupData = prepareGroupDataWithSession(
-                                existingGroupData, foundBalance, currentSession,request,userSessionData);
+                                existingGroupData, foundBalance, currentSession,request,originalUserData);
 
 
                         // Update both group and user caches in parallel for better performance
