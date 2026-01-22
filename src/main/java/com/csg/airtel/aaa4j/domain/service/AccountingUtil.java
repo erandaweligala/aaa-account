@@ -660,7 +660,7 @@ public class AccountingUtil {
             long totalUsage) {
 
         if (foundBalance == null) {
-            return handleNoValidBalance(request);
+            return handleNoValidBalance(userData, request);
         }
 
         if (log.isTraceEnabled()) {
@@ -692,14 +692,28 @@ public class AccountingUtil {
 
     /**
      * Handle the case when no valid balance is found.
+     * Sends COA disconnect request for all existing sessions and returns failure.
+     *
+     * @param userData user session data containing active sessions
+     * @param request accounting request
+     * @return Uni of UpdateResult with failure status
      */
+    private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request) {
+        log.warnf("No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
-    //todo need to initated COA Disconnect request
-    private Uni<UpdateResult> handleNoValidBalance(AccountingRequestDto request) {
-        if (log.isDebugEnabled()) {
-            log.debugf("No valid balance found for user: %s", request.username());
-        }
-        return Uni.createFrom().item(UpdateResult.failure("error"));
+        // Send COA disconnect for all existing sessions
+        return coaService.clearAllSessionsAndSendCOA(userData, request.username(), null)
+                .onItem().transform(updatedUserData -> {
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Successfully sent COA disconnect for user: %s due to no valid balance",
+                                request.username());
+                    }
+                    return UpdateResult.failure("No valid balance found");
+                })
+                .onFailure().invoke(err ->
+                        log.errorf(err, "Error sending COA disconnect for user: %s with no valid balance",
+                                request.username()))
+                .onFailure().recoverWithItem(UpdateResult.failure("No valid balance found"));
     }
 
     /**
