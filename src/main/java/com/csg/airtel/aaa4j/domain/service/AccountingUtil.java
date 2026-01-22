@@ -580,12 +580,14 @@ public class AccountingUtil {
 
     /**
      * Synchronously combine balances from user and group data.
+     * If a balance with the same bucketId exists in both user and group balances,
+     * only the group balance is included to avoid duplicates.
+     * Optimized for high TPS with O(n+m) complexity using HashSet for bucketId lookups.
      *
      * @param userBalances user's balances
      * @param groupData group bucket data (may be null)
-     * @return combined list of balances
+     * @return combined list of balances without duplicates
      */
-    //todo  if userBalances.bucketId == groupData.balance.bucketId only add only groupData.balance
     private List<Balance> getCombinedBalancesSync(List<Balance> userBalances, UserSessionData groupData) {
         int userSize = userBalances != null ? userBalances.size() : 0;
         List<Balance> groupBalances = groupData != null ? groupData.getBalance() : null;
@@ -593,15 +595,32 @@ public class AccountingUtil {
 
         List<Balance> combined = new ArrayList<>(userSize + groupSize);
 
-        if (userBalances != null) {
-            combined.addAll(userBalances);
+        // Build HashSet of group bucketIds for O(1) lookup - optimized for high TPS
+        java.util.Set<String> groupBucketIds = null;
+        if (groupBalances != null && !groupBalances.isEmpty()) {
+            groupBucketIds = new java.util.HashSet<>(groupSize);
+            for (Balance groupBalance : groupBalances) {
+                groupBucketIds.add(groupBalance.getBucketId());
+            }
         }
+
+        // Add user balances only if they don't have a matching bucketId in group balances
+        // O(n) instead of O(n*m) due to HashSet lookup
+        if (userBalances != null) {
+            for (Balance userBalance : userBalances) {
+                if (groupBucketIds == null || !groupBucketIds.contains(userBalance.getBucketId())) {
+                    combined.add(userBalance);
+                }
+            }
+        }
+
+        // Add all group balances (these take precedence over user balances with same bucketId)
         if (groupBalances != null && !groupBalances.isEmpty()) {
             combined.addAll(groupBalances);
         }
 
         if (log.isTraceEnabled()) {
-            log.tracef("Combined balances: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
+            log.tracef("Combined balances: user=%d, group=%d, total=%d (after deduplication)", userSize, groupSize, combined.size());
         }
 
         return combined;
