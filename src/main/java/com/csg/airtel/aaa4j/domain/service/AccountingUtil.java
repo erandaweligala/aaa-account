@@ -580,12 +580,13 @@ public class AccountingUtil {
 
     /**
      * Synchronously combine balances from user and group data.
+     * If a balance with the same bucketId exists in both user and group balances,
+     * only the group balance is included to avoid duplicates.
      *
      * @param userBalances user's balances
      * @param groupData group bucket data (may be null)
-     * @return combined list of balances
+     * @return combined list of balances without duplicates
      */
-    //todo  if userBalances.bucketId == groupData.balance.bucketId only add only groupData.balance
     private List<Balance> getCombinedBalancesSync(List<Balance> userBalances, UserSessionData groupData) {
         int userSize = userBalances != null ? userBalances.size() : 0;
         List<Balance> groupBalances = groupData != null ? groupData.getBalance() : null;
@@ -593,15 +594,32 @@ public class AccountingUtil {
 
         List<Balance> combined = new ArrayList<>(userSize + groupSize);
 
+        // Add user balances only if they don't have a matching bucketId in group balances
         if (userBalances != null) {
-            combined.addAll(userBalances);
+            for (Balance userBalance : userBalances) {
+                boolean existsInGroup = false;
+                if (groupBalances != null) {
+                    for (Balance groupBalance : groupBalances) {
+                        if (userBalance.getBucketId().equals(groupBalance.getBucketId())) {
+                            existsInGroup = true;
+                            break;
+                        }
+                    }
+                }
+                // Only add user balance if it doesn't exist in group balances
+                if (!existsInGroup) {
+                    combined.add(userBalance);
+                }
+            }
         }
+
+        // Add all group balances (these take precedence over user balances with same bucketId)
         if (groupBalances != null && !groupBalances.isEmpty()) {
             combined.addAll(groupBalances);
         }
 
         if (log.isTraceEnabled()) {
-            log.tracef("Combined balances: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
+            log.tracef("Combined balances: user=%d, group=%d, total=%d (after deduplication)", userSize, groupSize, combined.size());
         }
 
         return combined;
