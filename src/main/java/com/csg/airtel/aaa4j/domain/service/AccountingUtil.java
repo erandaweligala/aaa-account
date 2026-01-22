@@ -977,7 +977,7 @@ public class AccountingUtil {
         }
 
         // Clear all sessions and send COA disconnect for all sessions
-
+        // todo need to cahce update if have group id  update cache peticuler group Id
         return coaService.clearAllSessionsAndSendCOA(userData, username,null)
                 .onItem().transformToUni(updatedUserData -> {
                     if (log.isTraceEnabled()) {
