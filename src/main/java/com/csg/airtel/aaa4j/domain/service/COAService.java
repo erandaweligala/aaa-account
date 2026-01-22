@@ -191,7 +191,7 @@ public class COAService {
                                     log.infof("CoA disconnect ACK received for session: %s", session.getSessionId());
                                     monitoringService.recordCOARequest();
                                     generateAndSendCoaDisconnectCDR(session, username);
-                                    return new CoAResult(session.getSessionId(), true);
+                                    return new CoAResult(session.getSessionId(), true);// current change
                                 } else {
                                     log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
                                             session.getSessionId(), response.status(), response.message());

@@ -585,6 +585,7 @@ public class AccountingUtil {
      * @param groupData group bucket data (may be null)
      * @return combined list of balances
      */
+    //todo  if userBalances.bucketId == groupData.balance.bucketId only add only groupData.balance
     private List<Balance> getCombinedBalancesSync(List<Balance> userBalances, UserSessionData groupData) {
         int userSize = userBalances != null ? userBalances.size() : 0;
         List<Balance> groupBalances = groupData != null ? groupData.getBalance() : null;
@@ -971,30 +972,43 @@ public class AccountingUtil {
 
         String username = request.username();
         String bucketUsername = foundBalance.getBucketUsername();
-
-        if (!bucketUsername.equals(username)) {
-            userData.getBalance().remove(foundBalance);
-        }
-
+        
         // Clear all sessions and send COA disconnect for all sessions
-        // todo need to cahce update if have group id  update cache peticuler group Id
-        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
-                .onItem().transformToUni(updatedUserData -> {
-                    if (log.isTraceEnabled()) {
-                        log.tracef("Successfully cleared all sessions for user: %s, remaining sessions: %d",
-                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
-                                updatedUserData.getSessions().size() : 0);
-                    }
-                    return updateBalanceInDatabase(foundBalance, result.newQuota(),
-                            request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
-                })
-                .onFailure().invoke(err -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf(err, "Error clearing sessions and updating balance for user: %s", username);
-                    }
-                })
+        return coaService.clearAllSessionsAndSendCOA(userData, username, null)
+                .onItem().transformToUni(updatedUserData ->
+                        extractCoaCacheAndDBUpdate(
+                                request,
+                                foundBalance,
+                                updatedUserData,
+                                username,
+                                bucketUsername
+                        )
+                )
+                .onFailure().invoke(err ->
+                        log.debugf(err,
+                                "Error clearing sessions and updating balance for user: %s",
+                                username)
+                )
                 .replaceWith(result);
+    }
+
+    private Uni<Void> extractCoaCacheAndDBUpdate(AccountingRequestDto request, Balance foundBalance, UserSessionData updatedUserData, String username, String bucketUsername) {
+            if (bucketUsername.equals(username)) {
+                updatedUserData.getBalance().removeIf(Balance::isGroup);
+            } else {
+                updatedUserData.getBalance().removeIf(rs -> !rs.isGroup());
+                updatedUserData.setSuperTemplateId(0);
+                updatedUserData.setUserName(null);
+            }
+
+        if (log.isTraceEnabled()) {
+            log.tracef("Successfully cleared all sessions for user: %s, remaining sessions: %d",
+                    username, updatedUserData.getSessions() != null ?
+                    updatedUserData.getSessions().size() : 0);
+        }
+        return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
+                request.sessionId(), username)
+                .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData));
     }
 
     /**
@@ -1020,27 +1034,22 @@ public class AccountingUtil {
                     username, foundBalance.getBucketId());
         }
 
-        if (!bucketUsername.equals(username)) {
-            userData.getBalance().remove(foundBalance);
-        }
-
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
-        return coaService.clearAllSessionsAndSendCOA(userData, username,null)
-                .onItem().transformToUni(updatedUserData -> {
-                    if (log.isTraceEnabled()) {
-                        log.tracef("Successfully disconnected all sessions for user: %s due to consumption limit exceeded, remaining sessions: %d",
-                                username, updatedUserData != null && updatedUserData.getSessions() != null ?
-                                updatedUserData.getSessions().size() : 0);
-                    }
-                    return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
-                            request.sessionId(), bucketUsername, username)
-                            .chain(() -> cacheClient.updateUserAndRelatedCaches(username, updatedUserData));
-                })
-                .onFailure().invoke(err -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf(err, "Error disconnecting sessions for consumption limit exceeded, user: %s", username);
-                    }
-                })
+        return coaService.clearAllSessionsAndSendCOA(userData, username, null)
+                .onItem().transformToUni(updatedUserData ->
+                        extractCoaCacheAndDBUpdate(
+                                request,
+                                foundBalance,
+                                updatedUserData,
+                                username,
+                                bucketUsername
+                        )
+                )
+                .onFailure().invoke(err ->
+                        log.debugf(err,
+                                "Error clearing sessions and updating balance for user: %s",
+                                username)
+                )
                 .replaceWith(result);
     }
 
@@ -1075,29 +1084,29 @@ public class AccountingUtil {
 
     private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
 
-        // Check if session has exceeded absolute timeout
-        if (isSessionAbsoluteTimeoutExceeded(currentSession, userData.getSessionTimeOut())) {
-            log.infof("Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
-                    request.username(), currentSession.getSessionId());
-
-            // Remove session from userData and send COA disconnect
-            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId())
-                    .onItem().transformToUni(updatedUserData -> {
-                        if (log.isTraceEnabled()) {
-                            log.tracef("Successfully disconnected timed-out session for user: %s, sessionId: %s",
-                                    request.username(), currentSession.getSessionId());
-                        }
-                        // Update cache with the modified userData (session removed)
-                        return cacheClient.updateUserAndRelatedCaches(request.username(), updatedUserData)
-                                .onFailure().invoke(err ->
-                                        log.errorf(err, "Error updating cache after session timeout for user: %s", request.username()))
-                                .replaceWith(UpdateResult.failure("Session absolute timeout exceeded"));
-                    })
-                    .onFailure().invoke(err ->
-                            log.errorf(err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
-                                    request.username(), currentSession.getSessionId()))
-                    .onFailure().recoverWithItem(UpdateResult.failure("Failed to disconnect timed-out session"));
-        }
+//        // Check if session has exceeded absolute timeout
+//        if (isSessionAbsoluteTimeoutExceeded(currentSession, userData.getSessionTimeOut())) {
+//            log.infof("Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
+//                    request.username(), currentSession.getSessionId());
+//
+//            // Remove session from userData and send COA disconnect
+//            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId())
+//                    .onItem().transformToUni(updatedUserData -> {
+//                        if (log.isTraceEnabled()) {
+//                            log.tracef("Successfully disconnected timed-out session for user: %s, sessionId: %s",
+//                                    request.username(), currentSession.getSessionId());
+//                        }
+//                        // Update cache with the modified userData (session removed)
+//                        return cacheClient.updateUserAndRelatedCaches(request.username(), updatedUserData)
+//                                .onFailure().invoke(err ->
+//                                        log.errorf(err, "Error updating cache after session timeout for user: %s", request.username()))
+//                                .replaceWith(UpdateResult.failure("Session absolute timeout exceeded"));
+//                    })
+//                    .onFailure().invoke(err ->
+//                            log.errorf(err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
+//                                    request.username(), currentSession.getSessionId()))
+//                    .onFailure().recoverWithItem(UpdateResult.failure("Failed to disconnect timed-out session"));
+//        }
 
         if(!foundBalance.getBucketUsername().equals(request.username()) ) {
 
@@ -1230,48 +1239,55 @@ public class AccountingUtil {
      * @return Uni<Void>
      */
     private Uni<Void> updateBalanceInDatabase(Balance balance, long newQuota, String sessionId,
-                                              String bucketUser, String userName) {
+                                              String userName) {
 
         // Update balance with new quota
         balance.setQuota(Math.max(newQuota, 0));
 
         DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(balance,userName,sessionId,EventType.UPDATE_EVENT);
 
-        return updateGroupBalanceBucket(balance, bucketUser, userName)
-                .chain(() -> accountProducer.produceDBWriteEvent(dbWriteRequest)
-                        .onFailure().invoke(throwable -> {
-                            if (log.isDebugEnabled()) {
-                                log.debugf(throwable, "Failed to produce DB write event for balance update, session: %s",
-                                        sessionId);
-                            }
-                        })
-                );
+       return accountProducer.produceDBWriteEvent(dbWriteRequest)
+                .onFailure().invoke(throwable -> {
+            if (log.isDebugEnabled()) {
+                log.debugf(throwable, "Failed to produce DB write event for balance update, session: %s",
+                        sessionId);
+            }
+        });
+//        return updateGroupBalanceBucket(balance, bucketUser, userName)
+//                .chain(() -> accountProducer.produceDBWriteEvent(dbWriteRequest)
+//                        .onFailure().invoke(throwable -> {
+//                            if (log.isDebugEnabled()) {
+//                                log.debugf(throwable, "Failed to produce DB write event for balance update, session: %s",
+//                                        sessionId);
+//                            }
+//                        })
+//                );
     }
 
     private long calculateTotalOctets(long octets, long gigawords) {
         return (gigawords * AppConstant.GIGAWORD_MULTIPLIER) + octets;
     }
 
-    /**
-     * Update group balance bucket in cache
-     */
-    private Uni<Void> updateGroupBalanceBucket(Balance balance, String bucketUsername, String username) {
-        if (username.equals(bucketUsername)) {
-            return Uni.createFrom().voidItem();
-        }
-
-        // Create minimal UserSessionData for group update
-        UserSessionData userSessionData = new UserSessionData();
-        userSessionData.setBalance(List.of(balance));
-
-        return cacheClient.updateUserAndRelatedCaches(bucketUsername, userSessionData)
-                .onFailure().invoke(throwable -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf(throwable, "Failed to update cache group for balance update, groupId: %s",
-                                bucketUsername);
-                    }
-                });
-    }
+//    /**
+//     * Update group balance bucket in cache
+//     */
+//    private Uni<Void> updateGroupBalanceBucket(Balance balance, String bucketUsername, String username) {
+//        if (username.equals(bucketUsername)) {
+//            return Uni.createFrom().voidItem();
+//        }
+//
+//        // Create minimal UserSessionData for group update
+//        UserSessionData userSessionData = new UserSessionData();
+//        userSessionData.setBalance(List.of(balance));
+//
+//        return cacheClient.updateUserAndRelatedCaches(bucketUsername, userSessionData)
+//                .onFailure().invoke(throwable -> {
+//                    if (log.isDebugEnabled()) {
+//                        log.debugf(throwable, "Failed to update cache group for balance update, groupId: %s",
+//                                bucketUsername);
+//                    }
+//                });
+//    }
 
     /**
      *
