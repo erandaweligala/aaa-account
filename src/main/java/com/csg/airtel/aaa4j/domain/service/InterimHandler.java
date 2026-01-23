@@ -45,13 +45,9 @@ public class InterimHandler {
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
-        return handleInterim(request, traceId, false);
-    }
-
-    public Uni<Void> handleInterim(AccountingRequestDto request,String traceId, boolean skipInMemoryCache) {
         long startTime = System.currentTimeMillis();
-        log.infof("[traceId: %s] Processing interim accounting request Start for user: %s, sessionId: %s, skipInMemoryCache: %s",traceId,
-                request.username(), request.sessionId(), skipInMemoryCache);
+        log.infof("[traceId: %s] Processing interim accounting request Start for user: %s, sessionId: %s",traceId,
+                request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
                 .onItem().invoke(() -> {
                     if (log.isDebugEnabled()) {
@@ -60,8 +56,8 @@ public class InterimHandler {
                 })
                 .onItem().transformToUni(userSessionData ->
                         userSessionData == null
-                                ? handleNewSessionUsage(request,traceId, skipInMemoryCache).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for new session for  %s ms",traceId,System.currentTimeMillis()-startTime))
-                                : processAccountingRequest(userSessionData, request,traceId, skipInMemoryCache).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for existing session for  %s ms",traceId, System.currentTimeMillis()-startTime))
+                                ? handleNewSessionUsage(request,traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for new session for  %s ms",traceId,System.currentTimeMillis()-startTime))
+                                : processAccountingRequest(userSessionData, request,traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for existing session for  %s ms",traceId, System.currentTimeMillis()-startTime))
 
                 )
                 .onFailure().recoverWithUni(throwable -> {
@@ -79,7 +75,7 @@ public class InterimHandler {
                 });
     }
 
-    private Uni<Void> handleNewSessionUsage(AccountingRequestDto request,String traceId, boolean skipInMemoryCache) {
+    private Uni<Void> handleNewSessionUsage(AccountingRequestDto request,String traceId) {
 
         if (log.isDebugEnabled()) {
             log.debugf("No cache entry found for user: %s", request.username());
@@ -114,12 +110,12 @@ public class InterimHandler {
                             .userStatus(serviceBuckets.getFirst().getUserStatus())
                             .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
                             .build();
-                    return processAccountingRequest(newUserSessionData, request,traceId, skipInMemoryCache);
+                    return processAccountingRequest(newUserSessionData, request,traceId);
                 });
     }
 
     private Uni<Void> processAccountingRequest(
-            UserSessionData userData, AccountingRequestDto request,String traceId, boolean skipInMemoryCache) {
+            UserSessionData userData, AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("TraceId: %s Processing interim accounting request for user: %s, sessionId: %s",
                 traceId,request.username(), request.sessionId());
@@ -131,7 +127,7 @@ public class InterimHandler {
             session.setAbsoluteTimeOut(userData.getSessionTimeOut());
             i = 1;
         }
-
+        
         boolean hasMatchingNasPortId = userData.getSessions().stream()
                 .anyMatch(ses -> ses.getNasPortId() != null &&
                         ses.getNasPortId().equals(request.nasPortId()));
@@ -155,7 +151,7 @@ public class InterimHandler {
 
         } else {
             Session finalSession = session;
-            return accountingUtil.updateSessionAndBalance(userData, session, request,null, skipInMemoryCache)
+            return accountingUtil.updateSessionAndBalance(userData, session, request,null)
                     .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {

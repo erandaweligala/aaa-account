@@ -11,6 +11,7 @@ import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.unchecked.Unchecked;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -34,17 +35,17 @@ public class CacheClient {
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;
     private static final String KEY_PREFIX = "user:";
+    private static final String GROUP_KEY_PREFIX = "group:";
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
-    private final UserGroupMappingCache userGroupMappingCache;
+
 
     private final ReactiveKeyCommands<String> keyCommands;
 
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,
-                       SessionExpiryIndex sessionExpiryIndex,
-                       UserGroupMappingCache userGroupMappingCache) {
+                       SessionExpiryIndex sessionExpiryIndex) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper
                 .disable(SerializationFeature.INDENT_OUTPUT)  // No pretty printing
@@ -53,17 +54,40 @@ public class CacheClient {
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
-        this.userGroupMappingCache = userGroupMappingCache;
     }
 
 
+    //todo implement userId related store groupId what is the best approch high tps hanling
 
     /**
      * Store user data in Redis.
      * Cache entries persist indefinitely without TTL expiration.
      * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
-     * Also updates the in-memory username→groupId mapping cache.
      */
+
+    @Retry(
+            maxRetries = 1,
+            delay = 30,
+            maxDuration = 1500
+    )
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
+    public Uni<Void> storeUserToGroupId(String userId, String groupId) {
+        String key = GROUP_KEY_PREFIX + userId;
+
+        try {
+            return valueCommands.set(key, groupId);
+        } catch (Exception e) {
+            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
+            return Uni.createFrom().failure(new BaseException(
+                    "Failed to serialize user data",
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                    Response.Status.INTERNAL_SERVER_ERROR,
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                    null
+            ));
+        }
+    }
+
     @Retry(
             maxRetries = 1,
             delay = 30,
@@ -71,39 +95,13 @@ public class CacheClient {
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
-        return storeUserData(userId, userData, false);
-    }
-
-    /**
-     * Store user data in Redis.
-     * Cache entries persist indefinitely without TTL expiration.
-     * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
-     * Optionally updates the in-memory username→groupId mapping cache.
-     *
-     * @param userId User ID to store
-     * @param userData User session data
-     * @param skipInMemoryCache If true, skip updating the in-memory cache
-     */
-    @Retry(
-            maxRetries = 1,
-            delay = 30,
-            maxDuration = 1500
-    )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
-    public Uni<Void> storeUserData(String userId, UserSessionData userData, boolean skipInMemoryCache) {
         if (log.isDebugEnabled()) {
-            log.debugf("Storing user data for cache userId: %s, skipInMemoryCache: %s", userId, skipInMemoryCache);
+            log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
 
         try {
             String jsonValue = objectMapper.writeValueAsString(userData);
-
-            // Update in-memory mapping cache if this is user data (has userName field) and skipInMemoryCache is false
-            if (!skipInMemoryCache && userData != null && userData.getUserName() != null) {
-                userGroupMappingCache.put(userData.getUserName(), userData.getGroupId());
-            }
-
             return valueCommands.set(key, jsonValue);
         } catch (Exception e) {
             log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
@@ -119,7 +117,6 @@ public class CacheClient {
 
     /**
      * Retrieve user data from Redis.
-     * Auto-populates the in-memory username→groupId mapping cache.
      */
     @Retry(
             maxRetries = 1,
@@ -136,14 +133,9 @@ public class CacheClient {
 
         // Use cached valueCommands for better performance at high TPS
         return valueCommands.get(key)
-                .onItem().ifNotNull().transform(json -> {
+                .onItem().ifNotNull().transform(Unchecked.function(json -> {
                     try {
                         UserSessionData userData = objectMapper.readValue(json, UserSessionData.class);
-
-                        // Auto-populate mapping cache for future lookups
-                        if (userData != null && userData.getUserName() != null) {
-                            userGroupMappingCache.put(userData.getUserName(), userData.getGroupId());
-                        }
 
                         if (log.isDebugEnabled()) {
                             log.debugf("User data retrieved for userId: %s in %d ms",
@@ -161,14 +153,13 @@ public class CacheClient {
                                 null
                         );
                     }
-                })
+                }))
                 .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
     }
 
 
     /**
      * Update user data and related caches in Redis.
-     * Also updates the in-memory username→groupId mapping cache.
      */
     @Retry(
             maxRetries = 1,
@@ -177,35 +168,12 @@ public class CacheClient {
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)                 // Reduced from 2000ms - faster timeout
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
-        return updateUserAndRelatedCaches(userId, userData, false);
-    }
-
-    /**
-     * Update user data and related caches in Redis.
-     * Optionally updates the in-memory username→groupId mapping cache.
-     *
-     * @param userId User ID to update
-     * @param userData User session data
-     * @param skipInMemoryCache If true, skip updating the in-memory cache
-     */
-    @Retry(
-            maxRetries = 1,
-            delay = 30,                     // Reduced from 50ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
-    )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                 // Reduced from 2000ms - faster timeout
-    public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData, boolean skipInMemoryCache) {
         if (log.isDebugEnabled()) {
-            log.debugf("Updating user data and related caches for userId: %s, skipInMemoryCache: %s", userId, skipInMemoryCache);
+            log.debugf("Updating user data and related caches for userId: %s", userId);
         }
         String userKey = KEY_PREFIX + userId;
 
         try {
-            // Update in-memory mapping cache if this is user data (has userName field) and skipInMemoryCache is false
-            if (!skipInMemoryCache && userData != null && userData.getUserName() != null) {
-                userGroupMappingCache.put(userData.getUserName(), userData.getGroupId());
-            }
-
             // Use cached valueCommands for better performance at high TPS
             String jsonValue = objectMapper.writeValueAsString(userData);
             return valueCommands.set(userKey, jsonValue)
@@ -223,63 +191,6 @@ public class CacheClient {
         }
     }
 
-
-    /**
-     * Get groupId for a username efficiently using in-memory cache with Redis fallback.
-     * This method optimizes for high TPS by avoiding full UserSessionData retrieval.
-     *
-     * Flow:
-     * 1. Check in-memory cache (O(1), microseconds)
-     * 2. If cache miss, fetch from Redis and populate cache
-     * 3. Return Optional.empty() if user has no group
-     *
-     * @param username The username to lookup
-     * @return Uni with Optional containing groupId if found, empty otherwise
-     */
-    @Retry(
-            maxRetries = 1,
-            delay = 50,
-            maxDuration = 1000
-    )
-    @Timeout(value = 3, unit = ChronoUnit.SECONDS)
-    public Uni<java.util.Optional<String>> getGroupIdForUsername(String username) {
-        if (username == null || username.isBlank()) {
-            return Uni.createFrom().item(java.util.Optional.empty());
-        }
-
-        // Fast path: Check in-memory cache first (O(1))
-        java.util.Optional<String> cachedGroupId = userGroupMappingCache.getGroupId(username);
-        if (cachedGroupId.isPresent()) {
-            if (log.isDebugEnabled()) {
-                log.debugf("GroupId found in memory cache for username: %s → %s",
-                        username, cachedGroupId.get());
-            }
-            return Uni.createFrom().item(cachedGroupId);
-        }
-
-        // Slow path: Cache miss - fetch from Redis and populate cache
-        if (log.isDebugEnabled()) {
-            log.debugf("Cache miss for username: %s, fetching from Redis", username);
-        }
-
-        return getUserData(username)
-                .onItem().transform(userData -> {
-                    if (userData == null) {
-                        return java.util.Optional.<String>empty();
-                    }
-
-                    String groupId = userData.getGroupId();
-                    // Mapping cache is auto-populated by getUserData()
-
-                    // Return empty if no group or default group (groupId "1")
-                    if (groupId == null || groupId.isBlank() || "1".equals(groupId)) {
-                        return java.util.Optional.<String>empty();
-                    }
-
-                    return java.util.Optional.of(groupId);
-                })
-                .onItem().ifNull().continueWith(java.util.Optional.empty());
-    }
 
     /**
      *  Use cached keyCommands instead of creating new instance
