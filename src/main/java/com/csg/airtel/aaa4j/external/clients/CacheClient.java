@@ -53,56 +53,85 @@ public class CacheClient {
      * Cache entries persist indefinitely without TTL expiration.
      * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 500,   // Optimized for 5000 TPS
+            failureRatio = 0.75,
+            delay = 2000,                   // Faster recovery
+            successThreshold = 3
+    )
     @Retry(
             maxRetries = 1,
-            delay = 30,                     // Reduced from 50ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
+            delay = 30,                     // Optimized for 5000 TPS
+            maxDuration = 2000              // Fail faster
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                // Reduced from 2000ms - faster timeout
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(key, userData);
+
+        try {
+            // Use cached valueCommands for better performance at high TPS
+            String jsonValue = objectMapper.writeValueAsString(userData);
+            return valueCommands.set(key, jsonValue);
+        } catch (Exception e) {
+            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
+            return Uni.createFrom().failure(new BaseException(
+                    "Failed to serialize user data",
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                    Response.Status.INTERNAL_SERVER_ERROR,
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                    null
+            ));
+        }
     }
 
     /**
      * Retrieve user data from Redis.
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 500,   // Optimized for 5000 TPS
+            failureRatio = 0.75,
+            delay = 2000,                   // Faster recovery
+            successThreshold = 3
+    )
     @Retry(
             maxRetries = 1,
-            delay = 100,
-            jitter = 50
+            delay = 30,                     // Optimized for 5000 TPS
+            maxDuration = 2000
     )
-    @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
             log.debugf("Retrieving user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        return reactiveRedisDataSource.value(UserSessionData.class)
-                .get(key)
-                .onItem().transform(Unchecked.function(jsonValue -> {
-                    if (jsonValue == null ) {
-                        return null; // No record found
-                    }
+
+        // Use cached valueCommands for better performance at high TPS
+        return valueCommands.get(key)
+                .onItem().ifNotNull().transform(json -> {
                     try {
+                        UserSessionData userData = objectMapper.readValue(json, UserSessionData.class);
+
                         if (log.isDebugEnabled()) {
-                            log.debugf("User data retrieved for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
+                            log.debugf("User data retrieved for userId: %s in %d ms",
+                                    userId, (System.currentTimeMillis() - startTime));
                         }
-                        return jsonValue;
+
+                        return userData;
                     } catch (Exception e) {
                         log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
-                        throw new BaseException("Failed to deserialize user data",
+                        throw new BaseException(
+                                "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
                                 Response.Status.INTERNAL_SERVER_ERROR,
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
-                                null);
+                                null
+                        );
                     }
-                }))
+                })
                 .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
     }
 
@@ -110,22 +139,40 @@ public class CacheClient {
     /**
      * Update user data and related caches in Redis.
      */
+    @CircuitBreaker(
+            requestVolumeThreshold = 500,   // Optimized for 5000 TPS
+            failureRatio = 0.75,
+            delay = 2000,                   // Faster recovery
+            successThreshold = 3
+    )
     @Retry(
             maxRetries = 1,
-            delay = 30,                     // Reduced from 50ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
+            delay = 30,                     // Optimized for 5000 TPS
+            maxDuration = 2000
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                 // Reduced from 2000ms - faster timeout
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
         }
         String userKey = KEY_PREFIX + userId;
 
-        return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(userKey, userData)
-                .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
-                .replaceWithVoid();
+        try {
+            // Use cached valueCommands for better performance at high TPS
+            String jsonValue = objectMapper.writeValueAsString(userData);
+            return valueCommands.set(userKey, jsonValue)
+                    .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
+                    .replaceWithVoid();
+        } catch (Exception e) {
+            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
+            return Uni.createFrom().failure(new BaseException(
+                    "Failed to serialize user data",
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                    Response.Status.INTERNAL_SERVER_ERROR,
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                    null
+            ));
+        }
     }
 
 
@@ -146,13 +193,18 @@ public class CacheClient {
      * @param userIds list of user IDs to retrieve
      * @return Uni with Map of userId -> UserSessionData
      */
-
+    @CircuitBreaker(
+            requestVolumeThreshold = 500,   // Optimized for 5000 TPS
+            failureRatio = 0.75,
+            delay = 2000,                   // Faster recovery
+            successThreshold = 3
+    )
     @Retry(
             maxRetries = 1,
-            delay = 50,                     // Reduced from 100ms - faster retry
-            maxDuration = 3000
+            delay = 30,                     // Optimized for 5000 TPS
+            maxDuration = 2000
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
+    @Timeout(value = 5, unit = ChronoUnit.SECONDS)  // Batch operations need slightly more time
     public Uni<Map<String, UserSessionData>> getUserDataBatchAsMap(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Uni.createFrom().item(Map.of());
@@ -192,22 +244,78 @@ public class CacheClient {
                 });
     }
 
+    /**
+     * Store multiple user data entries in Redis using MSET for high-performance batch writes.
+     * Critical for bulk operations at 5000 TPS.
+     *
+     * @param userDataMap Map of userId -> UserSessionData to store
+     * @return Uni<Void> completing when all entries are stored
+     */
+    @CircuitBreaker(
+            requestVolumeThreshold = 500,   // Optimized for 5000 TPS
+            failureRatio = 0.75,
+            delay = 2000,
+            successThreshold = 3
+    )
+    @Retry(
+            maxRetries = 1,
+            delay = 30,
+            maxDuration = 2000
+    )
+    @Timeout(value = 5, unit = ChronoUnit.SECONDS)  // Batch operations need slightly more time
+    public Uni<Void> storeUserDataBatch(Map<String, UserSessionData> userDataMap) {
+        if (userDataMap == null || userDataMap.isEmpty()) {
+            return Uni.createFrom().voidItem();
+        }
+
+        final int size = userDataMap.size();
+        if (log.isDebugEnabled()) {
+            log.debugf("Storing batch user data for %d users using MSET", size);
+        }
+
+        try {
+            // Serialize all user data with pre-sized map
+            Map<String, String> serializedData = HashMap.newHashMap((int) (size / 0.75) + 1);
+            for (Map.Entry<String, UserSessionData> entry : userDataMap.entrySet()) {
+                String key = KEY_PREFIX + entry.getKey();
+                String jsonValue = objectMapper.writeValueAsString(entry.getValue());
+                serializedData.put(key, jsonValue);
+            }
+
+            // Use MSET for single network round trip
+            return valueCommands.mset(serializedData)
+                    .onFailure().invoke(err ->
+                            log.errorf("Failed to batch store %d users: %s", size, err.getMessage()))
+                    .replaceWithVoid();
+
+        } catch (Exception e) {
+            log.errorf("Failed to serialize batch user data: %s", e.getMessage());
+            return Uni.createFrom().failure(new BaseException(
+                    "Failed to serialize batch user data",
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                    Response.Status.INTERNAL_SERVER_ERROR,
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                    null
+            ));
+        }
+    }
+
 
     /**
      * Expired session retrieval with optimized fault tolerance
      */
     @CircuitBreaker(
-            requestVolumeThreshold = 200,  // Increased from 100 for 2000 TPS
-            failureRatio = 0.75,            // Increased from 0.7 - less sensitive
-            delay = 3000,                   // Reduced from 5000 - faster recovery
-            successThreshold = 3            // Increased from 2 - more stable
+            requestVolumeThreshold = 500,  // Optimized for 5000 TPS
+            failureRatio = 0.75,
+            delay = 2000,                  // Faster recovery
+            successThreshold = 3
     )
     @Retry(
             maxRetries = 1,
-            delay = 50,                     // Reduced from 100ms - faster retry
-            maxDuration = 4000
+            delay = 30,                    // Optimized for 5000 TPS
+            maxDuration = 3000
     )
-    @Timeout(value = 8000)
+    @Timeout(value = 5, unit = ChronoUnit.SECONDS)  // Complex operations need slightly more time
     public Uni<ExpiredSessionsWithData> getExpiredSessionsWithData(long expiryThresholdMillis, int limit) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         if (log.isDebugEnabled()) {
