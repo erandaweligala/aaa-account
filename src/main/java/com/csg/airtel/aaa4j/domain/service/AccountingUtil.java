@@ -206,19 +206,37 @@ public class AccountingUtil {
             Session sessionData,
             AccountingRequestDto request,
             String bucketId) {
+        return updateSessionAndBalance(userData, sessionData, request, bucketId, false);
+    }
+
+    /**
+     *
+     * @param userData get user session data
+     * @param sessionData get individual session Data
+     * @param request packet request
+     * @param bucketId bucket id
+     * @param skipInMemoryCache If true, skip updating the in-memory cache
+     * @return update results
+     */
+    public Uni<UpdateResult> updateSessionAndBalance(
+            UserSessionData userData,
+            Session sessionData,
+            AccountingRequestDto request,
+            String bucketId,
+            boolean skipInMemoryCache) {
 
         long totalUsage = calculateTotalUsage(request);
         String groupId = userData.getGroupId();
 
 
         if (groupId == null || AppConstant.DEFAULT_GROUP_ID.equals(groupId)) {
-            return processWithoutGroupData(userData, sessionData, request, bucketId, totalUsage)
+            return processWithoutGroupData(userData, sessionData, request, bucketId, totalUsage, skipInMemoryCache)
                     .eventually(this::cleanupTemporalCacheAsync);
         }
 
         return getGroupBucketData(groupId)
                 .chain(groupData -> processWithGroupData(
-                        userData,sessionData, request, bucketId, totalUsage, groupData))
+                        userData,sessionData, request, bucketId, totalUsage, groupData, skipInMemoryCache))
                 .eventually(this::cleanupTemporalCacheAsync);
     }
 
@@ -230,7 +248,8 @@ public class AccountingUtil {
             Session sessionData,
             AccountingRequestDto request,
             String bucketId,
-            long totalUsage) {
+            long totalUsage,
+            boolean skipInMemoryCache) {
 
         List<Balance> balances = userData.getBalance() != null ?
                 userData.getBalance() : Collections.emptyList();
@@ -242,7 +261,7 @@ public class AccountingUtil {
 
         return processBalanceUpdateWithCombinedData(
                 userData, sessionData, request, foundBalance,
-                balances, sessions, totalUsage);
+                balances, sessions, totalUsage, skipInMemoryCache);
     }
 
     /**
@@ -255,7 +274,8 @@ public class AccountingUtil {
             AccountingRequestDto request,
             String bucketId,
             long totalUsage,
-            UserSessionData groupData) {
+            UserSessionData groupData,
+            boolean skipInMemoryCache) {
 
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
         userData.setBalance(combinedBalances);
@@ -287,7 +307,7 @@ public class AccountingUtil {
 
         return processBalanceUpdateWithCombinedData(
                 userData, sessionData, request, foundBalance,
-                combinedBalances, combinedSessions, totalUsage);
+                combinedBalances, combinedSessions, totalUsage, skipInMemoryCache);
     }
 
     /**
@@ -672,6 +692,7 @@ public class AccountingUtil {
      * @param combinedBalances combined balances from user and group
      * @param combinedSessions combined sessions from user and group
      * @param totalUsage total usage for current request
+     * @param skipInMemoryCache If true, skip updating the in-memory cache
      * @return Uni of UpdateResult
      */
     private Uni<UpdateResult> processBalanceUpdateWithCombinedData(
@@ -681,10 +702,11 @@ public class AccountingUtil {
             Balance foundBalance,
             List<Balance> combinedBalances,
             List<Session> combinedSessions,
-            long totalUsage) {
+            long totalUsage,
+            boolean skipInMemoryCache) {
 
         if (foundBalance == null) {
-            return handleNoValidBalance(userData, request);
+            return handleNoValidBalance(userData, request, skipInMemoryCache);
         }
 
         if (log.isTraceEnabled()) {
@@ -701,14 +723,14 @@ public class AccountingUtil {
 
         Uni<UpdateResult> consumptionLimitResult = checkAndHandleConsumptionLimit(
                 userData, request, context.getEffectiveBalance(), context.getUsageDelta(),
-                newQuota, context.getPreviousUsageBucketId());
+                newQuota, context.getPreviousUsageBucketId(), skipInMemoryCache);
 
         if (consumptionLimitResult != null) {
             return consumptionLimitResult;
         }
 
         return finalizeBalanceUpdate(userData, sessionData, request, context.getEffectiveBalance(),
-                newQuota, context.getPreviousUsageBucketId(), totalUsage);
+                newQuota, context.getPreviousUsageBucketId(), totalUsage, skipInMemoryCache);
     }
 
     /**
@@ -717,9 +739,10 @@ public class AccountingUtil {
      *
      * @param userData user session data containing active sessions
      * @param request accounting request
+     * @param skipInMemoryCache If true, skip updating the in-memory cache
      * @return Uni of UpdateResult with failure status
      */
-    private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request) {
+    private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request, boolean skipInMemoryCache) {
         log.warnf("No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
         // Send COA disconnect for all existing sessions
@@ -803,7 +826,8 @@ public class AccountingUtil {
             Balance balance,
             long usageDelta,
             long newQuota,
-            String previousUsageBucketId) {
+            String previousUsageBucketId,
+            boolean skipInMemoryCache) {
         if (!hasConsumptionLimit(balance)) {
             return null;
         }
@@ -817,7 +841,7 @@ public class AccountingUtil {
 
         if (isConsumptionLimitExceeded(balance, previousConsumption, usageDelta)) {
             return handleConsumptionLimitExceededScenario(
-                    userData, request, balance, newQuota, previousUsageBucketId);
+                    userData, request, balance, newQuota, previousUsageBucketId, skipInMemoryCache);
         }
 
         return null;
@@ -842,7 +866,8 @@ public class AccountingUtil {
             AccountingRequestDto request,
             Balance balance,
             long newQuota,
-            String previousUsageBucketId) {
+            String previousUsageBucketId,
+            boolean skipInMemoryCache) {
 
         if (log.isDebugEnabled()) {
             log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Triggering disconnect.",
@@ -852,7 +877,7 @@ public class AccountingUtil {
         UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
                 balance, previousUsageBucketId);
 
-        return handleConsumptionLimitExceeded(userData, request, balance, result);
+        return handleConsumptionLimitExceeded(userData, request, balance, result, skipInMemoryCache);
     }
 
     /**
@@ -865,7 +890,8 @@ public class AccountingUtil {
             Balance balance,
             long newQuota,
             String previousUsageBucketId,
-            long totalUsage) {
+            long totalUsage,
+            boolean skipInMemoryCache) {
 
         updateSessionData(sessionData, balance, totalUsage, request.sessionTime());
 
@@ -873,10 +899,10 @@ public class AccountingUtil {
                 balance, previousUsageBucketId);
 
         if (shouldDisconnectSession(result, balance, previousUsageBucketId)) {
-            return handleSessionDisconnect(userData, request, balance, result);
+            return handleSessionDisconnect(userData, request, balance, result, skipInMemoryCache);
         }
 
-        return updateCacheForNormalOperation(userData, request, balance, result,sessionData);
+        return updateCacheForNormalOperation(userData, request, balance, result,sessionData, skipInMemoryCache);
     }
 
 
@@ -988,11 +1014,12 @@ public class AccountingUtil {
             UserSessionData userData,
             AccountingRequestDto request,
             Balance foundBalance,
-            UpdateResult result) {
+            UpdateResult result,
+            boolean skipInMemoryCache) {
 
         String username = request.username();
         String bucketUsername = foundBalance.getBucketUsername();
-        
+
         // Clear all sessions and send COA disconnect for all sessions
         return coaService.clearAllSessionsAndSendCOA(userData, username, null)
                 .onItem().transformToUni(updatedUserData ->
@@ -1002,7 +1029,8 @@ public class AccountingUtil {
                                 updatedUserData,
                                 username,
                                 bucketUsername,
-                                true
+                                true,
+                                skipInMemoryCache
                         )
                 )
                 .onFailure().invoke(err ->
@@ -1013,7 +1041,7 @@ public class AccountingUtil {
                 .replaceWith(result);
     }
 
-    private Uni<Void> extractCoaCacheAndDBUpdate(AccountingRequestDto request, Balance foundBalance, UserSessionData updatedUserData, String username, String bucketUsername,boolean isDBUpdate) {
+    private Uni<Void> extractCoaCacheAndDBUpdate(AccountingRequestDto request, Balance foundBalance, UserSessionData updatedUserData, String username, String bucketUsername,boolean isDBUpdate, boolean skipInMemoryCache) {
             if (!foundBalance.isGroup()) {
                 updatedUserData.getBalance().removeIf(Balance::isGroup);
             } else {
@@ -1031,12 +1059,12 @@ public class AccountingUtil {
         if(isDBUpdate) {
             return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                     request.sessionId(), username)
-                    .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData))
+                    .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData, skipInMemoryCache))
                     .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))
                     .replaceWithVoid();
         }else {
-           return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData)
+           return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData, skipInMemoryCache)
                     .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))
                                 .replaceWithVoid();
@@ -1050,13 +1078,15 @@ public class AccountingUtil {
      * @param request accounting request
      * @param foundBalance balance that exceeded the limit
      * @param result update result
+     * @param skipInMemoryCache If true, skip updating the in-memory cache
      * @return Uni<UpdateResult>
      */
     private Uni<UpdateResult> handleConsumptionLimitExceeded(
             UserSessionData userData,
             AccountingRequestDto request,
             Balance foundBalance,
-            UpdateResult result) {
+            UpdateResult result,
+            boolean skipInMemoryCache) {
 
         String username = request.username();
         String bucketUsername = foundBalance.getBucketUsername();
@@ -1075,7 +1105,8 @@ public class AccountingUtil {
                                 updatedUserData,
                                 username,
                                 bucketUsername,
-                                true
+                                true,
+                                skipInMemoryCache
                         )
                 )
                 .onFailure().invoke(err ->
@@ -1090,8 +1121,9 @@ public class AccountingUtil {
             UserSessionData userData,
             AccountingRequestDto request,
             Balance foundBalance,
-            UpdateResult result,Session currentSession) {
-        return getUpdateResultUni(userData, request, foundBalance, result,currentSession);
+            UpdateResult result,Session currentSession,
+            boolean skipInMemoryCache) {
+        return getUpdateResultUni(userData, request, foundBalance, result,currentSession, skipInMemoryCache);
     }
 
 
@@ -1115,7 +1147,7 @@ public class AccountingUtil {
         return null;
     }
 
-    private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
+    private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession, boolean skipInMemoryCache) {
 
         // Check if session has exceeded absolute timeout
         if (isSessionAbsoluteTimeoutExceeded(currentSession)) {
@@ -1132,7 +1164,8 @@ public class AccountingUtil {
                                 updatedUserData,
                                 request.username(),
                                 foundBalance.getBucketUsername(),
-                                true
+                                true,
+                                skipInMemoryCache
                         )
                     )
                     .onFailure().invoke(err ->
@@ -1160,24 +1193,24 @@ public class AccountingUtil {
 //
 //                        // Update both group and user caches in parallel for better performance
 //                        return Uni.combine().all().unis(
-//                                cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
+//                                cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData, skipInMemoryCache)
 //                                        .onFailure().invoke(err ->
 //                                                log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername())),
-//                                cacheClient.updateUserAndRelatedCaches(request.username(), userData)
+//                                cacheClient.updateUserAndRelatedCaches(request.username(), userData, skipInMemoryCache)
 //                                        .onFailure().invoke(err ->
 //                                                log.errorf(err, "Error updating cache for user: %s", request.username()))
 //                        ).discardItems().replaceWith(success);
 //                    });
 //        }else {
 //            userData.getBalance().removeIf(Balance::isGroup);
-//            return cacheClient.updateUserAndRelatedCaches(request.username(), userData)
+//            return cacheClient.updateUserAndRelatedCaches(request.username(), userData, skipInMemoryCache)
 //                    .onFailure().invoke(err ->
 //                            log.errorf(err, "Error updating cache for user: %s", request.username()))
 //                    .replaceWith(success);
 //        }
 
         return extractCoaCacheAndDBUpdate(request, foundBalance,
-                userData, request.username(), foundBalance.getBucketUsername(),false)
+                userData, request.username(), foundBalance.getBucketUsername(),false, skipInMemoryCache)
                 .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))
                     .replaceWith(success);

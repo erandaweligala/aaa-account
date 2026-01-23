@@ -60,7 +60,7 @@ public class RedisResource {
     public Uni<Map<String, Object>> interimUpdate(AccountingRequestDto request) {
 
         return accountingHandlerFactory
-                .getHandler(request,null)
+                .getHandler(request,null, true)
                 .onItem().transform(result -> {
                     Map<String, Object> res = new HashMap<>();
                     res.put("accounting_result", result);

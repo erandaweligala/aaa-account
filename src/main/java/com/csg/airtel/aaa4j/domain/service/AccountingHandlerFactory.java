@@ -23,11 +23,15 @@ public class AccountingHandlerFactory {
     }
 
     public Uni<Void> getHandler(AccountingRequestDto request,String traceId) {
-        LOG.infof("[traceId: %s] Received accounting request for user: %s with action type: %s",
-                traceId, request.username(), request.actionType());
+        return getHandler(request, traceId, false);
+    }
+
+    public Uni<Void> getHandler(AccountingRequestDto request,String traceId, boolean skipInMemoryCache) {
+        LOG.infof("[traceId: %s] Received accounting request for user: %s with action type: %s, skipInMemoryCache: %s",
+                traceId, request.username(), request.actionType(), skipInMemoryCache);
         return switch (request.actionType()) {
             case START -> startHandler.processAccountingStart(request,traceId);
-            case INTERIM_UPDATE -> interimHandler.handleInterim(request,traceId);
+            case INTERIM_UPDATE -> interimHandler.handleInterim(request,traceId, skipInMemoryCache);
             case STOP -> stopHandler.stopProcessing(request, null,traceId);
         };
     }
