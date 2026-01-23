@@ -71,16 +71,36 @@ public class CacheClient {
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
+        return storeUserData(userId, userData, false);
+    }
+
+    /**
+     * Store user data in Redis.
+     * Cache entries persist indefinitely without TTL expiration.
+     * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
+     * Optionally updates the in-memory username→groupId mapping cache.
+     *
+     * @param userId User ID to store
+     * @param userData User session data
+     * @param skipInMemoryCache If true, skip updating the in-memory cache
+     */
+    @Retry(
+            maxRetries = 1,
+            delay = 30,
+            maxDuration = 1500
+    )
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
+    public Uni<Void> storeUserData(String userId, UserSessionData userData, boolean skipInMemoryCache) {
         if (log.isDebugEnabled()) {
-            log.debugf("Storing user data for cache userId: %s", userId);
+            log.debugf("Storing user data for cache userId: %s, skipInMemoryCache: %s", userId, skipInMemoryCache);
         }
         String key = KEY_PREFIX + userId;
 
         try {
             String jsonValue = objectMapper.writeValueAsString(userData);
 
-            // Update in-memory mapping cache if this is user data (has userName field)
-            if (userData != null && userData.getUserName() != null) {
+            // Update in-memory mapping cache if this is user data (has userName field) and skipInMemoryCache is false
+            if (!skipInMemoryCache && userData != null && userData.getUserName() != null) {
                 userGroupMappingCache.put(userData.getUserName(), userData.getGroupId());
             }
 
@@ -157,14 +177,32 @@ public class CacheClient {
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)                 // Reduced from 2000ms - faster timeout
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
+        return updateUserAndRelatedCaches(userId, userData, false);
+    }
+
+    /**
+     * Update user data and related caches in Redis.
+     * Optionally updates the in-memory username→groupId mapping cache.
+     *
+     * @param userId User ID to update
+     * @param userData User session data
+     * @param skipInMemoryCache If true, skip updating the in-memory cache
+     */
+    @Retry(
+            maxRetries = 1,
+            delay = 30,                     // Reduced from 50ms - faster retry
+            maxDuration = 1500              // Reduced from 2000ms - fail faster
+    )
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                 // Reduced from 2000ms - faster timeout
+    public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData, boolean skipInMemoryCache) {
         if (log.isDebugEnabled()) {
-            log.debugf("Updating user data and related caches for userId: %s", userId);
+            log.debugf("Updating user data and related caches for userId: %s, skipInMemoryCache: %s", userId, skipInMemoryCache);
         }
         String userKey = KEY_PREFIX + userId;
 
         try {
-            // Update in-memory mapping cache if this is user data (has userName field)
-            if (userData != null && userData.getUserName() != null) {
+            // Update in-memory mapping cache if this is user data (has userName field) and skipInMemoryCache is false
+            if (!skipInMemoryCache && userData != null && userData.getUserName() != null) {
                 userGroupMappingCache.put(userData.getUserName(), userData.getGroupId());
             }
 
