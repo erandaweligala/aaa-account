@@ -11,7 +11,6 @@ import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.unchecked.Unchecked;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
@@ -56,9 +55,9 @@ public class CacheClient {
     }
 
 
-    public void getGroupId(String userId,String groupId){
-        valueCommands.set(userId,groupId);
-    }
+
+    //todo implement userId related store groupId what is the best approch high tps hanling
+
     /**
      * Store user data in Redis.
      * Cache entries persist indefinitely without TTL expiration.
