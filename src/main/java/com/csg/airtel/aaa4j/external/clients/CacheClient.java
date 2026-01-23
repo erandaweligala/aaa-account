@@ -3,7 +3,10 @@ package com.csg.airtel.aaa4j.external.clients;
 import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.exception.BaseException;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
@@ -43,7 +46,10 @@ public class CacheClient {
                        ObjectMapper objectMapper,
                        SessionExpiryIndex sessionExpiryIndex) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
-        this.objectMapper = objectMapper;
+        this.objectMapper = objectMapper
+                .disable(SerializationFeature.INDENT_OUTPUT)  // No pretty printing
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .setSerializationInclusion(JsonInclude.Include.NON_NULL);
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
@@ -60,17 +66,29 @@ public class CacheClient {
      */
     @Retry(
             maxRetries = 1,
-            delay = 30,                     // Reduced from 50ms - faster retry
-            maxDuration = 1500              // Reduced from 2000ms - fail faster
+            delay = 30,
+            maxDuration = 1500
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                // Reduced from 2000ms - faster timeout
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
     public Uni<Void> storeUserData(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(key, userData);
+
+        try {
+            String jsonValue = objectMapper.writeValueAsString(userData);
+            return valueCommands.set(key, jsonValue);
+        } catch (Exception e) {
+            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
+            return Uni.createFrom().failure(new BaseException(
+                    "Failed to serialize user data",
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                    Response.Status.INTERNAL_SERVER_ERROR,
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                    null
+            ));
+        }
     }
 
     /**
@@ -88,26 +106,30 @@ public class CacheClient {
             log.debugf("Retrieving user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        return reactiveRedisDataSource.value(UserSessionData.class)
-                .get(key)
-                .onItem().transform(Unchecked.function(jsonValue -> {
-                    if (jsonValue == null ) {
-                        return null; // No record found
-                    }
+
+        // Use cached valueCommands for better performance at high TPS
+        return valueCommands.get(key)
+                .onItem().ifNotNull().transform(json -> {
                     try {
+                        UserSessionData userData = objectMapper.readValue(json, UserSessionData.class);
+
                         if (log.isDebugEnabled()) {
-                            log.debugf("User data retrieved for userId: %s in %d ms", userId, (System.currentTimeMillis() - startTime));
+                            log.debugf("User data retrieved for userId: %s in %d ms",
+                                    userId, (System.currentTimeMillis() - startTime));
                         }
-                        return jsonValue;
+
+                        return userData;
                     } catch (Exception e) {
                         log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
-                        throw new BaseException("Failed to deserialize user data",
+                        throw new BaseException(
+                                "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
                                 Response.Status.INTERNAL_SERVER_ERROR,
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
-                                null);
+                                null
+                        );
                     }
-                }))
+                })
                 .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
     }
 
@@ -127,10 +149,22 @@ public class CacheClient {
         }
         String userKey = KEY_PREFIX + userId;
 
-        return reactiveRedisDataSource.value(UserSessionData.class)
-                .set(userKey, userData)
-                .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
-                .replaceWithVoid();
+        try {
+            // Use cached valueCommands for better performance at high TPS
+            String jsonValue = objectMapper.writeValueAsString(userData);
+            return valueCommands.set(userKey, jsonValue)
+                    .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
+                    .replaceWithVoid();
+        } catch (Exception e) {
+            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
+            return Uni.createFrom().failure(new BaseException(
+                    "Failed to serialize user data",
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                    Response.Status.INTERNAL_SERVER_ERROR,
+                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                    null
+            ));
+        }
     }
 
 
