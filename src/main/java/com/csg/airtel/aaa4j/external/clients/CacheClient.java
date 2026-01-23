@@ -99,13 +99,21 @@ public class CacheClient {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
         String key = KEY_PREFIX + userId;
-        //todo need to run parellel without any  overhead
+
         try {
             String jsonValue = objectMapper.writeValueAsString(userData);
-            if(userData != null) {
+
+            // Run group and user SET operations in parallel for zero overhead
+            if(userData != null && userData.getGroupId() != null) {
                 String groupKey = GROUP_KEY_PREFIX + userId;
-                valueCommands.set(groupKey, userData.getGroupId());
+                // Combine both SET operations in parallel - reduces RTT by executing concurrently
+                return Uni.combine().all().unis(
+                        valueCommands.set(groupKey, userData.getGroupId()),
+                        valueCommands.set(key, jsonValue)
+                ).discardItems();
             }
+
+            // If no groupId, only store user data
             return valueCommands.set(key, jsonValue);
         } catch (Exception e) {
             log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
@@ -171,7 +179,6 @@ public class CacheClient {
             maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)
-    //todo need to run parellel without any  overhead
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
@@ -179,13 +186,21 @@ public class CacheClient {
         String userKey = KEY_PREFIX + userId;
 
         try {
-
-            if(userData != null) {
-                String groupKey = GROUP_KEY_PREFIX + userId;
-                valueCommands.set(groupKey, userData.getGroupId());
-            }
             // Use cached valueCommands for better performance at high TPS
             String jsonValue = objectMapper.writeValueAsString(userData);
+
+            // Run group and user SET operations in parallel for zero overhead
+            if(userData != null && userData.getGroupId() != null) {
+                String groupKey = GROUP_KEY_PREFIX + userId;
+                // Combine both SET operations in parallel - reduces RTT by executing concurrently
+                return Uni.combine().all().unis(
+                        valueCommands.set(groupKey, userData.getGroupId()),
+                        valueCommands.set(userKey, jsonValue)
+                ).discardItems()
+                        .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err));
+            }
+
+            // If no groupId, only update user data
             return valueCommands.set(userKey, jsonValue)
                     .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
                     .replaceWithVoid();
