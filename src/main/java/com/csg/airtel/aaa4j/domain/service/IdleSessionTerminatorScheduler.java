@@ -243,7 +243,7 @@ public class IdleSessionTerminatorScheduler {
         List<Session> sessionsToTerminate = new ArrayList<>();
         for (Session session : sessions) {
             boolean shouldTerminate = expiredSessionIds.contains(session.getSessionId()) ||
-                    isSessionAbsoluteTimeoutExceeded(session, userData.getSessionTimeOut());
+                    isSessionAbsoluteTimeoutExceeded(session);
             if (shouldTerminate) {
                 sessionsToTerminate.add(session);
             }
@@ -406,17 +406,16 @@ public class IdleSessionTerminatorScheduler {
      * Checks if a session has exceeded its absolute timeout based on sessionInitiatedTime and sessionTimeOut.
      *
      * @param session The session to check
-     * @param sessionTimeOut The timeout value as a string (in minutes)
      * @return true if the session has exceeded the absolute timeout, false otherwise
      */
-    private boolean isSessionAbsoluteTimeoutExceeded(Session session, String sessionTimeOut) {
-        if (session == null || session.getSessionInitiatedTime() == null || sessionTimeOut == null) {
+    private boolean isSessionAbsoluteTimeoutExceeded(Session session) {
+        if (session == null || session.getSessionInitiatedTime() == null) {
             return false;
         }
 
         try {
             // Parse sessionTimeOut as minutes
-            long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
+            long timeoutMinutes = Long.parseLong(session.getAbsoluteTimeOut().trim());
 
             // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
             LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
@@ -433,7 +432,7 @@ public class IdleSessionTerminatorScheduler {
             return isExpired;
         } catch (NumberFormatException e) {
             log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
-                    sessionTimeOut, e.getMessage());
+                    session.getAbsoluteTimeOut().trim(), e.getMessage());
             return false;
         }
     }

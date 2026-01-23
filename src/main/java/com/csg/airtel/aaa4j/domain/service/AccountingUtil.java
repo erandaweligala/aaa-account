@@ -15,10 +15,7 @@ import org.jboss.logging.Logger;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 
 @ApplicationScoped
@@ -261,7 +258,7 @@ public class AccountingUtil {
             UserSessionData groupData) {
 
         List<Balance> combinedBalances = getCombinedBalancesSync(userData.getBalance(), groupData);
-        userData.setBalance(combinedBalances); //eranda-0
+        userData.setBalance(combinedBalances);
         Balance foundBalance = computeHighestPriority(combinedBalances, bucketId);
 
         List<Session> sessionsToCheck = (foundBalance != null && foundBalance.isGroup()
@@ -580,51 +577,58 @@ public class AccountingUtil {
 
     /**
      * Synchronously combine balances from user and group data.
-     * If a balance with the same bucketId exists in both user and group balances,
-     * only the group balance is included to avoid duplicates.
-     * Optimized for high TPS with O(n+m) complexity using HashSet for bucketId lookups.
      *
      * @param userBalances user's balances
      * @param groupData group bucket data (may be null)
      * @return combined list of balances without duplicates
      */
-    private List<Balance> getCombinedBalancesSync(List<Balance> userBalances, UserSessionData groupData) {
-        int userSize = userBalances != null ? userBalances.size() : 0;
-        List<Balance> groupBalances = groupData != null ? groupData.getBalance() : null;
-        int groupSize = (groupBalances != null && !groupBalances.isEmpty()) ? groupBalances.size() : 0;
+    private List<Balance> getCombinedBalancesSync(
+            List<Balance> userBalances,
+            UserSessionData groupData) {
 
-        List<Balance> combined = new ArrayList<>(userSize + groupSize);
-
-        // Build HashSet of group bucketIds for O(1) lookup - optimized for high TPS
-        java.util.Set<String> groupBucketIds = null;
-        if (groupBalances != null && !groupBalances.isEmpty()) {
-            groupBucketIds = new java.util.HashSet<>(groupSize);
-            for (Balance groupBalance : groupBalances) {
-                groupBucketIds.add(groupBalance.getBucketId());
-            }
+        // Fast exits – common in real traffic
+        if (groupData == null || groupData.getBalance() == null || groupData.getBalance().isEmpty()) {
+            return userBalances == null ? List.of() : userBalances;
         }
 
-        // Add user balances only if they don't have a matching bucketId in group balances
-        // O(n) instead of O(n*m) due to HashSet lookup
-        if (userBalances != null) {
-            for (Balance userBalance : userBalances) {
-                if (groupBucketIds == null || !groupBucketIds.contains(userBalance.getBucketId())) {
-                    combined.add(userBalance);
-                }
-            }
+        if (userBalances == null || userBalances.isEmpty()) {
+            return groupData.getBalance();
         }
 
-        // Add all group balances (these take precedence over user balances with same bucketId)
-        if (groupBalances != null && !groupBalances.isEmpty()) {
-            combined.addAll(groupBalances);
-        }
+        final List<Balance> groupBalances = groupData.getBalance();
+        final List<Balance> combined = getBalances(userBalances, groupBalances);
+        // Group balances override user balances
+        combined.addAll(groupBalances);
 
-        if (log.isTraceEnabled()) {
-            log.tracef("Combined balances: user=%d, group=%d, total=%d (after deduplication)", userSize, groupSize, combined.size());
-        }
 
         return combined;
     }
+
+    private static List<Balance> getBalances(List<Balance> userBalances, List<Balance> groupBalances) {
+        final int userSize = userBalances.size();
+        final int groupSize = groupBalances.size();
+
+        // Exact capacity – no resizing
+        final List<Balance> combined = new ArrayList<>(userSize + groupSize);
+
+        // Build bucketId lookup from group balances
+        // Initial capacity tuned to avoid rehash
+        final Set<String> groupBucketIds = HashSet.newHashSet((int) (groupSize / 0.75f) + 1);
+
+        for (Balance groupBalance : groupBalances) {
+            groupBucketIds.add(groupBalance.getBucketId());
+        }
+
+        // Add only non-overlapping user balances
+        for (int i = 0; i < userSize; i++) {
+            Balance ub = userBalances.get(i);
+            if (!groupBucketIds.contains(ub.getBucketId())) {
+                combined.add(ub);
+            }
+        }
+        return combined;
+    }
+
 
     /**
      * Synchronously combine sessions from user and group data.
@@ -687,9 +691,6 @@ public class AccountingUtil {
             log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
                     combinedBalances.size(), combinedSessions.size());
         }
-
-
-
 
         BalanceUpdateContext context = prepareBalanceUpdateContext(
                 sessionData, foundBalance, combinedBalances, totalUsage);
@@ -1000,7 +1001,8 @@ public class AccountingUtil {
                                 foundBalance,
                                 updatedUserData,
                                 username,
-                                bucketUsername
+                                bucketUsername,
+                                true
                         )
                 )
                 .onFailure().invoke(err ->
@@ -1011,13 +1013,14 @@ public class AccountingUtil {
                 .replaceWith(result);
     }
 
-    private Uni<Void> extractCoaCacheAndDBUpdate(AccountingRequestDto request, Balance foundBalance, UserSessionData updatedUserData, String username, String bucketUsername) {
-            if (bucketUsername.equals(username)) {
+    private Uni<Void> extractCoaCacheAndDBUpdate(AccountingRequestDto request, Balance foundBalance, UserSessionData updatedUserData, String username, String bucketUsername,boolean isDBUpdate) {
+            if (!foundBalance.isGroup()) {
                 updatedUserData.getBalance().removeIf(Balance::isGroup);
             } else {
                 updatedUserData.getBalance().removeIf(rs -> !rs.isGroup());
                 updatedUserData.setSuperTemplateId(0);
                 updatedUserData.setUserName(null);
+                updatedUserData.setConcurrency(0);
             }
 
         if (log.isTraceEnabled()) {
@@ -1025,9 +1028,19 @@ public class AccountingUtil {
                     username, updatedUserData.getSessions() != null ?
                     updatedUserData.getSessions().size() : 0);
         }
-        return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
-                request.sessionId(), username)
-                .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData));
+        if(isDBUpdate) {
+            return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
+                    request.sessionId(), username)
+                    .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData))
+                    .onFailure().invoke(err ->
+                            log.errorf(err, "Error updating cache for user: %s", request.username()))
+                    .replaceWithVoid();
+        }else {
+           return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData)
+                    .onFailure().invoke(err ->
+                            log.errorf(err, "Error updating cache for user: %s", request.username()))
+                                .replaceWithVoid();
+        }
     }
 
     /**
@@ -1061,7 +1074,8 @@ public class AccountingUtil {
                                 foundBalance,
                                 updatedUserData,
                                 username,
-                                bucketUsername
+                                bucketUsername,
+                                true
                         )
                 )
                 .onFailure().invoke(err ->
@@ -1103,64 +1117,71 @@ public class AccountingUtil {
 
     private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
 
-//        // Check if session has exceeded absolute timeout
-//        if (isSessionAbsoluteTimeoutExceeded(currentSession, userData.getSessionTimeOut())) {
-//            log.infof("Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
-//                    request.username(), currentSession.getSessionId());
+        // Check if session has exceeded absolute timeout
+        if (isSessionAbsoluteTimeoutExceeded(currentSession)) {
+            log.infof("Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
+                    request.username(), currentSession.getSessionId());
+
+            // Remove session from userData and send COA disconnect
+            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId())
+                    .onItem().transformToUni(updatedUserData ->
+
+                        extractCoaCacheAndDBUpdate(
+                                request,
+                                foundBalance,
+                                updatedUserData,
+                                request.username(),
+                                foundBalance.getBucketUsername(),
+                                true
+                        )
+                    )
+                    .onFailure().invoke(err ->
+                            log.errorf(err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
+                                    request.username(), currentSession.getSessionId()))
+                    .replaceWith(UpdateResult.failure("Failed to disconnect timed-out session"));
+        }
+
+//        if(!foundBalance.getBucketUsername().equals(request.username()) ) {
 //
-//            // Remove session from userData and send COA disconnect
-//            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId())
-//                    .onItem().transformToUni(updatedUserData -> {
-//                        if (log.isTraceEnabled()) {
-//                            log.tracef("Successfully disconnected timed-out session for user: %s, sessionId: %s",
-//                                    request.username(), currentSession.getSessionId());
-//                        }
-//                        // Update cache with the modified userData (session removed)
-//                        return cacheClient.updateUserAndRelatedCaches(request.username(), updatedUserData)
-//                                .onFailure().invoke(err ->
-//                                        log.errorf(err, "Error updating cache after session timeout for user: %s", request.username()))
-//                                .replaceWith(UpdateResult.failure("Session absolute timeout exceeded"));
-//                    })
+//            UserSessionData originalUserData = userData.toBuilder().userStatus(null).concurrency(0).userName(null).sessionTimeOut(null)
+//                    .balance(new ArrayList<>(userData.getBalance()))
+//                    .sessions(new ArrayList<>(userData.getSessions()))
+//                    .build();
+//            userData.getBalance().removeIf(Balance::isGroup);
+//            userData.getSessions().remove(currentSession);
+//            // Fetch current group data to update sessions as well
+//            return cacheClient.getUserData(foundBalance.getBucketUsername())
+//                    .onFailure().recoverWithNull()
+//                    .onItem().transformToUni(existingGroupData -> {
+//
+//                        UserSessionData userSessionGroupData = prepareGroupDataWithSession(
+//                                existingGroupData, foundBalance, currentSession,request,originalUserData);
+//
+//
+//                        // Update both group and user caches in parallel for better performance
+//                        return Uni.combine().all().unis(
+//                                cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
+//                                        .onFailure().invoke(err ->
+//                                                log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername())),
+//                                cacheClient.updateUserAndRelatedCaches(request.username(), userData)
+//                                        .onFailure().invoke(err ->
+//                                                log.errorf(err, "Error updating cache for user: %s", request.username()))
+//                        ).discardItems().replaceWith(success);
+//                    });
+//        }else {
+//            userData.getBalance().removeIf(Balance::isGroup);
+//            return cacheClient.updateUserAndRelatedCaches(request.username(), userData)
 //                    .onFailure().invoke(err ->
-//                            log.errorf(err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
-//                                    request.username(), currentSession.getSessionId()))
-//                    .onFailure().recoverWithItem(UpdateResult.failure("Failed to disconnect timed-out session"));
+//                            log.errorf(err, "Error updating cache for user: %s", request.username()))
+//                    .replaceWith(success);
 //        }
 
-        if(!foundBalance.getBucketUsername().equals(request.username()) ) {
-
-            UserSessionData originalUserData = userData.toBuilder().userStatus(null).concurrency(0).userName(null).sessionTimeOut(null)
-                    .balance(new ArrayList<>(userData.getBalance()))
-                    .sessions(new ArrayList<>(userData.getSessions()))
-                    .build();
-            userData.getBalance().removeIf(Balance::isGroup);
-            userData.getSessions().remove(currentSession);
-            // Fetch current group data to update sessions as well
-            return cacheClient.getUserData(foundBalance.getBucketUsername())
-                    .onFailure().recoverWithNull()
-                    .onItem().transformToUni(existingGroupData -> {
-
-                        UserSessionData userSessionGroupData = prepareGroupDataWithSession(
-                                existingGroupData, foundBalance, currentSession,request,originalUserData);
-
-
-                        // Update both group and user caches in parallel for better performance
-                        return Uni.combine().all().unis(
-                                cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
-                                        .onFailure().invoke(err ->
-                                                log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername())),
-                                cacheClient.updateUserAndRelatedCaches(request.username(), userData)
-                                        .onFailure().invoke(err ->
-                                                log.errorf(err, "Error updating cache for user: %s", request.username()))
-                        ).discardItems().replaceWith(success);
-                    });
-        }else {
-            userData.getBalance().removeIf(Balance::isGroup);
-            return cacheClient.updateUserAndRelatedCaches(request.username(), userData)
-                    .onFailure().invoke(err ->
+        return extractCoaCacheAndDBUpdate(request, foundBalance,
+                userData, request.username(), foundBalance.getBucketUsername(),false)
+                .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))
                     .replaceWith(success);
-        }
+
     }
 
     /**
@@ -1253,7 +1274,6 @@ public class AccountingUtil {
      * @param balance balance to update
      * @param newQuota new quota value
      * @param sessionId session ID
-     * @param bucketUser bucket username
      * @param userName username
      * @return Uni<Void>
      */
@@ -1272,41 +1292,11 @@ public class AccountingUtil {
                         sessionId);
             }
         });
-//        return updateGroupBalanceBucket(balance, bucketUser, userName)
-//                .chain(() -> accountProducer.produceDBWriteEvent(dbWriteRequest)
-//                        .onFailure().invoke(throwable -> {
-//                            if (log.isDebugEnabled()) {
-//                                log.debugf(throwable, "Failed to produce DB write event for balance update, session: %s",
-//                                        sessionId);
-//                            }
-//                        })
-//                );
     }
 
     private long calculateTotalOctets(long octets, long gigawords) {
         return (gigawords * AppConstant.GIGAWORD_MULTIPLIER) + octets;
     }
-
-//    /**
-//     * Update group balance bucket in cache
-//     */
-//    private Uni<Void> updateGroupBalanceBucket(Balance balance, String bucketUsername, String username) {
-//        if (username.equals(bucketUsername)) {
-//            return Uni.createFrom().voidItem();
-//        }
-//
-//        // Create minimal UserSessionData for group update
-//        UserSessionData userSessionData = new UserSessionData();
-//        userSessionData.setBalance(List.of(balance));
-//
-//        return cacheClient.updateUserAndRelatedCaches(bucketUsername, userSessionData)
-//                .onFailure().invoke(throwable -> {
-//                    if (log.isDebugEnabled()) {
-//                        log.debugf(throwable, "Failed to update cache group for balance update, groupId: %s",
-//                                bucketUsername);
-//                    }
-//                });
-//    }
 
     /**
      *
@@ -1397,17 +1387,16 @@ public class AccountingUtil {
      * Checks if a session has exceeded its absolute timeout based on sessionInitiatedTime and sessionTimeOut.
      *
      * @param session The session to check
-     * @param sessionTimeOut The timeout value as a string (in minutes)
      * @return true if the session has exceeded the absolute timeout, false otherwise
      */
-    private boolean isSessionAbsoluteTimeoutExceeded(Session session, String sessionTimeOut) {
-        if (session == null || session.getSessionInitiatedTime() == null || sessionTimeOut == null) {
+    private boolean isSessionAbsoluteTimeoutExceeded(Session session) {
+        if (session == null || session.getSessionInitiatedTime() == null ) {
             return false;
         }
 
         try {
             // Parse sessionTimeOut as minutes
-            long timeoutMinutes = Long.parseLong(sessionTimeOut.trim());
+            long timeoutMinutes = Long.parseLong(session.getAbsoluteTimeOut());
 
             // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
             LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
@@ -1425,7 +1414,7 @@ public class AccountingUtil {
             return isExpired;
         } catch (NumberFormatException e) {
             log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
-                    sessionTimeOut, e.getMessage());
+                    session.getAbsoluteTimeOut(), e.getMessage());
             return false;
         }
     }

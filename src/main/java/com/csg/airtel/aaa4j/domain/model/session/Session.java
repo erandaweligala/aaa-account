@@ -26,5 +26,6 @@ public class Session {
     private String groupId;
     private String userName;
     private String serviceId;
+    private String absoluteTimeOut;
 
 }

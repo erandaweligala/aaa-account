@@ -103,6 +103,7 @@ public class InterimHandler {
                     }
                     Session newSession = createSession(request);
                     newSession.setGroupId(groupId);
+                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
                     UserSessionData newUserSessionData =  UserSessionData.builder().superTemplateId(templates)
                             .groupId(groupId).userName(request.username()).concurrency(concurrency)
                             .balance(balanceList).sessions(new ArrayList<>(List.of(newSession)))
@@ -110,7 +111,6 @@ public class InterimHandler {
                             .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
                             .build();
                     return processAccountingRequest(newUserSessionData, request,traceId);
-
                 });
     }
 
@@ -124,6 +124,7 @@ public class InterimHandler {
         if (session == null) {
             session = createSession(request);
             session.setGroupId(userData.getGroupId());
+            session.setAbsoluteTimeOut(userData.getSessionTimeOut());
             i = 1;
         }
         
@@ -191,7 +192,7 @@ public class InterimHandler {
                 request.nasPortId(),
                 true,
                 0,null,
-                request.username(),null
+                request.username(),null,null
 
         );
     }

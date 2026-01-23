@@ -35,6 +35,7 @@ public class CacheClient {
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
 
+
     private final ReactiveKeyCommands<String> keyCommands;
 
     @Inject
@@ -48,6 +49,10 @@ public class CacheClient {
         this.sessionExpiryIndex = sessionExpiryIndex;
     }
 
+
+    public void getGroupId(String userId,String groupId){
+        valueCommands.set(userId,groupId);
+    }
     /**
      * Store user data in Redis.
      * Cache entries persist indefinitely without TTL expiration.

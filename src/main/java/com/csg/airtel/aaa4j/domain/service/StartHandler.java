@@ -194,6 +194,7 @@ public class StartHandler {
         Session newSession = createSessionWithBalance(request, highestPriorityBalance);
         boolean isGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
         newSession.setGroupId(userSessionData.getGroupId());
+        newSession.setAbsoluteTimeOut(userSessionData.getSessionTimeOut());
         if (!isGroupBalance) {
             userSessionData.getSessions().add(newSession);
         }
@@ -373,6 +374,7 @@ public class StartHandler {
 
         Session session = createSessionWithBalance(request, highestPriorityBalance);
         session.setGroupId(result.groupId());
+        session.setAbsoluteTimeOut(result.sessionTimeOut);
         UserSessionData newUserSessionData = buildUserSessionData(
                 request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates,result.userStatus,result.sessionTimeOut);
 
@@ -418,6 +420,7 @@ public class StartHandler {
         newUserSessionData.setBalance(balanceList);
         newUserSessionData.setSuperTemplateId(templates);
         newUserSessionData.setSessionTimeOut(sessionTimeOut);
+        session.setAbsoluteTimeOut(sessionTimeOut);
         if (!isGroupBalance(highestPriorityBalance, request.username())) {
             newUserSessionData.setSessions(new ArrayList<>(List.of(session)));
         }
@@ -549,6 +552,7 @@ public class StartHandler {
                 false,
                 0,null,
                 request.username(),
+                null,
                 null
         );
     }
