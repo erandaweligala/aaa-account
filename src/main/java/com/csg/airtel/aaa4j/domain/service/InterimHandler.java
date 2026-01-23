@@ -75,43 +75,57 @@ public class InterimHandler {
                 });
     }
 
+    //todo pls complete this handleNewSessionUsage method without any overhead operations
     private Uni<Void> handleNewSessionUsage(AccountingRequestDto request,String traceId) {
 
+
+        cacheUtil.getGroupId(request.username())
+                .onItem().transformToUni(cacheGroupId -> {
+                    if(cacheGroupId == null) {
+                        return userRepository.getServiceBucketsByUserName(request.username())
+                                .onItem().transformToUni(serviceBuckets -> {
+                                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
+                                        log.warnf("No service buckets found for user: %s", request.username());
+                                        return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
+                                                AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
+                                    }
+                                    int bucketCount = serviceBuckets.size();
+                                    List<Balance> balanceList = new ArrayList<>(bucketCount);
+                                    String groupId = null;
+                                    long concurrency = 0;
+                                    Long templates = null;
+                                    for (ServiceBucketInfo bucket : serviceBuckets) {
+                                        if(!Objects.equals(bucket.getBucketUser(), request.username())){
+                                            groupId = bucket.getBucketUser();
+                                        }
+                                        concurrency = bucket.getConcurrency();
+                                        templates = bucket.getNotificationTemplates();
+                                        balanceList.add(MappingUtil.createBalance(bucket));
+
+                                    }
+                                    Session newSession = createSession(request);
+                                    newSession.setGroupId(groupId);
+                                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
+                                    UserSessionData newUserSessionData =  UserSessionData.builder().superTemplateId(templates)
+                                            .groupId(groupId).userName(request.username()).concurrency(concurrency)
+                                            .balance(balanceList).sessions(new ArrayList<>(List.of(newSession)))
+                                            .userStatus(serviceBuckets.getFirst().getUserStatus())
+                                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
+                                            .build();
+                                    return processAccountingRequest(newUserSessionData, request,traceId);
+                                });
+                    }else {
+                        cacheUtil.getUserData(cacheGroupId)
+                                .onItem().transformToUni(groupUserData -> {
+                                    processAccountingRequest(groupUserData, request,traceId);
+
+                                })
+                    }
+                })
         if (log.isDebugEnabled()) {
             log.debugf("No cache entry found for user: %s", request.username());
         }
-        return userRepository.getServiceBucketsByUserName(request.username())
-                .onItem().transformToUni(serviceBuckets -> {
-                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                        log.warnf("No service buckets found for user: %s", request.username());
-                        return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG, AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT),createSession(request),request.username());
-                    }
-                    int bucketCount = serviceBuckets.size();
-                    List<Balance> balanceList = new ArrayList<>(bucketCount);
-                    String groupId = null;
-                    long concurrency = 0;
-                    Long templates = null;
-                    for (ServiceBucketInfo bucket : serviceBuckets) {
-                        if(!Objects.equals(bucket.getBucketUser(), request.username())){
-                            groupId = bucket.getBucketUser();
-                        }
-                        concurrency = bucket.getConcurrency();
-                        templates = bucket.getNotificationTemplates();
-                        balanceList.add(MappingUtil.createBalance(bucket));
 
-                    }
-                    Session newSession = createSession(request);
-                    newSession.setGroupId(groupId);
-                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
-                    UserSessionData newUserSessionData =  UserSessionData.builder().superTemplateId(templates)
-                            .groupId(groupId).userName(request.username()).concurrency(concurrency)
-                            .balance(balanceList).sessions(new ArrayList<>(List.of(newSession)))
-                            .userStatus(serviceBuckets.getFirst().getUserStatus())
-                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
-                            .build();
-                    return processAccountingRequest(newUserSessionData, request,traceId);
-                });
     }
 
     private Uni<Void> processAccountingRequest(

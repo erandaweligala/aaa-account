@@ -49,43 +49,47 @@ public class CacheClient {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper
                 .disable(SerializationFeature.INDENT_OUTPUT)  // No pretty printing
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-                .setSerializationInclusion(JsonInclude.Include.NON_NULL);
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
     }
-
-
-    //todo implement userId related store groupId what is the best approch high tps hanling
-
-    /**
-     * Store user data in Redis.
-     * Cache entries persist indefinitely without TTL expiration.
-     * Session cleanup is managed separately via IdleSessionTerminatorScheduler.
-     */
-
     @Retry(
             maxRetries = 1,
-            delay = 30,
-            maxDuration = 1500
+            delay = 100,
+            jitter = 50
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
-    public Uni<Void> storeUserToGroupId(String userId, String groupId) {
+    @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
+    public Uni<String> getGroupId(String userId) {
+
+        if (log.isDebugEnabled()) {
+            log.debugf("Retrieving Group id for cache userId: %s", userId);
+        }
         String key = GROUP_KEY_PREFIX + userId;
 
-        try {
-            return valueCommands.set(key, groupId);
-        } catch (Exception e) {
-            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
-            return Uni.createFrom().failure(new BaseException(
-                    "Failed to serialize user data",
-                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
-                    Response.Status.INTERNAL_SERVER_ERROR,
-                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
-                    null
-            ));
-        }
+        // Use cached valueCommands for better performance at high TPS
+        return valueCommands.get(key)
+                .onItem().ifNotNull().transform(Unchecked.function(groupId -> {
+                    try {
+
+                        if (log.isDebugEnabled()) {
+                            log.debugf("User data retrieved for userId: %s",
+                                    userId);
+                        }
+
+                        return groupId;
+                    } catch (Exception e) {
+                        log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
+                        throw new BaseException(
+                                "Failed to deserialize user data",
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                                Response.Status.INTERNAL_SERVER_ERROR,
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                                null
+                        );
+                    }
+                }))
+                .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
     }
 
     @Retry(
@@ -103,8 +107,7 @@ public class CacheClient {
         try {
             String jsonValue = objectMapper.writeValueAsString(userData);
 
-            // Run group and user SET operations in parallel for zero overhead
-            if(userData != null && userData.getGroupId() != null) {
+            if(userData != null && !userData.getGroupId().equalsIgnoreCase("1")) {
                 String groupKey = GROUP_KEY_PREFIX + userId;
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
@@ -190,7 +193,7 @@ public class CacheClient {
             String jsonValue = objectMapper.writeValueAsString(userData);
 
             // Run group and user SET operations in parallel for zero overhead
-            if(userData != null && userData.getGroupId() != null) {
+            if(userData != null && !userData.getGroupId().equalsIgnoreCase("1")) {
                 String groupKey = GROUP_KEY_PREFIX + userId;
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
