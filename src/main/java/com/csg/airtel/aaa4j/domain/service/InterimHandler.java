@@ -28,12 +28,6 @@ public class InterimHandler extends AbstractAccountingHandler {
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
 
-    protected InterimHandler() {
-        super();
-        this.accountingUtil = null;
-        this.sessionLifecycleManager = null;
-    }
-
     @Inject
     public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         super(cacheUtil, userRepository, accountProducer, coaService);

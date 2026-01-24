@@ -10,17 +10,21 @@ import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * Abstract base class for accounting handlers (Interim and Stop).
+ * Base class for accounting handlers (Interim and Stop).
  * Contains common logic for handling new session usage and user service details.
  */
-public abstract class AbstractAccountingHandler {
+@ApplicationScoped
+public class AbstractAccountingHandler {
 
     private static final Logger log = Logger.getLogger(AbstractAccountingHandler.class);
     private static final String NO_SERVICE_BUCKETS_MSG = "No service buckets found";
@@ -30,7 +34,15 @@ public abstract class AbstractAccountingHandler {
     protected final AccountProducer accountProducer;
     protected final COAService coaService;
 
-    protected AbstractAccountingHandler(
+    protected AbstractAccountingHandler() {
+        this.cacheUtil = null;
+        this.userRepository = null;
+        this.accountProducer = null;
+        this.coaService = null;
+    }
+
+    @Inject
+    public AbstractAccountingHandler(
             CacheClient cacheUtil,
             UserBucketRepository userRepository,
             AccountProducer accountProducer,
@@ -135,16 +147,38 @@ public abstract class AbstractAccountingHandler {
 
     /**
      * Creates a new session from the accounting request.
-     * Subclasses must implement this to provide handler-specific session initialization.
+     * Subclasses can override this to provide handler-specific session initialization.
      */
-    protected abstract Session createSession(AccountingRequestDto request);
+    protected Session createSession(AccountingRequestDto request) {
+        return new Session(
+                request.sessionId(),
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                null,
+                request.sessionTime(),
+                0L,
+                request.framedIPAddress(),
+                request.nasIP(),
+                request.nasPortId(),
+                true,
+                0,
+                null,
+                request.username(),
+                null,
+                null
+        );
+    }
 
     /**
      * Processes the accounting request with user session data.
-     * Subclasses must implement this to provide handler-specific processing logic.
+     * Subclasses can override this to provide handler-specific processing logic.
      */
-    protected abstract Uni<Void> processAccountingRequest(
+    protected Uni<Void> processAccountingRequest(
             UserSessionData userSessionData,
             AccountingRequestDto request,
-            String traceId);
+            String traceId) {
+        log.warnf("[traceId: %s] processAccountingRequest called on base class for user: %s",
+                traceId, request.username());
+        return Uni.createFrom().voidItem();
+    }
 }
