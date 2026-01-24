@@ -249,7 +249,7 @@ public class StartHandler {
                     }
 
                     log.warnf("Group data not found for groupId: %s. Only updating user data.", groupId);
-                    return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData);
+                    return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData,request.username());
                 })
                 .replaceWithVoid();
     }
@@ -268,15 +268,15 @@ public class StartHandler {
             UserSessionData groupSessionData) {
 
         return Uni.combine().all().unis(
-                        utilCache.updateUserAndRelatedCaches(username, userSessionData),
-                        utilCache.updateUserAndRelatedCaches(groupId, groupSessionData)
+                        utilCache.updateUserAndRelatedCaches(username, userSessionData,username),
+                        utilCache.updateUserAndRelatedCaches(groupId, groupSessionData,groupId)
                 ).discardItems()
                 .onItem().invoke(unused ->
                         log.infof("Session added to both user: %s and group: %s", username, groupId));
     }
 
     private Uni<Void> updateUserCacheOnly(AccountingRequestDto request, UserSessionData userSessionData) {
-        return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData)
+        return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData,request.username())
                 .onItem().invoke(unused ->
                         log.infof("New session added for user: %s, sessionId: %s",
                                 request.username(), request.sessionId()))
@@ -429,7 +429,7 @@ public class StartHandler {
     }
 
     private Uni<Void> storeUserSessionData(String username, UserSessionData sessionData) {
-        return utilCache.storeUserData(username, sessionData)
+        return utilCache.storeUserData(username, sessionData,username)
                 .onItem().invoke(unused ->
                         log.infof("New user session data created and stored for user: %s", username))
                 .replaceWithVoid();
@@ -474,7 +474,7 @@ public class StartHandler {
             Session session,
             boolean isHighestPriorityGroupBalance,
             String groupId) {
-
+            groupSessionData.setGroupId(groupId);
         if (isHighestPriorityGroupBalance) {
             groupSessionData.setSessions(new ArrayList<>(List.of(session)));
             log.infof("Adding session to new group data for groupId: %s (highest priority balance is group balance)", groupId);
@@ -482,7 +482,7 @@ public class StartHandler {
             groupSessionData.setSessions(new ArrayList<>());
         }
 
-        return utilCache.storeUserData(groupId, groupSessionData)
+        return utilCache.storeUserData(groupId, groupSessionData,session.getUserName())
                 .onItem().invoke(unused -> log.infof("Group session data stored for groupId: %s", groupId))
                 .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", groupId));
     }
@@ -502,7 +502,7 @@ public class StartHandler {
         }
 
         log.infof("Group session data already exists for groupId: %s", groupId);
-        return utilCache.updateUserAndRelatedCaches(groupId, existingData)
+        return utilCache.updateUserAndRelatedCaches(groupId, existingData,session.getUserName())
                 .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", groupId));
     }
 

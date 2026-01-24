@@ -47,9 +47,7 @@ public class CacheClient {
                        ObjectMapper objectMapper,
                        SessionExpiryIndex sessionExpiryIndex) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
-        this.objectMapper = objectMapper
-                .disable(SerializationFeature.INDENT_OUTPUT)  // No pretty printing
-                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
@@ -98,7 +96,7 @@ public class CacheClient {
             maxDuration = 1500
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)
-    public Uni<Void> storeUserData(String userId, UserSessionData userData) {
+    public Uni<Void> storeUserData(String userId, UserSessionData userData,String userName) {
         if (log.isDebugEnabled()) {
             log.debugf("Storing user data for cache userId: %s", userId);
         }
@@ -108,7 +106,7 @@ public class CacheClient {
             String jsonValue = objectMapper.writeValueAsString(userData);
 
             if(userData != null && !userData.getGroupId().equalsIgnoreCase("1")) {
-                String groupKey = GROUP_KEY_PREFIX + userId;
+                String groupKey = GROUP_KEY_PREFIX + userName;
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
                         valueCommands.set(groupKey, userData.getGroupId()),
@@ -182,7 +180,7 @@ public class CacheClient {
             maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)
-    public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData) {
+    public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData,String userName) {
         if (log.isDebugEnabled()) {
             log.debugf("Updating user data and related caches for userId: %s", userId);
         }
@@ -194,7 +192,7 @@ public class CacheClient {
 
             // Run group and user SET operations in parallel for zero overhead
             if(userData != null && !userData.getGroupId().equalsIgnoreCase("1")) {
-                String groupKey = GROUP_KEY_PREFIX + userId;
+                String groupKey = GROUP_KEY_PREFIX + userName;
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
                         valueCommands.set(groupKey, userData.getGroupId()),
@@ -224,12 +222,13 @@ public class CacheClient {
      *  Use cached keyCommands instead of creating new instance
      */
     public Uni<String> deleteKey(String key) {
-        String userKey = KEY_PREFIX + key;
+        String userKey1 = KEY_PREFIX + key;
+        String userKey2 = GROUP_KEY_PREFIX + key;
 
-        return keyCommands.del(userKey)
+        return keyCommands.del(userKey1, userKey2)
                 .map(deleted -> deleted > 0
-                        ? "Key deleted: " + key
-                        : "Key not found: " + key);
+                        ? "Keys deleted count: " + deleted
+                        : "No keys found");
     }
 
     /**

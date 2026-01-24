@@ -1,20 +1,21 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
-import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
-import com.csg.airtel.aaa4j.domain.model.EventType;
-import com.csg.airtel.aaa4j.domain.model.UpdateResult;
+import com.csg.airtel.aaa4j.domain.model.*;
+import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
+import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 
 @ApplicationScoped
@@ -26,13 +27,15 @@ public class StopHandler {
     private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final UserBucketRepository userRepository;
 
     @Inject
-    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager) {
+    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, UserBucketRepository userRepository) {
         this.cacheUtil = cacheUtil;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
+        this.userRepository = userRepository;
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
@@ -48,6 +51,77 @@ public class StopHandler {
                 .onFailure().recoverWithUni(throwable -> {
                     log.errorf(throwable, "Error processing accounting for user: %s", request.username());
                     return Uni.createFrom().voidItem();
+                });
+    }
+
+
+    //todo need to implemnt common class interim and stop classes this method
+    private Uni<Void> handleNewSessionUsage(AccountingRequestDto request, String traceId) {
+        if (log.isDebugEnabled()) {
+            log.debugf("[traceId: %s] No cache entry found for user: %s", traceId, request.username());
+        }
+
+        return cacheUtil.getGroupId(request.username())
+                .onItem().transformToUni(cacheGroupId -> {
+                    if (cacheGroupId == null) {
+                        return getUserServicesDetails(request, traceId);
+                    } else {
+                        return cacheUtil.getUserData(cacheGroupId)
+                                .onItem().transformToUni(groupUserData ->{
+                                    if(groupUserData != null) {
+                                        return processAccountingStop(groupUserData, request, traceId);
+                                    }else {
+                                        return getUserServicesDetails(request, traceId);
+                                    }
+                                });
+                    }
+                });
+    }
+
+    private Uni<Void> getUserServicesDetails(AccountingRequestDto request, String traceId) {
+        return userRepository.getServiceBucketsByUserName(request.username())
+                .onItem().transformToUni(serviceBuckets -> {
+                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
+                        log.warnf("[traceId: %s] No service buckets found for user: %s", traceId, request.username());
+                        return coaService.produceAccountingResponseEvent(
+                                MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG,
+                                        AccountingResponseEvent.EventType.COA,
+                                        AccountingResponseEvent.ResponseAction.DISCONNECT),
+                                createSession(request),
+                                request.username());
+                    }
+
+                    int bucketCount = serviceBuckets.size();
+                    List<Balance> balanceList = new ArrayList<>(bucketCount);
+                    String groupId = null;
+                    long concurrency = 0;
+                    Long templates = null;
+
+                    for (ServiceBucketInfo bucket : serviceBuckets) {
+                        if (!Objects.equals(bucket.getBucketUser(), request.username())) {
+                            groupId = bucket.getBucketUser();
+                        }
+                        concurrency = bucket.getConcurrency();
+                        templates = bucket.getNotificationTemplates();
+                        balanceList.add(MappingUtil.createBalance(bucket));
+                    }
+
+                    Session newSession = createSession(request);
+                    newSession.setGroupId(groupId);
+                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
+
+                    UserSessionData newUserSessionData = UserSessionData.builder()
+                            .superTemplateId(templates)
+                            .groupId(groupId)
+                            .userName(request.username())
+                            .concurrency(concurrency)
+                            .balance(balanceList)
+                            .sessions(new ArrayList<>(List.of(newSession)))
+                            .userStatus(serviceBuckets.getFirst().getUserStatus())
+                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
+                            .build();
+
+                    return processAccountingStop(newUserSessionData, request, traceId);
                 });
     }
 
@@ -83,17 +157,6 @@ public class StopHandler {
                     }else {
                         return Uni.createFrom().voidItem();
                     }
-                })
-                .invoke(() -> userSessionData.getSessions().remove(finalSession))
-                .call(() -> {
-                    log.infof("[traceId: %s] Updating cache for user: %s", request.username());
-                    // Update cache
-                    return cacheUtil.updateUserAndRelatedCaches(request.username(), userSessionData)
-                            .onFailure().invoke(throwable ->
-                                    log.errorf(throwable, "Failed to update cache for user: %s",
-                                            request.username())
-                            )
-                            .onFailure().recoverWithNull(); // Cache failure can still be swallowed
                 })
                 .call(() -> sessionLifecycleManager.onSessionTerminated(request.username(), request.sessionId()))
                 .invoke(() ->

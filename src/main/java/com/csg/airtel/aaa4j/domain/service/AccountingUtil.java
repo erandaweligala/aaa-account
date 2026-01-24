@@ -1022,6 +1022,9 @@ public class AccountingUtil {
                 updatedUserData.setUserName(null);
                 updatedUserData.setConcurrency(0);
             }
+            if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
+                updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
+            }
 
         if (log.isTraceEnabled()) {
             log.tracef("Successfully cleared all sessions for user: %s, remaining sessions: %d",
@@ -1031,12 +1034,12 @@ public class AccountingUtil {
         if(isDBUpdate) {
             return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                     request.sessionId(), username)
-                    .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData))
+                    .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username()))
                     .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))
                     .replaceWithVoid();
         }else {
-           return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData)
+           return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username())
                     .onFailure().invoke(err ->
                             log.errorf(err, "Error updating cache for user: %s", request.username()))
                                 .replaceWithVoid();

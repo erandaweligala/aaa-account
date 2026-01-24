@@ -118,7 +118,7 @@ public class BucketService {
                                 .build();
                     }
 
-                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData,userName)
                             /*.call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName)) no need to disconnect*/
                             .onItem().transform(result -> createSuccessResponse(balance.getBalance(),"Bucket Added Successfully"));
                 })
@@ -170,7 +170,7 @@ public class BucketService {
                             .balance(Collections.unmodifiableList(balanceList))
                             .build();
 
-                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData,userName)
                             .onItem().transform(result -> {
                                 log.infof("Successfully updated balance for user %s, serviceId %s",
                                         userName, serviceId);
@@ -300,7 +300,7 @@ public class BucketService {
                             .build();
 
                     // Update cache and send COA for any status update
-                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData)
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData,userName)
                             .call(() -> {
                                 // Send COA to notify NAS about status update for all active sessions
                                 if (userData.getSessions() != null && !userData.getSessions().isEmpty()) {

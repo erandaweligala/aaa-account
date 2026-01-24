@@ -268,7 +268,7 @@ public class IdleSessionTerminatorScheduler {
         return triggerDBRequestInitiate(sessionsToTerminate, userData)
                 .onItem().transformToUni(v ->
                         // Update cache after DB write is initiated
-                        cacheClient.updateUserAndRelatedCaches(userName, userData)
+                        cacheClient.updateUserAndRelatedCaches(userName, userData,userName)
                                 .onFailure().invoke(error ->
                                         log.errorf(error, "Failed to update cache for user: %s", userName))
                                 .onFailure().recoverWithNull()

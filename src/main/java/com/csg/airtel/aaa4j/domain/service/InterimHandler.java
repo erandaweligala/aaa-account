@@ -83,55 +83,64 @@ public class InterimHandler {
         return cacheUtil.getGroupId(request.username())
                 .onItem().transformToUni(cacheGroupId -> {
                     if (cacheGroupId == null) {
-                        return userRepository.getServiceBucketsByUserName(request.username())
-                                .onItem().transformToUni(serviceBuckets -> {
-                                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                                        log.warnf("[traceId: %s] No service buckets found for user: %s", traceId, request.username());
-                                        return coaService.produceAccountingResponseEvent(
-                                                MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG,
-                                                        AccountingResponseEvent.EventType.COA,
-                                                        AccountingResponseEvent.ResponseAction.DISCONNECT),
-                                                createSession(request),
-                                                request.username());
-                                    }
-
-                                    int bucketCount = serviceBuckets.size();
-                                    List<Balance> balanceList = new ArrayList<>(bucketCount);
-                                    String groupId = null;
-                                    long concurrency = 0;
-                                    Long templates = null;
-
-                                    for (ServiceBucketInfo bucket : serviceBuckets) {
-                                        if (!Objects.equals(bucket.getBucketUser(), request.username())) {
-                                            groupId = bucket.getBucketUser();
-                                        }
-                                        concurrency = bucket.getConcurrency();
-                                        templates = bucket.getNotificationTemplates();
-                                        balanceList.add(MappingUtil.createBalance(bucket));
-                                    }
-
-                                    Session newSession = createSession(request);
-                                    newSession.setGroupId(groupId);
-                                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
-
-                                    UserSessionData newUserSessionData = UserSessionData.builder()
-                                            .superTemplateId(templates)
-                                            .groupId(groupId)
-                                            .userName(request.username())
-                                            .concurrency(concurrency)
-                                            .balance(balanceList)
-                                            .sessions(new ArrayList<>(List.of(newSession)))
-                                            .userStatus(serviceBuckets.getFirst().getUserStatus())
-                                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
-                                            .build();
-
-                                    return processAccountingRequest(newUserSessionData, request, traceId);
-                                });
+                        return getUserServicesDetails(request, traceId);
                     } else {
                         return cacheUtil.getUserData(cacheGroupId)
-                                .onItem().transformToUni(groupUserData ->
-                                        processAccountingRequest(groupUserData, request, traceId));
+                                .onItem().transformToUni(groupUserData ->{
+                                        if(groupUserData != null) {
+                                            return processAccountingRequest(groupUserData, request, traceId);
+                                        }else {
+                                            return getUserServicesDetails(request, traceId);
+                                        }
+                                });
                     }
+                });
+    }
+
+    private Uni<Void> getUserServicesDetails(AccountingRequestDto request, String traceId) {
+        return userRepository.getServiceBucketsByUserName(request.username())
+                .onItem().transformToUni(serviceBuckets -> {
+                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
+                        log.warnf("[traceId: %s] No service buckets found for user: %s", traceId, request.username());
+                        return coaService.produceAccountingResponseEvent(
+                                MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG,
+                                        AccountingResponseEvent.EventType.COA,
+                                        AccountingResponseEvent.ResponseAction.DISCONNECT),
+                                createSession(request),
+                                request.username());
+                    }
+
+                    int bucketCount = serviceBuckets.size();
+                    List<Balance> balanceList = new ArrayList<>(bucketCount);
+                    String groupId = null;
+                    long concurrency = 0;
+                    Long templates = null;
+
+                    for (ServiceBucketInfo bucket : serviceBuckets) {
+                        if (!Objects.equals(bucket.getBucketUser(), request.username())) {
+                            groupId = bucket.getBucketUser();
+                        }
+                        concurrency = bucket.getConcurrency();
+                        templates = bucket.getNotificationTemplates();
+                        balanceList.add(MappingUtil.createBalance(bucket));
+                    }
+
+                    Session newSession = createSession(request);
+                    newSession.setGroupId(groupId);
+                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
+
+                    UserSessionData newUserSessionData = UserSessionData.builder()
+                            .superTemplateId(templates)
+                            .groupId(groupId)
+                            .userName(request.username())
+                            .concurrency(concurrency)
+                            .balance(balanceList)
+                            .sessions(new ArrayList<>(List.of(newSession)))
+                            .userStatus(serviceBuckets.getFirst().getUserStatus())
+                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
+                            .build();
+
+                    return processAccountingRequest(newUserSessionData, request, traceId);
                 });
     }
 

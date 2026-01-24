@@ -199,7 +199,7 @@ public class AccountProducer {
                         LOG.infof("Removed session %s from user %s sessions list during fallback", sessionId, userId);
 
                         // Update cache and remove from expiry index
-                        return cacheClient.updateUserAndRelatedCaches(userId, userSessionData)
+                        return cacheClient.updateUserAndRelatedCaches(userId, userSessionData,request.getUserName())
                                 .call(() -> sessionLifecycleManager.onSessionTerminated(userId, sessionId))
                                 .invoke(() -> LOG.infof("Session revoke fallback completed for userId=%s, sessionId=%s",
                                         userId, sessionId))
