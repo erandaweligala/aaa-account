@@ -3,10 +3,7 @@ package com.csg.airtel.aaa4j.external.clients;
 import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.exception.BaseException;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
@@ -105,7 +102,7 @@ public class CacheClient {
         try {
             String jsonValue = objectMapper.writeValueAsString(userData);
 
-            if(userData != null && !userData.getGroupId().equalsIgnoreCase("1")) {
+            if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
                 String groupKey = GROUP_KEY_PREFIX + userName;
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
@@ -191,7 +188,7 @@ public class CacheClient {
             String jsonValue = objectMapper.writeValueAsString(userData);
 
             // Run group and user SET operations in parallel for zero overhead
-            if(userData != null && !userData.getGroupId().equalsIgnoreCase("1")) {
+            if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
                 String groupKey = GROUP_KEY_PREFIX + userName;
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(

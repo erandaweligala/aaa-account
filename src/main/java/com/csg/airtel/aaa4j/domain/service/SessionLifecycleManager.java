@@ -20,11 +20,6 @@ import java.time.ZoneId;
  * to keep the expiry index in sync for efficient idle session detection.</p>
  *
  * <h2>Integration Points</h2>
- * <ul>
- *   <li>{@code StartHandler.processAccountingStart()} - Call {@link #onSessionCreated} when creating new sessions</li>
- *   <li>{@code InterimHandler.handleInterim()} - Call {@link #onSessionActivity} to update expiry time</li>
- *   <li>{@code StopHandler.stopProcessing()} - Call {@link #onSessionTerminated} when terminating sessions</li>
- * </ul>
  *
  * <h2>Expiry Time Calculation</h2>
  * <p>Sessions are indexed with an expiry time = sessionInitiatedTime + timeoutMinutes.

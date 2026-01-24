@@ -46,16 +46,13 @@ public class StopHandler {
                 .onItem().transformToUni(userSessionData ->
                         userSessionData != null ?
                                  processAccountingStop(userSessionData, request,bucketId).invoke(() -> log.infof("[traceId: %s] Completed processing for eventType=%s, action=%s, bucketId=%s", traceId, bucketId))
-                                 : Uni.createFrom().voidItem()
+                                 : accountingHandler.handleNewSessionUsage(request, traceId, this::processAccountingStop, this::createSession)
                 )
                 .onFailure().recoverWithUni(throwable -> {
                     log.errorf(throwable, "Error processing accounting for user: %s", request.username());
                     return Uni.createFrom().voidItem();
                 });
     }
-
-
-
 
     public Uni<Void> processAccountingStop(
             UserSessionData userSessionData,AccountingRequestDto request
@@ -132,7 +129,9 @@ public class StopHandler {
                 false,
                 0,null,
                 request.username(),
-                null,null
+                null,null,
+                null,
+                0
         );
     }
 }

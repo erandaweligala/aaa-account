@@ -23,6 +23,7 @@ public class AccountingUtil {
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
     private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
+    public static final String ERROR_UPDATING_CACHE_FOR_USER_S = "Error updating cache for user: %s";
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
     private final COAService coaService;
@@ -239,6 +240,7 @@ public class AccountingUtil {
 
         // Synchronous balance finding - no need for reactive wrapper here
         Balance foundBalance = computeHighestPriority(balances, bucketId);
+
 
         return processBalanceUpdateWithCombinedData(
                 userData, sessionData, request, foundBalance,
@@ -687,6 +689,35 @@ public class AccountingUtil {
             return handleNoValidBalance(userData, request);
         }
 
+
+        boolean hasMatchingNasPortId = userData.getSessions().stream()
+                .anyMatch(ses -> ses.getNasPortId() != null &&
+                        ses.getNasPortId().equals(request.nasPortId()));
+
+        if(!foundBalance.isGroup()) {
+            //todo implement complete this concurenacy logic without any oavehead
+            if (!hasMatchingNasPortId && userData.getConcurrency() <= userData.getSessions().size()) {
+                log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s", request.username());
+                return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded", AccountingResponseEvent.EventType.COA,
+                        AccountingResponseEvent.ResponseAction.DISCONNECT), sessionData, request.username());
+
+            }
+        }else {
+            int count = 0;
+            for (Session s : combinedSessions) {
+                if (s.getUserName().equals(request.username())) {
+                    count++;
+                }
+            }
+            if (!hasMatchingNasPortId && sessionData.getUserConcurrency() <= count) {
+                log.errorf("Maximum number of concurrency sessions exceeded for group user: %s", request.username());
+                return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded", AccountingResponseEvent.EventType.COA,
+                        AccountingResponseEvent.ResponseAction.DISCONNECT), sessionData, request.username());
+
+            }
+
+        }
+
         if (log.isTraceEnabled()) {
             log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
                     combinedBalances.size(), combinedSessions.size());
@@ -1036,12 +1067,12 @@ public class AccountingUtil {
                     request.sessionId(), username)
                     .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username()))
                     .onFailure().invoke(err ->
-                            log.errorf(err, "Error updating cache for user: %s", request.username()))
+                            log.errorf(err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
                     .replaceWithVoid();
         }else {
            return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username())
                     .onFailure().invoke(err ->
-                            log.errorf(err, "Error updating cache for user: %s", request.username()))
+                            log.errorf(err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
                                 .replaceWithVoid();
         }
     }
@@ -1144,45 +1175,10 @@ public class AccountingUtil {
                     .replaceWith(UpdateResult.failure("Failed to disconnect timed-out session"));
         }
 
-//        if(!foundBalance.getBucketUsername().equals(request.username()) ) {
-//
-//            UserSessionData originalUserData = userData.toBuilder().userStatus(null).concurrency(0).userName(null).sessionTimeOut(null)
-//                    .balance(new ArrayList<>(userData.getBalance()))
-//                    .sessions(new ArrayList<>(userData.getSessions()))
-//                    .build();
-//            userData.getBalance().removeIf(Balance::isGroup);
-//            userData.getSessions().remove(currentSession);
-//            // Fetch current group data to update sessions as well
-//            return cacheClient.getUserData(foundBalance.getBucketUsername())
-//                    .onFailure().recoverWithNull()
-//                    .onItem().transformToUni(existingGroupData -> {
-//
-//                        UserSessionData userSessionGroupData = prepareGroupDataWithSession(
-//                                existingGroupData, foundBalance, currentSession,request,originalUserData);
-//
-//
-//                        // Update both group and user caches in parallel for better performance
-//                        return Uni.combine().all().unis(
-//                                cacheClient.updateUserAndRelatedCaches(foundBalance.getBucketUsername(), userSessionGroupData)
-//                                        .onFailure().invoke(err ->
-//                                                log.errorf(err, "Error updating Group Balance cache for user: %s", foundBalance.getBucketUsername())),
-//                                cacheClient.updateUserAndRelatedCaches(request.username(), userData)
-//                                        .onFailure().invoke(err ->
-//                                                log.errorf(err, "Error updating cache for user: %s", request.username()))
-//                        ).discardItems().replaceWith(success);
-//                    });
-//        }else {
-//            userData.getBalance().removeIf(Balance::isGroup);
-//            return cacheClient.updateUserAndRelatedCaches(request.username(), userData)
-//                    .onFailure().invoke(err ->
-//                            log.errorf(err, "Error updating cache for user: %s", request.username()))
-//                    .replaceWith(success);
-//        }
-
         return extractCoaCacheAndDBUpdate(request, foundBalance,
                 userData, request.username(), foundBalance.getBucketUsername(),false)
                 .onFailure().invoke(err ->
-                            log.errorf(err, "Error updating cache for user: %s", request.username()))
+                            log.errorf(err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
                     .replaceWith(success);
 
     }

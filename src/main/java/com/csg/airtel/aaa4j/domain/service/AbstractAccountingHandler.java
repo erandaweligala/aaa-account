@@ -6,7 +6,6 @@ import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
-import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
@@ -33,25 +32,15 @@ public class AbstractAccountingHandler {
 
     private final CacheClient cacheUtil;
     private final UserBucketRepository userRepository;
-    private final AccountProducer accountProducer;
     private final COAService coaService;
-
-    protected AbstractAccountingHandler() {
-        this.cacheUtil = null;
-        this.userRepository = null;
-        this.accountProducer = null;
-        this.coaService = null;
-    }
 
     @Inject
     public AbstractAccountingHandler(
             CacheClient cacheUtil,
             UserBucketRepository userRepository,
-            AccountProducer accountProducer,
             COAService coaService) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
-        this.accountProducer = accountProducer;
         this.coaService = coaService;
     }
 
@@ -63,17 +52,6 @@ public class AbstractAccountingHandler {
         Uni<Void> process(UserSessionData userSessionData, AccountingRequestDto request, String traceId);
     }
 
-    public CacheClient getCacheUtil() {
-        return cacheUtil;
-    }
-
-    public AccountProducer getAccountProducer() {
-        return accountProducer;
-    }
-
-    public COAService getCoaService() {
-        return coaService;
-    }
 
     /**
      * Handles accounting for a new session where no cache entry exists for the user.
@@ -205,7 +183,9 @@ public class AbstractAccountingHandler {
                 null,
                 request.username(),
                 null,
-                null
+                null,
+                null,
+                0
         );
     }
 }

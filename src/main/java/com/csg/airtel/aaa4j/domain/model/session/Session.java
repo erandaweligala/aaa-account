@@ -27,5 +27,7 @@ public class Session {
     private String userName;
     private String serviceId;
     private String absoluteTimeOut;
+    private String userStatus;
+    private long userConcurrency;
 
 }

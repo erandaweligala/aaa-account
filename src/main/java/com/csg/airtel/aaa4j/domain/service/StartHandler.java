@@ -108,23 +108,6 @@ public class StartHandler {
             List<Balance> balanceList) {
 
 
-        boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
-                .anyMatch(session -> session.getNasPortId() != null &&
-                        session.getNasPortId().equals(request.nasPortId()));
-
-
-        if (!hasMatchingNasPortId && userSessionData.getSessions().size() >= userSessionData.getConcurrency()) {
-                log.errorf("Maximum concurrent sessions exceeded for user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
-                        request.username(), userSessionData.getSessions().size(),
-                        userSessionData.getConcurrency(), request.nasPortId());
-                return coaService.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT),
-                        createSession(request),
-                        request.username());
-            }
-
         List<Balance> combinedBalances = combineBalances(userSessionData.getBalance(), balanceList);
 
         Uni<Void> validationResult = validateBalanceAndSession(request, userSessionData, combinedBalances);
@@ -195,6 +178,8 @@ public class StartHandler {
         boolean isGroupBalance = isGroupBalance(highestPriorityBalance, request.username());
         newSession.setGroupId(userSessionData.getGroupId());
         newSession.setAbsoluteTimeOut(userSessionData.getSessionTimeOut());
+        newSession.setUserStatus(userSessionData.getUserStatus());
+        newSession.setUserConcurrency(userSessionData.getConcurrency());
         if (!isGroupBalance) {
             userSessionData.getSessions().add(newSession);
         }
@@ -224,10 +209,26 @@ public class StartHandler {
             Session newSession,
             boolean isHighestPriorityGroupBalance) {
 
+        boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
+                .anyMatch(session -> session.getNasPortId() != null &&
+                        session.getNasPortId().equals(request.nasPortId()));
+
         String groupId = userSessionData.getGroupId();
 
         if (isHighestPriorityGroupBalance && groupId != null && !groupId.equals("1")) {
-            return updateUserAndGroupCaches(request, userSessionData, newSession, groupId);
+            return updateUserAndGroupCaches(request, userSessionData, newSession, groupId,hasMatchingNasPortId);
+        }else {
+            if (!hasMatchingNasPortId && userSessionData.getSessions().size() >= newSession.getUserConcurrency() ) {
+                log.errorf("Maximum concurrent sessions exceeded for individual user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                        request.username(), userSessionData.getSessions().size(),
+                        userSessionData.getConcurrency(), request.nasPortId());
+                return coaService.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),
+                        createSession(request),
+                        request.username());
+            }
         }
 
         return updateUserCacheOnly(request, userSessionData);
@@ -237,9 +238,27 @@ public class StartHandler {
             AccountingRequestDto request,
             UserSessionData userSessionData,
             Session newSession,
-            String groupId) {
+            String groupId,boolean hasMatchingNasPortId) {
 
         log.infof("Highest priority balance is a group balance. Adding session to group data for groupId: %s", groupId);
+
+        int count = 0;
+        for (Session s : userSessionData.getSessions()) {
+            if (s.getUserName().equals(request.username())) {
+                count++;
+            }
+        }
+        if (!hasMatchingNasPortId && count >= newSession.getUserConcurrency() ) {
+            log.errorf("Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                    request.username(), userSessionData.getSessions().size(),
+                    userSessionData.getConcurrency(), request.nasPortId());
+            return coaService.produceAccountingResponseEvent(
+                    MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
+                            AccountingResponseEvent.EventType.COA,
+                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                    createSession(request),
+                    request.username());
+        }
 
         return utilCache.getUserData(groupId)
                 .onItem().transformToUni(groupSessionData -> {
@@ -282,6 +301,7 @@ public class StartHandler {
                                 request.username(), request.sessionId()))
                 .replaceWithVoid();
     }
+
 
 
     private Uni<Void> handleNewUserSession(AccountingRequestDto request) {
@@ -375,6 +395,8 @@ public class StartHandler {
         Session session = createSessionWithBalance(request, highestPriorityBalance);
         session.setGroupId(result.groupId());
         session.setAbsoluteTimeOut(result.sessionTimeOut);
+        session.setUserStatus(result.userStatus());
+        session.setUserConcurrency(result.concurrency());
         UserSessionData newUserSessionData = buildUserSessionData(
                 request,result.concurrency, result.balanceList(), result.groupId(), session, highestPriorityBalance,result.templates,result.userStatus,result.sessionTimeOut);
 
@@ -553,7 +575,9 @@ public class StartHandler {
                 0,null,
                 request.username(),
                 null,
-                null
+                null,
+                null,
+                0
         );
     }
 

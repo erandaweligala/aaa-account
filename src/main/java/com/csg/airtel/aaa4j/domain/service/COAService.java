@@ -78,8 +78,6 @@ public class COAService {
                 .replaceWithVoid();
     }
 
-
-
     /**
      * Generate and send COA Disconnect CDR event asynchronously.
      * This method builds a CDR event for a COA disconnect operation and sends it to the accounting system.
