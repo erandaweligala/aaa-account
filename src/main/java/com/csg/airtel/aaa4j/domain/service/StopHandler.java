@@ -1,34 +1,39 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.*;
-import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
-import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
 
 
 @ApplicationScoped
-public class StopHandler extends AbstractAccountingHandler {
+public class StopHandler {
 
     private static final Logger log = Logger.getLogger(StopHandler.class);
 
+    private final AbstractAccountingHandler accountingHandler;
+    private final CacheClient cacheUtil;
+    private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
 
     @Inject
-    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, UserBucketRepository userRepository, COAService coaService) {
-        super(cacheUtil, userRepository, accountProducer, coaService);
+    public StopHandler(
+            AbstractAccountingHandler accountingHandler,
+            CacheClient cacheUtil,
+            AccountProducer accountProducer,
+            AccountingUtil accountingUtil,
+            SessionLifecycleManager sessionLifecycleManager) {
+        this.accountingHandler = accountingHandler;
+        this.cacheUtil = cacheUtil;
+        this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
     }
@@ -61,7 +66,7 @@ public class StopHandler extends AbstractAccountingHandler {
             return Uni.createFrom().voidItem();
 
         }
-        Session session = findSessionById(userSessionData.getSessions(), request.sessionId());
+        Session session = accountingHandler.findSessionById(userSessionData.getSessions(), request.sessionId());
 
         if (session == null) {
             log.infof( "[traceId: %s] Session not found for sessionId: %s", request.username(), request.sessionId());
@@ -113,8 +118,7 @@ public class StopHandler extends AbstractAccountingHandler {
         CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent, serviceId, bucketId);
     }
 
-    @Override
-    protected Session createSession(AccountingRequestDto request) {
+    private Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
                 LocalDateTime.now(),
@@ -131,11 +135,5 @@ public class StopHandler extends AbstractAccountingHandler {
                 null,null
         );
     }
-
-    @Override
-    protected Uni<Void> processAccountingRequest(UserSessionData userSessionData, AccountingRequestDto request, String traceId) {
-        return processAccountingStop(userSessionData, request, null);
-    }
-
 }
 

@@ -18,10 +18,12 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Function;
 
 /**
- * Base class for accounting handlers (Interim and Stop).
- * Contains common logic for handling new session usage and user service details.
+ * Service class for common accounting handler operations.
+ * Provides shared logic for handling new session usage and user service details.
+ * Use composition (inject this class) instead of inheritance.
  */
 @ApplicationScoped
 public class AbstractAccountingHandler {
@@ -29,10 +31,10 @@ public class AbstractAccountingHandler {
     private static final Logger log = Logger.getLogger(AbstractAccountingHandler.class);
     private static final String NO_SERVICE_BUCKETS_MSG = "No service buckets found";
 
-    protected final CacheClient cacheUtil;
-    protected final UserBucketRepository userRepository;
-    protected final AccountProducer accountProducer;
-    protected final COAService coaService;
+    private final CacheClient cacheUtil;
+    private final UserBucketRepository userRepository;
+    private final AccountProducer accountProducer;
+    private final COAService coaService;
 
     protected AbstractAccountingHandler() {
         this.cacheUtil = null;
@@ -54,10 +56,39 @@ public class AbstractAccountingHandler {
     }
 
     /**
+     * Functional interface for processing accounting requests.
+     */
+    @FunctionalInterface
+    public interface AccountingRequestProcessor {
+        Uni<Void> process(UserSessionData userSessionData, AccountingRequestDto request, String traceId);
+    }
+
+    public CacheClient getCacheUtil() {
+        return cacheUtil;
+    }
+
+    public AccountProducer getAccountProducer() {
+        return accountProducer;
+    }
+
+    public COAService getCoaService() {
+        return coaService;
+    }
+
+    /**
      * Handles accounting for a new session where no cache entry exists for the user.
      * Checks for group ID and retrieves user service details if needed.
+     *
+     * @param request the accounting request
+     * @param traceId the trace ID for logging
+     * @param processor the callback to process the accounting request
+     * @param sessionCreator function to create a new session from the request
      */
-    protected Uni<Void> handleNewSessionUsage(AccountingRequestDto request, String traceId) {
+    public Uni<Void> handleNewSessionUsage(
+            AccountingRequestDto request,
+            String traceId,
+            AccountingRequestProcessor processor,
+            Function<AccountingRequestDto, Session> sessionCreator) {
         if (log.isDebugEnabled()) {
             log.debugf("[traceId: %s] No cache entry found for user: %s", traceId, request.username());
         }
@@ -65,14 +96,14 @@ public class AbstractAccountingHandler {
         return cacheUtil.getGroupId(request.username())
                 .onItem().transformToUni(cacheGroupId -> {
                     if (cacheGroupId == null) {
-                        return getUserServicesDetails(request, traceId);
+                        return getUserServicesDetails(request, traceId, processor, sessionCreator);
                     } else {
                         return cacheUtil.getUserData(cacheGroupId)
                                 .onItem().transformToUni(groupUserData -> {
                                     if (groupUserData != null) {
-                                        return processAccountingRequest(groupUserData, request, traceId);
+                                        return processor.process(groupUserData, request, traceId);
                                     } else {
-                                        return getUserServicesDetails(request, traceId);
+                                        return getUserServicesDetails(request, traceId, processor, sessionCreator);
                                     }
                                 });
                     }
@@ -82,8 +113,17 @@ public class AbstractAccountingHandler {
     /**
      * Retrieves user service details from the repository and creates initial session data.
      * If no service buckets found, sends a disconnect response.
+     *
+     * @param request the accounting request
+     * @param traceId the trace ID for logging
+     * @param processor the callback to process the accounting request
+     * @param sessionCreator function to create a new session from the request
      */
-    protected Uni<Void> getUserServicesDetails(AccountingRequestDto request, String traceId) {
+    public Uni<Void> getUserServicesDetails(
+            AccountingRequestDto request,
+            String traceId,
+            AccountingRequestProcessor processor,
+            Function<AccountingRequestDto, Session> sessionCreator) {
         return userRepository.getServiceBucketsByUserName(request.username())
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
@@ -92,7 +132,7 @@ public class AbstractAccountingHandler {
                                 MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG,
                                         AccountingResponseEvent.EventType.COA,
                                         AccountingResponseEvent.ResponseAction.DISCONNECT),
-                                createSession(request),
+                                sessionCreator.apply(request),
                                 request.username());
                     }
 
@@ -111,7 +151,7 @@ public class AbstractAccountingHandler {
                         balanceList.add(MappingUtil.createBalance(bucket));
                     }
 
-                    Session newSession = createSession(request);
+                    Session newSession = sessionCreator.apply(request);
                     newSession.setGroupId(groupId);
                     newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
 
@@ -126,14 +166,14 @@ public class AbstractAccountingHandler {
                             .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
                             .build();
 
-                    return processAccountingRequest(newUserSessionData, request, traceId);
+                    return processor.process(newUserSessionData, request, traceId);
                 });
     }
 
     /**
      * Finds a session by session ID in the list of sessions.
      */
-    protected Session findSessionById(List<Session> sessions, String sessionId) {
+    public Session findSessionById(List<Session> sessions, String sessionId) {
         if (sessions == null || sessions.isEmpty()) {
             return null;
         }
@@ -146,10 +186,10 @@ public class AbstractAccountingHandler {
     }
 
     /**
-     * Creates a new session from the accounting request.
-     * Subclasses can override this to provide handler-specific session initialization.
+     * Creates a default session from the accounting request.
+     * Handlers should provide their own session creation logic via sessionCreator parameter.
      */
-    protected Session createSession(AccountingRequestDto request) {
+    public Session createDefaultSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
                 LocalDateTime.now(),
@@ -167,18 +207,5 @@ public class AbstractAccountingHandler {
                 null,
                 null
         );
-    }
-
-    /**
-     * Processes the accounting request with user session data.
-     * Subclasses can override this to provide handler-specific processing logic.
-     */
-    protected Uni<Void> processAccountingRequest(
-            UserSessionData userSessionData,
-            AccountingRequestDto request,
-            String traceId) {
-        log.warnf("[traceId: %s] processAccountingRequest called on base class for user: %s",
-                traceId, request.username());
-        return Uni.createFrom().voidItem();
     }
 }
