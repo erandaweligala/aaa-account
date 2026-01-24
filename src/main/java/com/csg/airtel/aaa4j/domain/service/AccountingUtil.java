@@ -690,32 +690,58 @@ public class AccountingUtil {
         }
 
 
-        boolean hasMatchingNasPortId = userData.getSessions().stream()
-                .anyMatch(ses -> ses.getNasPortId() != null &&
-                        ses.getNasPortId().equals(request.nasPortId()));
+        // Check for matching NasPortId without stream overhead
+        boolean hasMatchingNasPortId = false;
+        List<Session> userSessions = userData.getSessions();
+        String requestNasPortId = request.nasPortId();
 
-        if(!foundBalance.isGroup()) {
-            //todo implement complete this concurenacy logic without any oavehead
-            if (!hasMatchingNasPortId && userData.getConcurrency() <= userData.getSessions().size()) {
-                log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s", request.username());
-                return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded", AccountingResponseEvent.EventType.COA,
-                        AccountingResponseEvent.ResponseAction.DISCONNECT), sessionData, request.username());
-
-            }
-        }else {
-            int count = 0;
-            for (Session s : combinedSessions) {
-                if (s.getUserName().equals(request.username())) {
-                    count++;
+        if (userSessions != null && requestNasPortId != null) {
+            for (Session ses : userSessions) {
+                if (requestNasPortId.equals(ses.getNasPortId())) {
+                    hasMatchingNasPortId = true;
+                    break;
                 }
             }
-            if (!hasMatchingNasPortId && sessionData.getUserConcurrency() <= count) {
-                log.errorf("Maximum number of concurrency sessions exceeded for group user: %s", request.username());
-                return coaService.produceAccountingResponseEvent(MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded", AccountingResponseEvent.EventType.COA,
-                        AccountingResponseEvent.ResponseAction.DISCONNECT), sessionData, request.username());
+        }
 
+        // Concurrency check for individual (non-group) balance
+        if (!foundBalance.isGroup()) {
+            int sessionCount = userSessions != null ? userSessions.size() : 0;
+            int concurrencyLimit = userData.getConcurrency();
+
+            if (!hasMatchingNasPortId && concurrencyLimit <= sessionCount) {
+                log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
+                        request.username(), concurrencyLimit, sessionCount);
+                return coaService.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),
+                        sessionData, request.username());
+            }
+        } else {
+            // Concurrency check for group balance - count sessions for this specific user
+            int userSessionCount = 0;
+            String username = request.username();
+
+            if (combinedSessions != null) {
+                for (Session s : combinedSessions) {
+                    if (username.equals(s.getUserName())) {
+                        userSessionCount++;
+                    }
+                }
             }
 
+            int userConcurrencyLimit = sessionData.getUserConcurrency();
+
+            if (!hasMatchingNasPortId && userConcurrencyLimit <= userSessionCount) {
+                log.errorf("Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
+                        username, userConcurrencyLimit, userSessionCount);
+                return coaService.produceAccountingResponseEvent(
+                        MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
+                                AccountingResponseEvent.EventType.COA,
+                                AccountingResponseEvent.ResponseAction.DISCONNECT),
+                        sessionData, request.username());
+            }
         }
 
         if (log.isTraceEnabled()) {
