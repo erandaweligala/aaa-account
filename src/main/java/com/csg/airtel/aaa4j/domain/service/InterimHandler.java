@@ -29,7 +29,7 @@ public class InterimHandler extends AbstractAccountingHandler {
     private final SessionLifecycleManager sessionLifecycleManager;
 
     protected InterimHandler() {
-        super();
+        super(null, null, null, null);
         this.accountingUtil = null;
         this.sessionLifecycleManager = null;
     }
