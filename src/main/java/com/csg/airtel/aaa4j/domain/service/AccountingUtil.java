@@ -689,60 +689,12 @@ public class AccountingUtil {
             return handleNoValidBalance(userData, request);
         }
 
-
-        // Check for matching NasPortId without stream overhead
-        boolean hasMatchingNasPortId = false;
-        List<Session> userSessions = userData.getSessions();
-        String requestNasPortId = request.nasPortId();
-
-        if (userSessions != null && requestNasPortId != null) {
-            for (Session ses : userSessions) {
-                if (requestNasPortId.equals(ses.getNasPortId())) {
-                    hasMatchingNasPortId = true;
-                    break;
-                }
-            }
-        }
-
-        // Concurrency check for individual (non-group) balance
-        if (!foundBalance.isGroup()) {
-            int sessionCount = userSessions != null ? userSessions.size() : 0;
-            int concurrencyLimit = userData.getConcurrency();
-
-            if (!hasMatchingNasPortId && concurrencyLimit <= sessionCount) {
-                log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
-                        request.username(), concurrencyLimit, sessionCount);
-                return coaService.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT),
-                        sessionData, request.username());
-            }
-        } else {
-            // Concurrency check for group balance - count sessions for this specific user
-            int userSessionCount = 0;
-            String username = request.username();
-
-            if (combinedSessions != null) {
-                for (Session s : combinedSessions) {
-                    if (username.equals(s.getUserName())) {
-                        userSessionCount++;
-                    }
-                }
-            }
-
-            int userConcurrencyLimit = sessionData.getUserConcurrency();
-
-            if (!hasMatchingNasPortId && userConcurrencyLimit <= userSessionCount) {
-                log.errorf("Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
-                        username, userConcurrencyLimit, userSessionCount);
-                return coaService.produceAccountingResponseEvent(
-                        MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
-                                AccountingResponseEvent.EventType.COA,
-                                AccountingResponseEvent.ResponseAction.DISCONNECT),
-                        sessionData, request.username());
-            }
-        }
+        if (ischeckConcurrency(userData, sessionData, request, foundBalance, combinedSessions))
+            return coaService.produceAccountingResponseEvent(
+                    MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
+                            AccountingResponseEvent.EventType.COA,
+                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                    sessionData, request.username()).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded"));
 
         if (log.isTraceEnabled()) {
             log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
@@ -766,6 +718,53 @@ public class AccountingUtil {
 
         return finalizeBalanceUpdate(userData, sessionData, request, context.getEffectiveBalance(),
                 newQuota, context.getPreviousUsageBucketId(), totalUsage);
+    }
+    //todo Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed. this method ischeckConcurrency
+    private boolean ischeckConcurrency(UserSessionData userData, Session sessionData, AccountingRequestDto request, Balance foundBalance, List<Session> combinedSessions) {
+        boolean hasMatchingNasPortId = false;
+        List<Session> userSessions = userData.getSessions();
+        String requestNasPortId = request.nasPortId();
+
+        if (userSessions != null && requestNasPortId != null) {
+            for (Session ses : userSessions) {
+                if (requestNasPortId.equals(ses.getNasPortId())) {
+                    hasMatchingNasPortId = true;
+                    break;
+                }
+            }
+        }
+
+        if (!foundBalance.isGroup()) {
+            int sessionCount = userSessions != null ? userSessions.size() : 0;
+            long concurrencyLimit = userData.getConcurrency();
+
+            if (!hasMatchingNasPortId && concurrencyLimit <= sessionCount) {
+                log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
+                        request.username(), concurrencyLimit, sessionCount);
+                return true;
+            }
+        } else {
+            // Concurrency check for group balance - count sessions for this specific user
+            int userSessionCount = 0;
+            String username = request.username();
+
+            if (combinedSessions != null) {
+                for (Session s : combinedSessions) {
+                    if (username.equals(s.getUserName())) {
+                        userSessionCount++;
+                    }
+                }
+            }
+
+            long userConcurrencyLimit = sessionData.getUserConcurrency();
+
+            if (!hasMatchingNasPortId && userConcurrencyLimit <= userSessionCount) {
+                log.errorf("Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
+                        username, userConcurrencyLimit, userSessionCount);
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
