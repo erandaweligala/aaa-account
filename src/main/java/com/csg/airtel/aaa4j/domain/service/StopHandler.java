@@ -19,23 +19,18 @@ import java.util.Objects;
 
 
 @ApplicationScoped
-public class StopHandler {
+public class StopHandler extends AbstractAccountingHandler {
 
     private static final Logger log = Logger.getLogger(StopHandler.class);
 
-    private final CacheClient cacheUtil;
-    private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
-    private final UserBucketRepository userRepository;
 
     @Inject
-    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, UserBucketRepository userRepository) {
-        this.cacheUtil = cacheUtil;
-        this.accountProducer = accountProducer;
+    public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, UserBucketRepository userRepository, COAService coaService) {
+        super(cacheUtil, userRepository, accountProducer, coaService);
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
-        this.userRepository = userRepository;
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
@@ -55,75 +50,7 @@ public class StopHandler {
     }
 
 
-    //todo need to implemnt common class interim and stop classes this method
-    private Uni<Void> handleNewSessionUsage(AccountingRequestDto request, String traceId) {
-        if (log.isDebugEnabled()) {
-            log.debugf("[traceId: %s] No cache entry found for user: %s", traceId, request.username());
-        }
 
-        return cacheUtil.getGroupId(request.username())
-                .onItem().transformToUni(cacheGroupId -> {
-                    if (cacheGroupId == null) {
-                        return getUserServicesDetails(request, traceId);
-                    } else {
-                        return cacheUtil.getUserData(cacheGroupId)
-                                .onItem().transformToUni(groupUserData ->{
-                                    if(groupUserData != null) {
-                                        return processAccountingStop(groupUserData, request, traceId);
-                                    }else {
-                                        return getUserServicesDetails(request, traceId);
-                                    }
-                                });
-                    }
-                });
-    }
-
-    private Uni<Void> getUserServicesDetails(AccountingRequestDto request, String traceId) {
-        return userRepository.getServiceBucketsByUserName(request.username())
-                .onItem().transformToUni(serviceBuckets -> {
-                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                        log.warnf("[traceId: %s] No service buckets found for user: %s", traceId, request.username());
-                        return coaService.produceAccountingResponseEvent(
-                                MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG,
-                                        AccountingResponseEvent.EventType.COA,
-                                        AccountingResponseEvent.ResponseAction.DISCONNECT),
-                                createSession(request),
-                                request.username());
-                    }
-
-                    int bucketCount = serviceBuckets.size();
-                    List<Balance> balanceList = new ArrayList<>(bucketCount);
-                    String groupId = null;
-                    long concurrency = 0;
-                    Long templates = null;
-
-                    for (ServiceBucketInfo bucket : serviceBuckets) {
-                        if (!Objects.equals(bucket.getBucketUser(), request.username())) {
-                            groupId = bucket.getBucketUser();
-                        }
-                        concurrency = bucket.getConcurrency();
-                        templates = bucket.getNotificationTemplates();
-                        balanceList.add(MappingUtil.createBalance(bucket));
-                    }
-
-                    Session newSession = createSession(request);
-                    newSession.setGroupId(groupId);
-                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
-
-                    UserSessionData newUserSessionData = UserSessionData.builder()
-                            .superTemplateId(templates)
-                            .groupId(groupId)
-                            .userName(request.username())
-                            .concurrency(concurrency)
-                            .balance(balanceList)
-                            .sessions(new ArrayList<>(List.of(newSession)))
-                            .userStatus(serviceBuckets.getFirst().getUserStatus())
-                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
-                            .build();
-
-                    return processAccountingStop(newUserSessionData, request, traceId);
-                });
-    }
 
     public Uni<Void> processAccountingStop(
             UserSessionData userSessionData,AccountingRequestDto request
@@ -175,14 +102,6 @@ public class StopHandler {
                 });
     }
 
-    private Session findSessionById(List<Session> sessions, String sessionId) {
-        for (Session session : sessions) {
-            if (session.getSessionId().equals(sessionId)) {
-                return session;
-            }
-        }
-        return null;
-    }
 
     private Uni<UpdateResult> cleanSessionAndUpdateBalance(
             UserSessionData userSessionData,String bucketId,AccountingRequestDto request,Session session) {
@@ -194,7 +113,8 @@ public class StopHandler {
         CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent, serviceId, bucketId);
     }
 
-    private Session createSession(AccountingRequestDto request) {
+    @Override
+    protected Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
                 LocalDateTime.now(),
@@ -210,6 +130,11 @@ public class StopHandler {
                 request.username(),
                 null,null
         );
+    }
+
+    @Override
+    protected Uni<Void> processAccountingRequest(UserSessionData userSessionData, AccountingRequestDto request, String traceId) {
+        return processAccountingStop(userSessionData, request, null);
     }
 
 }

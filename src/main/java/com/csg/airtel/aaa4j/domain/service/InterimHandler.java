@@ -21,27 +21,18 @@ import java.util.List;
 import java.util.Objects;
 
 @ApplicationScoped
-public class InterimHandler {
+public class InterimHandler extends AbstractAccountingHandler {
     private static final Logger log = Logger.getLogger(InterimHandler.class);
-    private static final String NO_SERVICE_BUCKETS_MSG = "No service buckets found";
     private static final String DATA_QUOTA_ZERO_MSG = "Data quota is zero";
 
-
-    private final CacheClient cacheUtil;
-    private final UserBucketRepository userRepository;
     private final AccountingUtil accountingUtil;
-    private final AccountProducer accountProducer;
     private final SessionLifecycleManager sessionLifecycleManager;
-    private final COAService coaService;
 
     @Inject
     public InterimHandler(CacheClient cacheUtil, UserBucketRepository userRepository, AccountingUtil accountingUtil, AccountProducer accountProducer, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
-        this.cacheUtil = cacheUtil;
-        this.userRepository = userRepository;
+        super(cacheUtil, userRepository, accountProducer, coaService);
         this.accountingUtil = accountingUtil;
-        this.accountProducer = accountProducer;
         this.sessionLifecycleManager = sessionLifecycleManager;
-        this.coaService = coaService;
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
@@ -75,81 +66,15 @@ public class InterimHandler {
                 });
     }
 
-    private Uni<Void> handleNewSessionUsage(AccountingRequestDto request, String traceId) {
-        if (log.isDebugEnabled()) {
-            log.debugf("[traceId: %s] No cache entry found for user: %s", traceId, request.username());
-        }
 
-        return cacheUtil.getGroupId(request.username())
-                .onItem().transformToUni(cacheGroupId -> {
-                    if (cacheGroupId == null) {
-                        return getUserServicesDetails(request, traceId);
-                    } else {
-                        return cacheUtil.getUserData(cacheGroupId)
-                                .onItem().transformToUni(groupUserData ->{
-                                        if(groupUserData != null) {
-                                            return processAccountingRequest(groupUserData, request, traceId);
-                                        }else {
-                                            return getUserServicesDetails(request, traceId);
-                                        }
-                                });
-                    }
-                });
-    }
 
-    private Uni<Void> getUserServicesDetails(AccountingRequestDto request, String traceId) {
-        return userRepository.getServiceBucketsByUserName(request.username())
-                .onItem().transformToUni(serviceBuckets -> {
-                    if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                        log.warnf("[traceId: %s] No service buckets found for user: %s", traceId, request.username());
-                        return coaService.produceAccountingResponseEvent(
-                                MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG,
-                                        AccountingResponseEvent.EventType.COA,
-                                        AccountingResponseEvent.ResponseAction.DISCONNECT),
-                                createSession(request),
-                                request.username());
-                    }
-
-                    int bucketCount = serviceBuckets.size();
-                    List<Balance> balanceList = new ArrayList<>(bucketCount);
-                    String groupId = null;
-                    long concurrency = 0;
-                    Long templates = null;
-
-                    for (ServiceBucketInfo bucket : serviceBuckets) {
-                        if (!Objects.equals(bucket.getBucketUser(), request.username())) {
-                            groupId = bucket.getBucketUser();
-                        }
-                        concurrency = bucket.getConcurrency();
-                        templates = bucket.getNotificationTemplates();
-                        balanceList.add(MappingUtil.createBalance(bucket));
-                    }
-
-                    Session newSession = createSession(request);
-                    newSession.setGroupId(groupId);
-                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
-
-                    UserSessionData newUserSessionData = UserSessionData.builder()
-                            .superTemplateId(templates)
-                            .groupId(groupId)
-                            .userName(request.username())
-                            .concurrency(concurrency)
-                            .balance(balanceList)
-                            .sessions(new ArrayList<>(List.of(newSession)))
-                            .userStatus(serviceBuckets.getFirst().getUserStatus())
-                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
-                            .build();
-
-                    return processAccountingRequest(newUserSessionData, request, traceId);
-                });
-    }
-
-    private Uni<Void> processAccountingRequest(
+    @Override
+    protected Uni<Void> processAccountingRequest(
             UserSessionData userData, AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
         log.infof("TraceId: %s Processing interim accounting request for user: %s, sessionId: %s",
                 traceId,request.username(), request.sessionId());
-        Session session = findSession(userData, request.sessionId());
+        Session session = findSessionById(userData.getSessions(), request.sessionId());
         int i = 0;
         if (session == null) {
             session = createSession(request);
@@ -196,20 +121,8 @@ public class InterimHandler {
         }
     }
 
-    private Session findSession(UserSessionData userData, String sessionId) {
-        List<Session> sessions = userData.getSessions();
-        if (sessions == null || sessions.isEmpty()) {
-            return null;
-        }
-        for (Session session : sessions) {
-            if (session.getSessionId().equals(sessionId)) {
-                return session;
-            }
-        }
-        return null;
-    }
-
-    private Session createSession(AccountingRequestDto request) {
+    @Override
+    protected Session createSession(AccountingRequestDto request) {
         return new Session(
                 request.sessionId(),
                 LocalDateTime.now(),
