@@ -26,6 +26,12 @@ public class StopHandler extends AbstractAccountingHandler {
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
 
+    protected StopHandler() {
+        super();
+        this.accountingUtil = null;
+        this.sessionLifecycleManager = null;
+    }
+
     @Inject
     public StopHandler(CacheClient cacheUtil, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, UserBucketRepository userRepository, COAService coaService) {
         super(cacheUtil, userRepository, accountProducer, coaService);
