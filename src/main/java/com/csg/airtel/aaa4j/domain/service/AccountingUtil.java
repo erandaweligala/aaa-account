@@ -719,52 +719,107 @@ public class AccountingUtil {
         return finalizeBalanceUpdate(userData, sessionData, request, context.getEffectiveBalance(),
                 newQuota, context.getPreviousUsageBucketId(), totalUsage);
     }
-    //todo Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed. this method ischeckConcurrency
     private boolean ischeckConcurrency(UserSessionData userData, Session sessionData, AccountingRequestDto request, Balance foundBalance, List<Session> combinedSessions) {
-        boolean hasMatchingNasPortId = false;
-        List<Session> userSessions = userData.getSessions();
-        String requestNasPortId = request.nasPortId();
+        boolean hasMatchingNasPortId = hasMatchingNasPortId(userData.getSessions(), request.nasPortId());
 
-        if (userSessions != null && requestNasPortId != null) {
-            for (Session ses : userSessions) {
-                if (requestNasPortId.equals(ses.getNasPortId())) {
-                    hasMatchingNasPortId = true;
-                    break;
-                }
-            }
+        if (foundBalance.isGroup()) {
+            return checkGroupConcurrency(sessionData, request, combinedSessions, hasMatchingNasPortId);
         }
 
-        if (!foundBalance.isGroup()) {
-            int sessionCount = userSessions != null ? userSessions.size() : 0;
-            long concurrencyLimit = userData.getConcurrency();
+        return checkIndividualConcurrency(userData, request, hasMatchingNasPortId);
+    }
 
-            if (!hasMatchingNasPortId && concurrencyLimit <= sessionCount) {
-                log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
-                        request.username(), concurrencyLimit, sessionCount);
-                return true;
-            }
-        } else {
-            // Concurrency check for group balance - count sessions for this specific user
-            int userSessionCount = 0;
-            String username = request.username();
+    /**
+     * Check if request has matching NAS Port ID in user sessions.
+     *
+     * @param userSessions list of user sessions
+     * @param requestNasPortId NAS Port ID from request
+     * @return true if matching NAS Port ID found, false otherwise
+     */
+    private boolean hasMatchingNasPortId(List<Session> userSessions, String requestNasPortId) {
+        if (userSessions == null || requestNasPortId == null) {
+            return false;
+        }
 
-            if (combinedSessions != null) {
-                for (Session s : combinedSessions) {
-                    if (username.equals(s.getUserName())) {
-                        userSessionCount++;
-                    }
-                }
-            }
-
-            long userConcurrencyLimit = sessionData.getUserConcurrency();
-
-            if (!hasMatchingNasPortId && userConcurrencyLimit <= userSessionCount) {
-                log.errorf("Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
-                        username, userConcurrencyLimit, userSessionCount);
+        for (Session ses : userSessions) {
+            if (requestNasPortId.equals(ses.getNasPortId())) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * Check concurrency limit for individual user.
+     *
+     * @param userData user session data
+     * @param request accounting request
+     * @param hasMatchingNasPortId whether request has matching NAS Port ID
+     * @return true if concurrency limit exceeded, false otherwise
+     */
+    private boolean checkIndividualConcurrency(UserSessionData userData, AccountingRequestDto request, boolean hasMatchingNasPortId) {
+        if (hasMatchingNasPortId) {
+            return false;
+        }
+
+        List<Session> userSessions = userData.getSessions();
+        int sessionCount = userSessions != null ? userSessions.size() : 0;
+        long concurrencyLimit = userData.getConcurrency();
+
+        if (concurrencyLimit <= sessionCount) {
+            log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
+                    request.username(), concurrencyLimit, sessionCount);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check concurrency limit for group user.
+     *
+     * @param sessionData current session data
+     * @param request accounting request
+     * @param combinedSessions combined sessions from user and group
+     * @param hasMatchingNasPortId whether request has matching NAS Port ID
+     * @return true if concurrency limit exceeded, false otherwise
+     */
+    private boolean checkGroupConcurrency(Session sessionData, AccountingRequestDto request, List<Session> combinedSessions, boolean hasMatchingNasPortId) {
+        if (hasMatchingNasPortId) {
+            return false;
+        }
+
+        int userSessionCount = countUserSessions(combinedSessions, request.username());
+        long userConcurrencyLimit = sessionData.getUserConcurrency();
+
+        if (userConcurrencyLimit <= userSessionCount) {
+            log.errorf("Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
+                    request.username(), userConcurrencyLimit, userSessionCount);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Count sessions for a specific username.
+     *
+     * @param sessions list of sessions to count
+     * @param username username to match
+     * @return count of sessions for the username
+     */
+    private int countUserSessions(List<Session> sessions, String username) {
+        if (sessions == null || username == null) {
+            return 0;
+        }
+
+        int count = 0;
+        for (Session s : sessions) {
+            if (username.equals(s.getUserName())) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
