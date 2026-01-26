@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
+import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
@@ -65,8 +66,8 @@ class COAServiceTest {
             .sessions(sessions)
             .build();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse( //errors found  Cannot resolve symbol 'CoAResponse'
-            true, 200, "ACK", "session-1"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session-1", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
@@ -91,8 +92,8 @@ class COAServiceTest {
             .sessions(sessions)
             .build();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            true, 200, "ACK", "session-1"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session-1", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
@@ -119,8 +120,8 @@ class COAServiceTest {
         );
         Session session = createSession("session-1");
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            true, 200, "ACK", "session-1"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session-1", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
