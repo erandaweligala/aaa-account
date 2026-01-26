@@ -31,15 +31,17 @@ public class StartHandler {
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
+    private final AbstractAccountingHandler accountingHandler;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService, AbstractAccountingHandler accountingHandler) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
         this.coaService = coaService;
+        this.accountingHandler = accountingHandler;
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
@@ -209,16 +211,13 @@ public class StartHandler {
             Session newSession,
             boolean isHighestPriorityGroupBalance) {
 
-        boolean hasMatchingNasPortId = userSessionData.getSessions().stream()
-                .anyMatch(session -> session.getNasPortId() != null &&
-                        session.getNasPortId().equals(request.nasPortId()));
 
         String groupId = userSessionData.getGroupId();
 
         if (isHighestPriorityGroupBalance && groupId != null && !groupId.equals("1")) {
-            return updateUserAndGroupCaches(request, userSessionData, newSession, groupId,hasMatchingNasPortId);
+            return updateUserAndGroupCaches(request, userSessionData, newSession, groupId);
         }else {
-            if (!hasMatchingNasPortId && userSessionData.getSessions().size() >= newSession.getUserConcurrency() ) {
+            if (hasMatchingNasPortId(userSessionData.getSessions(),request.nasPortId(),request.username()) && userSessionData.getSessions().size() >= newSession.getUserConcurrency() ) {
                 log.errorf("Maximum concurrent sessions exceeded for individual user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
                         request.username(), userSessionData.getSessions().size(),
                         userSessionData.getConcurrency(), request.nasPortId());
@@ -238,31 +237,33 @@ public class StartHandler {
             AccountingRequestDto request,
             UserSessionData userSessionData,
             Session newSession,
-            String groupId,boolean hasMatchingNasPortId) {
+            String groupId) {
 
         log.infof("Highest priority balance is a group balance. Adding session to group data for groupId: %s", groupId);
 
-        int count = 0;
-        for (Session s : userSessionData.getSessions()) {
-            if (s.getUserName().equals(request.username())) {
-                count++;
-            }
-        }
-        if (!hasMatchingNasPortId && count >= newSession.getUserConcurrency() ) {
-            log.errorf("Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
-                    request.username(), userSessionData.getSessions().size(),
-                    userSessionData.getConcurrency(), request.nasPortId());
-            return coaService.produceAccountingResponseEvent(
-                    MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
-                            AccountingResponseEvent.EventType.COA,
-                            AccountingResponseEvent.ResponseAction.DISCONNECT),
-                    createSession(request),
-                    request.username());
-        }
+
 
         return utilCache.getUserData(groupId)
                 .onItem().transformToUni(groupSessionData -> {
                     if (groupSessionData != null) {
+
+                        int count = 0;
+                        for (Session s : groupSessionData.getSessions()) {
+                            if (s.getUserName().equals(request.username())) {
+                                count++;
+                            }
+                        }
+                        if (hasMatchingNasPortId(groupSessionData.getSessions(),request.nasPortId(),request.username()) && count >= newSession.getUserConcurrency() ) {
+                            log.errorf("Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                                    request.username(), groupSessionData.getSessions().size(),
+                                    userSessionData.getConcurrency(), request.nasPortId());
+                            return coaService.produceAccountingResponseEvent(
+                                    MappingUtil.createResponse(request, "Maximum number of concurrent sessions exceeded",
+                                            AccountingResponseEvent.EventType.COA,
+                                            AccountingResponseEvent.ResponseAction.DISCONNECT),
+                                    newSession,
+                                    request.username());
+                        }
                         addSessionToGroupData(groupSessionData, newSession);
                         return updateBothCaches(request.username(), userSessionData, groupId, groupSessionData);
                     }
@@ -579,6 +580,19 @@ public class StartHandler {
                 null,
                 0
         );
+    }
+
+    private boolean hasMatchingNasPortId(List<Session> userSessions, String requestNasPortId,String userName) {
+        if (userSessions == null || requestNasPortId == null) {
+            return true;
+        }
+
+        for (Session ses : userSessions) {
+            if (ses.getUserName().equals(userName) && requestNasPortId.equals(ses.getNasPortId())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {

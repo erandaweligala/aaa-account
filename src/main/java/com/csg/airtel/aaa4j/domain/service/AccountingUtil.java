@@ -268,12 +268,16 @@ public class AccountingUtil {
                 ? groupData.getSessions()
                 : userData.getSessions();
 
+         userData.setSessions(sessionsToCheck);
         // Add session if not already present (using efficient loop instead of stream)
         if (!containsSession(sessionsToCheck, session.getSessionId())) {
             userData.getSessions().add(session);
         }
 
-        List<Session> combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
+        List<Session> combinedSessions = userData.getSessions();
+        if(foundBalance != null && !foundBalance.isGroup()) {
+             combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
+        }
 
         // Find session using efficient loop instead of stream
         Session sessionData = findSessionById(combinedSessions, request.sessionId());
@@ -689,13 +693,20 @@ public class AccountingUtil {
             return handleNoValidBalance(userData, request);
         }
 
-        if (ischeckConcurrency(userData, sessionData, request, foundBalance, combinedSessions))
+
+        if (!request.actionType().equals(AccountingRequestDto.ActionType.STOP) && isCheckConcurrency(userData, sessionData, request, foundBalance, combinedSessions)) {
+
+            log.errorf("Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                    request.username(), userData.getSessions().size(),
+                    sessionData.getUserConcurrency(), request.nasPortId());
+
+
             return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                     sessionData, request.username()).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded"));
-
+        }
         if (log.isTraceEnabled()) {
             log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
                     combinedBalances.size(), combinedSessions.size());
@@ -719,8 +730,11 @@ public class AccountingUtil {
         return finalizeBalanceUpdate(userData, sessionData, request, context.getEffectiveBalance(),
                 newQuota, context.getPreviousUsageBucketId(), totalUsage);
     }
-    private boolean ischeckConcurrency(UserSessionData userData, Session sessionData, AccountingRequestDto request, Balance foundBalance, List<Session> combinedSessions) {
-        boolean hasMatchingNasPortId = hasMatchingNasPortId(userData.getSessions(), request.nasPortId());
+    private boolean isCheckConcurrency(UserSessionData userData, Session sessionData, AccountingRequestDto request, Balance foundBalance, List<Session> combinedSessions) {
+
+        if(sessionData == null) return false;
+
+        boolean hasMatchingNasPortId = hasMatchingNasPortId(userData.getSessions(), request.nasPortId(),sessionData);
 
         if (foundBalance.isGroup()) {
             return checkGroupConcurrency(sessionData, request, combinedSessions, hasMatchingNasPortId);
@@ -736,17 +750,17 @@ public class AccountingUtil {
      * @param requestNasPortId NAS Port ID from request
      * @return true if matching NAS Port ID found, false otherwise
      */
-    private boolean hasMatchingNasPortId(List<Session> userSessions, String requestNasPortId) {
+    private boolean hasMatchingNasPortId(List<Session> userSessions, String requestNasPortId,Session sessionData) {
         if (userSessions == null || requestNasPortId == null) {
             return false;
         }
 
         for (Session ses : userSessions) {
-            if (requestNasPortId.equals(ses.getNasPortId())) {
-                return true;
+            if (requestNasPortId.equals(ses.getNasPortId()) && !sessionData.getSessionId().equals(ses.getSessionId()) && ses.getUserName().equals(sessionData.getUserName())) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
 
     /**
@@ -785,14 +799,11 @@ public class AccountingUtil {
      * @return true if concurrency limit exceeded, false otherwise
      */
     private boolean checkGroupConcurrency(Session sessionData, AccountingRequestDto request, List<Session> combinedSessions, boolean hasMatchingNasPortId) {
-        if (hasMatchingNasPortId) {
-            return false;
-        }
 
         int userSessionCount = countUserSessions(combinedSessions, request.username());
         long userConcurrencyLimit = sessionData.getUserConcurrency();
 
-        if (userConcurrencyLimit <= userSessionCount) {
+        if (hasMatchingNasPortId && userSessionCount >= userConcurrencyLimit + 1) {
             log.errorf("Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
                     request.username(), userConcurrencyLimit, userSessionCount);
             return true;
@@ -1033,6 +1044,7 @@ public class AccountingUtil {
         long oldQuota = previousBalance.getQuota();
         long newQuota = getNewQuota(sessionData, previousBalance, totalUsage);
         previousBalance.setQuota(Math.max(newQuota, 0));
+
         replaceInCollection(userData.getBalance(), previousBalance);
 
         log.infof("Updated previous bucket %s quota to %d",
@@ -1129,9 +1141,7 @@ public class AccountingUtil {
                 updatedUserData.getBalance().removeIf(Balance::isGroup);
             } else {
                 updatedUserData.getBalance().removeIf(rs -> !rs.isGroup());
-                updatedUserData.setSuperTemplateId(0);
                 updatedUserData.setUserName(null);
-                updatedUserData.setConcurrency(0);
             }
             if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
                 updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));

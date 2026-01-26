@@ -103,10 +103,11 @@ public class CacheClient {
             String jsonValue = objectMapper.writeValueAsString(userData);
 
             if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
+                String groupValues = userData.getGroupId()+","+userData.getConcurrency()+","+userData.getUserStatus()+","+userData.getSessionTimeOut();
                 String groupKey = GROUP_KEY_PREFIX + userName;
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
-                        valueCommands.set(groupKey, userData.getGroupId()),
+                        valueCommands.set(groupKey, groupValues),
                         valueCommands.set(key, jsonValue)
                 ).discardItems();
             }
@@ -190,9 +191,11 @@ public class CacheClient {
             // Run group and user SET operations in parallel for zero overhead
             if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
                 String groupKey = GROUP_KEY_PREFIX + userName;
+                String groupValues = userData.getGroupId()+","+userData.getConcurrency()+","+userData.getUserStatus()+","+userData.getSessionTimeOut();
+
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
-                        valueCommands.set(groupKey, userData.getGroupId()),
+                        valueCommands.set(groupKey, groupValues),
                         valueCommands.set(userKey, jsonValue)
                 ).discardItems()
                         .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err));

@@ -49,7 +49,7 @@ public class AbstractAccountingHandler {
      */
     @FunctionalInterface
     public interface AccountingRequestProcessor {
-        Uni<Void> process(UserSessionData userSessionData, AccountingRequestDto request, String traceId);
+        Uni<Void> process(UserSessionData userSessionData, AccountingRequestDto request, String groupId);
     }
 
 
@@ -73,13 +73,16 @@ public class AbstractAccountingHandler {
 
         return cacheUtil.getGroupId(request.username())
                 .onItem().transformToUni(cacheGroupId -> {
+
                     if (cacheGroupId == null) {
                         return getUserServicesDetails(request, traceId, processor, sessionCreator);
                     } else {
-                        return cacheUtil.getUserData(cacheGroupId)
+                        int p1 = cacheGroupId.indexOf(',');
+                        String groupId = cacheGroupId.substring(0, p1);
+                        return cacheUtil.getUserData(groupId)
                                 .onItem().transformToUni(groupUserData -> {
                                     if (groupUserData != null) {
-                                        return processor.process(groupUserData, request, traceId);
+                                        return processor.process(groupUserData, request, cacheGroupId);
                                     } else {
                                         return getUserServicesDetails(request, traceId, processor, sessionCreator);
                                     }
@@ -129,9 +132,13 @@ public class AbstractAccountingHandler {
                         balanceList.add(MappingUtil.createBalance(bucket));
                     }
 
+                    String userStatus = serviceBuckets.getFirst().getUserStatus();
+                    String sessionTimeout = serviceBuckets.getFirst().getSessionTimeout();
                     Session newSession = sessionCreator.apply(request);
                     newSession.setGroupId(groupId);
-                    newSession.setAbsoluteTimeOut(serviceBuckets.getFirst().getSessionTimeout());
+                    newSession.setAbsoluteTimeOut(sessionTimeout);
+                    newSession.setUserStatus(userStatus);
+                    newSession.setUserConcurrency(concurrency);
 
                     UserSessionData newUserSessionData = UserSessionData.builder()
                             .superTemplateId(templates)
@@ -140,8 +147,8 @@ public class AbstractAccountingHandler {
                             .concurrency(concurrency)
                             .balance(balanceList)
                             .sessions(new ArrayList<>(List.of(newSession)))
-                            .userStatus(serviceBuckets.getFirst().getUserStatus())
-                            .sessionTimeOut(serviceBuckets.getFirst().getSessionTimeout())
+                            .userStatus(userStatus)
+                            .sessionTimeOut(sessionTimeout)
                             .build();
 
                     return processor.process(newUserSessionData, request, traceId);
