@@ -134,6 +134,85 @@ class COAServiceTest {
         verify(monitoringService).recordCOARequest();
     }
 
+    @Test
+    void testClearAllSessionsAndSendCOAMassageQue_WithSessions() {
+        List<Session> sessions = new ArrayList<>();
+        sessions.add(createSession("session-1"));
+        sessions.add(createSession("session-2"));
+
+        UserSessionData userData = UserSessionData.builder()
+            .userName("testuser")
+            .sessions(sessions)
+            .build();
+
+        when(accountProducer.produceAccountingResponseEvent(any(AccountingResponseEvent.class)))
+            .thenReturn(Uni.createFrom().voidItem());
+
+        coaService.clearAllSessionsAndSendCOAMassageQue(userData, "testuser", null)
+            .subscribe().withSubscriber(UniAssertSubscriber.create())
+            .awaitItem();
+
+        verify(accountProducer, times(2)).produceAccountingResponseEvent(any(AccountingResponseEvent.class));
+        verify(monitoringService, times(2)).recordCOARequest();
+    }
+
+    @Test
+    void testClearAllSessionsAndSendCOAMassageQue_EmptySessions() {
+        UserSessionData userData = UserSessionData.builder()
+            .userName("testuser")
+            .sessions(new ArrayList<>())
+            .build();
+
+        coaService.clearAllSessionsAndSendCOAMassageQue(userData, "testuser", null)
+            .subscribe().withSubscriber(UniAssertSubscriber.create())
+            .awaitItem();
+
+        verify(accountProducer, never()).produceAccountingResponseEvent(any());
+        verify(monitoringService, never()).recordCOARequest();
+    }
+
+    @Test
+    void testClearAllSessionsAndSendCOAMassageQue_SpecificSession() {
+        List<Session> sessions = new ArrayList<>();
+        sessions.add(createSession("session-1"));
+        sessions.add(createSession("session-2"));
+
+        UserSessionData userData = UserSessionData.builder()
+            .userName("testuser")
+            .sessions(sessions)
+            .build();
+
+        when(accountProducer.produceAccountingResponseEvent(any(AccountingResponseEvent.class)))
+            .thenReturn(Uni.createFrom().voidItem());
+
+        coaService.clearAllSessionsAndSendCOAMassageQue(userData, "testuser", "session-1")
+            .subscribe().withSubscriber(UniAssertSubscriber.create())
+            .awaitItem();
+
+        verify(accountProducer, times(1)).produceAccountingResponseEvent(any(AccountingResponseEvent.class));
+        verify(monitoringService, times(1)).recordCOARequest();
+    }
+
+    @Test
+    void testClearAllSessionsAndSendCOAMassageQue_ProducerFailure() {
+        List<Session> sessions = new ArrayList<>();
+        sessions.add(createSession("session-1"));
+
+        UserSessionData userData = UserSessionData.builder()
+            .userName("testuser")
+            .sessions(sessions)
+            .build();
+
+        when(accountProducer.produceAccountingResponseEvent(any(AccountingResponseEvent.class)))
+            .thenReturn(Uni.createFrom().failure(new RuntimeException("Producer error")));
+
+        coaService.clearAllSessionsAndSendCOAMassageQue(userData, "testuser", null)
+            .subscribe().withSubscriber(UniAssertSubscriber.create())
+            .awaitItem();
+
+        verify(accountProducer).produceAccountingResponseEvent(any(AccountingResponseEvent.class));
+    }
+
     private Session createSession(String sessionId) {
         return new Session(
             sessionId,
