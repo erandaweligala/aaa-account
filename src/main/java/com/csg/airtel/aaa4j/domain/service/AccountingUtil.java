@@ -695,12 +695,9 @@ public class AccountingUtil {
 
 
         if (!request.actionType().equals(AccountingRequestDto.ActionType.STOP) && isCheckConcurrency(userData, sessionData, request, foundBalance, combinedSessions)) {
-
             log.errorf("Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
                     request.username(), userData.getSessions().size(),
                     sessionData.getUserConcurrency(), request.nasPortId());
-
-
             return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
@@ -772,15 +769,12 @@ public class AccountingUtil {
      * @return true if concurrency limit exceeded, false otherwise
      */
     private boolean checkIndividualConcurrency(UserSessionData userData, AccountingRequestDto request, boolean hasMatchingNasPortId) {
-        if (hasMatchingNasPortId) {
-            return false;
-        }
 
         List<Session> userSessions = userData.getSessions();
         int sessionCount = userSessions != null ? userSessions.size() : 0;
         long concurrencyLimit = userData.getConcurrency();
 
-        if (concurrencyLimit <= sessionCount) {
+        if (hasMatchingNasPortId && concurrencyLimit + 1 <= sessionCount) {
             log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
                     request.username(), concurrencyLimit, sessionCount);
             return true;
