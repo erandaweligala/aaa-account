@@ -44,7 +44,9 @@ class BucketServiceAdvancedTest {
     void testAddBucketBalance_WithConcurrency() {
         String userName = "testuser";
         Balance balance = createBalance();
-        BalanceWrapper wrapper = new BalanceWrapper(balance, 5L); //not assign in curect values
+        BalanceWrapper wrapper = new BalanceWrapper();
+        wrapper.setBalance(balance);
+        wrapper.setConcurrency(5L);
 
         UserSessionData userData = createUserData(userName);
         when(cacheClient.getUserData(userName)).thenReturn(Uni.createFrom().item(userData));
@@ -65,7 +67,9 @@ class BucketServiceAdvancedTest {
     void testAddBucketBalance_CacheUpdateFailure() {
         String userName = "testuser";
         Balance balance = createBalance();
-        BalanceWrapper wrapper = new BalanceWrapper(balance, 2L);
+        BalanceWrapper wrapper = new BalanceWrapper();
+        wrapper.setBalance(balance);
+        wrapper.setConcurrency(2L);
 
         when(cacheClient.getUserData(userName)).thenReturn(Uni.createFrom().nullItem());
         when(cacheClient.updateUserAndRelatedCaches(eq(userName), any(UserSessionData.class), eq(userName)))

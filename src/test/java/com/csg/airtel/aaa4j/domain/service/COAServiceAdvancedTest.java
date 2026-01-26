@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
+import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
@@ -54,8 +55,8 @@ class COAServiceAdvancedTest {
             .sessions(sessions)
             .build();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            true, 200, "ACK", "session"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
@@ -119,8 +120,8 @@ class COAServiceAdvancedTest {
             .sessions(sessions)
             .build();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            false, 500, "ERROR", "session-1"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "NAK", "session-1", "ERROR"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
@@ -153,8 +154,8 @@ class COAServiceAdvancedTest {
         AccountingResponseEvent event = createEvent();
         Session session = createSession("session-1");
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            true, 200, "ACK", "session-1"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session-1", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
@@ -186,8 +187,8 @@ class COAServiceAdvancedTest {
     void testProduceAccountingResponseEvent_NullSession() {
         AccountingResponseEvent event = createEvent();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            true, 200, "ACK", "session-1"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session-1", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
@@ -210,8 +211,8 @@ class COAServiceAdvancedTest {
             .sessions(sessions)
             .build();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            true, 200, "ACK", "session-1"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session-1", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
@@ -238,8 +239,8 @@ class COAServiceAdvancedTest {
             .sessions(sessions)
             .build();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
-            true, 200, "ACK", "session"
+        CoADisconnectResponse response = new CoADisconnectResponse(
+            "ACK", "session", "Success"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))
             .thenReturn(Uni.createFrom().item(response));
