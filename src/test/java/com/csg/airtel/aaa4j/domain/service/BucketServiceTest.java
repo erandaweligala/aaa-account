@@ -45,7 +45,7 @@ class BucketServiceTest {
     void setUp() {
         testUserName = "testuser";
         testBalance = createSampleBalance();
-        balanceWrapper = new BalanceWrapper(testBalance, 2L);
+        balanceWrapper = new BalanceWrapper(testBalance, 2L); //not assign in curect values
     }
 
     @Test

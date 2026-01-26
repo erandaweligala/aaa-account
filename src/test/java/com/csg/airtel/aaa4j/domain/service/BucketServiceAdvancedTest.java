@@ -23,7 +23,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
-
+// todo pls fixed errors
 @ExtendWith(MockitoExtension.class)
 class BucketServiceAdvancedTest {
 
@@ -44,7 +44,7 @@ class BucketServiceAdvancedTest {
     void testAddBucketBalance_WithConcurrency() {
         String userName = "testuser";
         Balance balance = createBalance();
-        BalanceWrapper wrapper = new BalanceWrapper(balance, 5L);
+        BalanceWrapper wrapper = new BalanceWrapper(balance, 5L); //not assign in curect values
 
         UserSessionData userData = createUserData(userName);
         when(cacheClient.getUserData(userName)).thenReturn(Uni.createFrom().item(userData));

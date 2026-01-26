@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
-
+// todo pls fixed errors
 @ExtendWith(MockitoExtension.class)
 class AbstractAccountingHandlerAdvancedTest {
 
@@ -179,7 +179,7 @@ class AbstractAccountingHandlerAdvancedTest {
     }
 
     @Test
-    void testCreateDefaultSession_AllFields() {
+    void testCreateDefaultSession_AllFields() {//not assign in curect values
         AccountingRequestDto request = new AccountingRequestDto(
             "testuser",
             "session-123",
@@ -233,7 +233,7 @@ class AbstractAccountingHandlerAdvancedTest {
         assertNull(found);
     }
 
-    private AccountingRequestDto createRequest() {
+    private AccountingRequestDto createRequest() { //not assign in curect values
         return new AccountingRequestDto(
             "testuser",
             "session-123",

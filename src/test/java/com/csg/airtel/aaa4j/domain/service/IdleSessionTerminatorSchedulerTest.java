@@ -17,7 +17,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class IdleSessionTerminatorSchedulerTest {
+class IdleSessionTerminatorSchedulerTest { //  fixed this test class errors
 
     @Mock
     private COAService coaService;

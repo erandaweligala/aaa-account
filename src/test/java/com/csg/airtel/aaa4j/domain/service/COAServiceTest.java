@@ -65,7 +65,7 @@ class COAServiceTest {
             .sessions(sessions)
             .build();
 
-        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse(
+        CoAHttpClient.CoAResponse response = new CoAHttpClient.CoAResponse( //errors found  Cannot resolve symbol 'CoAResponse'
             true, 200, "ACK", "session-1"
         );
         when(coaHttpClient.sendDisconnect(any(AccountingResponseEvent.class)))

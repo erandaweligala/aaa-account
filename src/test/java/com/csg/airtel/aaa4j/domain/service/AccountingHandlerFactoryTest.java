@@ -15,7 +15,7 @@ import java.time.LocalDateTime;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
-
+// todo pls fixed errors
 @ExtendWith(MockitoExtension.class)
 class AccountingHandlerFactoryTest {
 
@@ -84,7 +84,7 @@ class AccountingHandlerFactoryTest {
     }
 
     private AccountingRequestDto createRequest(AccountingRequestDto.ActionType actionType) {
-        return new AccountingRequestDto(
+        return new AccountingRequestDto( //not assign in curect values
             "testuser",
             "session-123",
             actionType,

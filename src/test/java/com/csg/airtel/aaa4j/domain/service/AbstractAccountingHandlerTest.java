@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
-
+// todo pls fixed errors
 @ExtendWith(MockitoExtension.class)
 class AbstractAccountingHandlerTest {
 
@@ -156,7 +156,7 @@ class AbstractAccountingHandlerTest {
         verify(coaService).produceAccountingResponseEvent(any(), any(), anyString());
     }
 
-    private AccountingRequestDto createRequest() {
+    private AccountingRequestDto createRequest() { //not assign in curect values
         return new AccountingRequestDto(
             "testuser",
             "session-123",

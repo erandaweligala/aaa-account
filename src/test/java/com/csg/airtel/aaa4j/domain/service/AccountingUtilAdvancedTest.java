@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
+import com.csg.airtel.aaa4j.domain.model.UpdateResult;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.ConsumptionRecord;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
@@ -25,7 +26,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
-
+// todo pls fixed errors
 @ExtendWith(MockitoExtension.class)
 class AccountingUtilAdvancedTest {
 
@@ -333,7 +334,7 @@ class AccountingUtilAdvancedTest {
         newSession.setNasPortId("port-1");
 
         AccountingRequestDto request = createRequest();
-        request = new AccountingRequestDto(
+        request = new AccountingRequestDto( //not assign in curect values
             request.username(), "session-2", AccountingRequestDto.ActionType.INTERIM_UPDATE,
             request.sessionTime(), request.inputOctets(), request.outputOctets(),
             request.inputGigaWords(), request.outputGigaWords(), request.framedIPAddress(),
@@ -451,7 +452,7 @@ class AccountingUtilAdvancedTest {
         );
     }
 
-    private AccountingRequestDto createRequest() {
+    private AccountingRequestDto createRequest() { //not assign in curect values
         return new AccountingRequestDto(
             "testuser",
             "session-123",
@@ -470,7 +471,7 @@ class AccountingUtilAdvancedTest {
         );
     }
 
-    private AccountingRequestDto createStopRequest() {
+    private AccountingRequestDto createStopRequest() { //not assign in curect values
         return new AccountingRequestDto(
             "testuser",
             "session-123",

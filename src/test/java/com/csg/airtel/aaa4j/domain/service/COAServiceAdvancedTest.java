@@ -41,6 +41,7 @@ class COAServiceAdvancedTest {
         coaService = new COAService(accountProducer, monitoringService, coaHttpClient);
     }
 
+    // pls review this test classes lot of  errors found
     @Test
     void testClearAllSessionsAndSendCOA_MultipleSessions() {
         List<Session> sessions = new ArrayList<>();
