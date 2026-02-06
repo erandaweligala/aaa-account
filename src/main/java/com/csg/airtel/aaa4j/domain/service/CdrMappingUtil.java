@@ -311,6 +311,144 @@ public class CdrMappingUtil {
     }
 
     /**
+     * Builds a CDR event for a CoA Request initiation.
+     * Generated when a CoA disconnect request is about to be sent to the NAS.
+     *
+     * @param session  The session for which CoA request is being initiated
+     * @param username The username associated with the session
+     * @return CoA Request CDR event
+     */
+    public static AccountingCDREvent buildCoaRequestCDREvent(Session session, String username) {
+        log.infof("Building COA Request CDR event for session: %s, user: %s", session.getSessionId(), username);
+
+        SessionCdr cdrSession = buildCoaSessionCdr(session);
+        User cdrUser = User.builder()
+                .userName(username)
+                .groupId(session.getGroupId())
+                .build();
+        Network cdrNetwork = Network.builder()
+                .framedIpAddress(session.getFramedId())
+                .calledStationId(session.getNasIp())
+                .build();
+
+        COA coa = COA.builder()
+                .coaType("Disconnect-Request")
+                .coaCode(40)
+                .destinationPort(3799)
+                .build();
+
+        List<RadiusAttribute> attributes = buildCoaRadiusAttributes(session, username);
+        Radius radius = Radius.builder().attributes(attributes).build();
+
+        Payload payload = Payload.builder()
+                .session(cdrSession)
+                .user(cdrUser)
+                .network(cdrNetwork)
+                .coa(coa)
+                .radius(radius)
+                .build();
+
+        return AccountingCDREvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .eventType(EventTypes.COA_REQUEST.name())
+                .eventVersion("1.0")
+                .eventTimestamp(Instant.now())
+                .source("AAA-Service")
+                .partitionKey(session.getSessionId())
+                .payload(payload)
+                .build();
+    }
+
+    /**
+     * Builds a CDR event for a CoA Response received from the NAS.
+     * Generated when a CoA disconnect response (ACK or NAK) is received.
+     *
+     * @param session        The session for which CoA response was received
+     * @param username       The username associated with the session
+     * @param responseStatus The response status from NAS (e.g. "ACK", "NAK")
+     * @return CoA Response CDR event
+     */
+    public static AccountingCDREvent buildCoaResponseCDREvent(Session session, String username, String responseStatus) {
+        log.infof("Building COA Response CDR event for session: %s, user: %s, status: %s",
+                session.getSessionId(), username, responseStatus);
+
+        SessionCdr cdrSession = buildCoaSessionCdr(session);
+        User cdrUser = User.builder()
+                .userName(username)
+                .groupId(session.getGroupId())
+                .build();
+        Network cdrNetwork = Network.builder()
+                .framedIpAddress(session.getFramedId())
+                .calledStationId(session.getNasIp())
+                .build();
+
+        COA coa = COA.builder()
+                .coaType("Disconnect-Request")
+                .coaCode(40)
+                .destinationPort(3799)
+                .coaResponseStatus(responseStatus)
+                .build();
+
+        List<RadiusAttribute> attributes = buildCoaRadiusAttributes(session, username);
+        Radius radius = Radius.builder().attributes(attributes).build();
+
+        Payload payload = Payload.builder()
+                .session(cdrSession)
+                .user(cdrUser)
+                .network(cdrNetwork)
+                .coa(coa)
+                .radius(radius)
+                .build();
+
+        return AccountingCDREvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .eventType(EventTypes.COA_RESPONSE.name())
+                .eventVersion("1.0")
+                .eventTimestamp(Instant.now())
+                .source("AAA-Service")
+                .partitionKey(session.getSessionId())
+                .payload(payload)
+                .build();
+    }
+
+    /**
+     * Builds a SessionCdr from a Session object for CoA CDR events.
+     */
+    private static SessionCdr buildCoaSessionCdr(Session session) {
+        return SessionCdr.builder()
+                .sessionId(session.getSessionId())
+                .nasIpAddress(session.getNasIp())
+                .nasPort(session.getNasPortId())
+                .nasPortType(session.getNasPortId())
+                .sessionTime(String.valueOf(session.getSessionTime() != null ? session.getSessionTime() : 0))
+                .startTime(session.getSessionInitiatedTime() != null
+                        ? session.getSessionInitiatedTime().atZone(java.time.ZoneId.systemDefault()).toInstant()
+                        : Instant.now())
+                .updateTime(Instant.now())
+                .build();
+    }
+
+    /**
+     * Builds the common RADIUS attributes list for CoA CDR events.
+     */
+    private static List<RadiusAttribute> buildCoaRadiusAttributes(Session session, String username) {
+        List<RadiusAttribute> attributes = new ArrayList<>();
+        attributes.add(RadiusAttribute.builder()
+                .type(1).name("User-Name").value(username).build());
+        if (session.getNasIp() != null) {
+            attributes.add(RadiusAttribute.builder()
+                    .type(4).name("NAS-IP-Address").value(session.getNasIp()).build());
+        }
+        if (session.getFramedId() != null) {
+            attributes.add(RadiusAttribute.builder()
+                    .type(8).name("Framed-IP-Address").value(session.getFramedId()).build());
+        }
+        attributes.add(RadiusAttribute.builder()
+                .type(44).name("Acct-Session-Id").value(session.getSessionId()).build());
+        return attributes;
+    }
+
+    /**
      * Generates and sends a CDR event asynchronously.
      * This method consolidates the duplicate CDR generation logic from StartHandler, InterimHandler, and StopHandler.
      *
