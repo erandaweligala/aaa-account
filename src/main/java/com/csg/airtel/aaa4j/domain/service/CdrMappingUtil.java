@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.cdr.*;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
@@ -21,6 +22,7 @@ import java.util.function.BiFunction;
 public class CdrMappingUtil {
 
     private static final Logger log = Logger.getLogger(CdrMappingUtil.class);
+    private static final String CLASS_NAME = "CdrMappingUtil";
 
     private CdrMappingUtil() {
         // Private constructor to prevent instantiation
@@ -119,7 +121,7 @@ public class CdrMappingUtil {
             Session session,
             AccountingMetrics metrics) {
 
-        log.infof("starting CDREvent for request: %s", session.getSessionId());
+        LoggingUtil.logInfo(log, CLASS_NAME, "buildCDREvent", "starting CDREvent for request: %s", session.getSessionId());
 
         SessionCdr cdrSession = buildSessionCdr(request, metrics.getSessionTime(), metrics.getEventType());
         User cdrUser = buildUserCdr(request,session.getGroupId());
@@ -217,7 +219,7 @@ public class CdrMappingUtil {
      * @return COA Disconnect CDR event
      */
     public static AccountingCDREvent buildCoaDisconnectCDREvent(Session session, String username) {
-        log.infof("Building COA Disconnect CDR event for session: %s, user: %s", session.getSessionId(), username);
+        LoggingUtil.logInfo(log, CLASS_NAME, "buildCoaDisconnectCDREvent", "Building COA Disconnect CDR event for session: %s, user: %s", session.getSessionId(), username);
 
         // Build session CDR
         SessionCdr cdrSession = SessionCdr.builder()
@@ -319,7 +321,7 @@ public class CdrMappingUtil {
      * @return CoA Request CDR event
      */
     public static AccountingCDREvent buildCoaRequestCDREvent(Session session, String username) {
-        log.infof("Building COA Request CDR event for session: %s, user: %s", session.getSessionId(), username);
+        LoggingUtil.logInfo(log, CLASS_NAME, "buildCoaRequestCDREvent", "Building COA Request CDR event for session: %s, user: %s", session.getSessionId(), username);
 
         SessionCdr cdrSession = buildCoaSessionCdr(session);
         User cdrUser = User.builder()
@@ -369,7 +371,7 @@ public class CdrMappingUtil {
      * @return CoA Response CDR event
      */
     public static AccountingCDREvent buildCoaResponseCDREvent(Session session, String username, String responseStatus) {
-        log.infof("Building COA Response CDR event for session: %s, user: %s, status: %s",
+        LoggingUtil.logInfo(log, CLASS_NAME, "buildCoaResponseCDREvent", "Building COA Response CDR event for session: %s, user: %s, status: %s",
                 session.getSessionId(), username, responseStatus);
 
         SessionCdr cdrSession = buildCoaSessionCdr(session);
@@ -478,11 +480,11 @@ public class CdrMappingUtil {
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> log.infof("CDR event sent successfully for session: %s", request.sessionId()),
-                            failure -> log.errorf(failure, "Failed to send CDR event for session: %s", request.sessionId())
+                            success -> LoggingUtil.logInfo(log, CLASS_NAME, "generateAndSendCDR", "CDR event sent successfully for session: %s", request.sessionId()),
+                            failure -> LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCDR", failure, "Failed to send CDR event for session: %s", request.sessionId())
                     );
         } catch (Exception e) {
-            log.errorf(e, "Error building CDR event for session: %s", request.sessionId());
+            LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCDR", e, "Error building CDR event for session: %s", request.sessionId());
         }
     }
 

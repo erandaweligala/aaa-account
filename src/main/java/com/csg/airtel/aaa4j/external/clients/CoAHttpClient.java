@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.external.clients;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.config.WebClientProvider;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
@@ -20,6 +21,7 @@ import org.jboss.logging.Logger;
 public class CoAHttpClient {
 
     private static final Logger log = Logger.getLogger(CoAHttpClient.class);
+    private static final String CLASS_NAME = "CoAHttpClient";
 
     private final WebClientProvider webClientProvider;
 
@@ -33,7 +35,7 @@ public class CoAHttpClient {
     public CoAHttpClient(WebClientProvider webClientProvider) {
         this.webClientProvider = webClientProvider;
     }
-    
+
     private static final String CONTENT_TYPE_JSON = "application/json";
     private static final String COA_ENDPOINT = "/api/coa/";
     private static final String NAK_STATUS = "NAK";
@@ -46,7 +48,7 @@ public class CoAHttpClient {
      * @return Uni containing the disconnect response with ACK/NAK status
      */
     public Uni<CoADisconnectResponse> sendDisconnect(AccountingResponseEvent request) {
-        log.debugf("Sending CoA disconnect request: sessionId=%s", request.sessionId());
+        LoggingUtil.logDebug(log, CLASS_NAME, "sendDisconnect", "Sending CoA disconnect request: sessionId=%s", request.sessionId());
 
         String jsonBody = Json.encode(request);
         io.vertx.core.buffer.Buffer buffer = io.vertx.core.buffer.Buffer.buffer(jsonBody);
@@ -66,13 +68,13 @@ public class CoAHttpClient {
                                 if (e instanceof CoAResponseParsingException || e instanceof CoADisconnectException) {
                                     emitter.fail(e);
                                 } else {
-                                    log.errorf(e, "Unexpected error handling CoA response for session: %s", sessionId);
+                                    LoggingUtil.logError(log, CLASS_NAME, "sendDisconnect", e, "Unexpected error handling CoA response for session: %s", sessionId);
                                     emitter.fail(new CoAResponseParsingException(
                                         "Unexpected error handling CoA response: " + e.getMessage(), e));
                                 }
                             }
                         } else {
-                            log.errorf(ar.cause(), "HTTP request failed for session: %s", sessionId);
+                            LoggingUtil.logError(log, CLASS_NAME, "sendDisconnect", ar.cause(), "HTTP request failed for session: %s", sessionId);
                             emitter.fail(new CoADisconnectException(
                                 "HTTP request failed for session: " + sessionId,
                                 Response.Status.SERVICE_UNAVAILABLE,
@@ -107,12 +109,12 @@ public class CoAHttpClient {
                                                          String sessionId) {
         try {
             CoADisconnectResponse coaResponse = response.bodyAsJson(CoADisconnectResponse.class);
-            log.debugf("CoA disconnect response received: status=%s, sessionId=%s",
+            LoggingUtil.logDebug(log, CLASS_NAME, "parseSuccessResponse", "CoA disconnect response received: status=%s, sessionId=%s",
                     coaResponse.status(), coaResponse.sessionId());
             return coaResponse;
         } catch (DecodeException e) {
             String errorMsg = "Failed to parse CoA response for session " + sessionId + ": " + response.bodyAsString();
-            log.errorf(e, errorMsg);
+            LoggingUtil.logError(log, CLASS_NAME, "parseSuccessResponse", e, errorMsg);
             throw new CoAResponseParsingException(errorMsg, e);
         }
     }
@@ -121,7 +123,7 @@ public class CoAHttpClient {
      * Handle 404 response - session already disconnected.
      */
     private CoADisconnectResponse handle404Response(String sessionId) {
-        log.warnf("CoA disconnect received 404 for session %s - session already disconnected or doesn't exist, treating as success",
+        LoggingUtil.logWarn(log, CLASS_NAME, "handle404Response", "CoA disconnect received 404 for session %s - session already disconnected or doesn't exist, treating as success",
                 sessionId);
         return new CoADisconnectResponse(NAK_STATUS, sessionId, SESSION_DISCONNECTED_MESSAGE);
     }
@@ -132,7 +134,7 @@ public class CoAHttpClient {
     private CoADisconnectResponse handleErrorResponse(io.vertx.ext.web.client.HttpResponse<io.vertx.core.buffer.Buffer> response,
                                                        int statusCode) {
         String errorMsg = "CoA disconnect failed with status " + statusCode + ": " + response.bodyAsString();
-        log.warnf(errorMsg);
+        LoggingUtil.logWarn(log, CLASS_NAME, "handleErrorResponse", errorMsg);
         throw new CoADisconnectException(errorMsg, Response.Status.fromStatusCode(statusCode));
     }
 }

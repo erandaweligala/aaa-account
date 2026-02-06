@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.produce;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.QuotaNotificationEvent;
@@ -27,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 public class AccountProducer {
 
     private static final Logger LOG = Logger.getLogger(AccountProducer.class);
+    private static final String CLASS_NAME = "AccountProducer";
     private final Emitter<DBWriteRequest> dbWriteRequestEmitter;
     private final Emitter<AccountingResponseEvent> accountingResponseEmitter;
     private final Emitter<AccountingCDREvent> accountingCDREventEmitter;
@@ -64,7 +66,7 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceDBWriteEvent", "Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
         return Uni.createFrom().emitter(em -> {
             Message<DBWriteRequest> message = Message.of(request)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -72,11 +74,11 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
+                        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceDBWriteEvent", "Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
+                        LoggingUtil.logError(LOG, CLASS_NAME, "produceDBWriteEvent", null, "Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -103,7 +105,7 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceAccountingResponseEvent process");
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceAccountingResponseEvent", "Start produceAccountingResponseEvent process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -111,11 +113,11 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
+                        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceAccountingResponseEvent", "Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
+                        LoggingUtil.logError(LOG, CLASS_NAME, "produceAccountingResponseEvent", null, "Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -139,7 +141,7 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingCDREvent")
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Accounting CDR Event process");
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceAccountingCDREvent", "Start produce Accounting CDR Event process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingCDREvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -147,11 +149,11 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting CDR event for session: %s, %d ms", event.getPayload().getSession().getSessionId(),System.currentTimeMillis()-startTime);
+                        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceAccountingCDREvent", "Successfully sent accounting CDR event for session: %s, %d ms", event.getPayload().getSession().getSessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("CDR Send failed: %s", throwable.getMessage());
+                        LoggingUtil.logError(LOG, CLASS_NAME, "produceAccountingCDREvent", null, "CDR Send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -174,12 +176,12 @@ public class AccountProducer {
         String sessionId = request.getSessionId();
 
 
-        LOG.infof("Initiating session revoke fallback for userId=%s, sessionId=%s", userId, sessionId);
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "fallbackProduceDBWriteEvent", "Initiating session revoke fallback for userId=%s, sessionId=%s", userId, sessionId);
 
         return cacheClient.getUserData(userId)
                 .onItem().transformToUni(userSessionData -> {
                     if (userSessionData == null) {
-                        LOG.debugf("No user session data found for userId=%s during fallback revoke", userId);
+                        LoggingUtil.logDebug(LOG, CLASS_NAME, "fallbackProduceDBWriteEvent", "No user session data found for userId=%s during fallback revoke", userId);
                         return Uni.createFrom().voidItem();
                     }
 
@@ -196,25 +198,25 @@ public class AccountProducer {
 
                     if (sessionToRemove != null) {
                         userSessionData.getSessions().remove(sessionToRemove);
-                        LOG.infof("Removed session %s from user %s sessions list during fallback", sessionId, userId);
+                        LoggingUtil.logInfo(LOG, CLASS_NAME, "fallbackProduceDBWriteEvent", "Removed session %s from user %s sessions list during fallback", sessionId, userId);
 
                         // Update cache and remove from expiry index
                         return cacheClient.updateUserAndRelatedCaches(userId, userSessionData,request.getUserName())
                                 .call(() -> sessionLifecycleManager.onSessionTerminated(userId, sessionId))
-                                .invoke(() -> LOG.infof("Session revoke fallback completed for userId=%s, sessionId=%s",
+                                .invoke(() -> LoggingUtil.logInfo(LOG, CLASS_NAME, "fallbackProduceDBWriteEvent", "Session revoke fallback completed for userId=%s, sessionId=%s",
                                         userId, sessionId))
-                                .onFailure().invoke(e -> LOG.errorf(e,
+                                .onFailure().invoke(e -> LoggingUtil.logError(LOG, CLASS_NAME, "fallbackProduceDBWriteEvent", e,
                                         "Failed to complete session revoke fallback for userId=%s, sessionId=%s",
                                         userId, sessionId))
                                 .onFailure().recoverWithNull()
                                 .replaceWithVoid();
                     } else {
-                        LOG.debugf("Session %s not found in user %s sessions during fallback revoke", sessionId, userId);
+                        LoggingUtil.logDebug(LOG, CLASS_NAME, "fallbackProduceDBWriteEvent", "Session %s not found in user %s sessions during fallback revoke", sessionId, userId);
                         // Still try to clean up expiry index in case it exists there
                         return sessionLifecycleManager.onSessionTerminated(userId, sessionId);
                     }
                 })
-                .onFailure().invoke(e -> LOG.errorf(e,
+                .onFailure().invoke(e -> LoggingUtil.logError(LOG, CLASS_NAME, "fallbackProduceDBWriteEvent", e,
                         "Failed to retrieve user data during session revoke fallback for userId=%s, sessionId=%s",
                         userId, sessionId))
                 .onFailure().recoverWithNull()
@@ -269,7 +271,7 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
     public Uni<Void> produceQuotaNotificationEvent(QuotaNotificationEvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceQuotaNotificationEvent", "Start produce Quota Notification Event for user: %s, threshold: %s",
                 event.username(), event.type());
         return Uni.createFrom().emitter(em -> {
             Message<QuotaNotificationEvent> message = Message.of(event)
@@ -278,12 +280,12 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent quota notification event for user: %s, %d ms",
+                        LoggingUtil.logInfo(LOG, CLASS_NAME, "produceQuotaNotificationEvent", "Successfully sent quota notification event for user: %s, %d ms",
                                 event.username(), System.currentTimeMillis() - startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Quota notification send failed: %s", throwable.getMessage());
+                        LoggingUtil.logError(LOG, CLASS_NAME, "produceQuotaNotificationEvent", null, "Quota notification send failed: %s", throwable.getMessage());
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });

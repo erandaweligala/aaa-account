@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.external.repository;
 
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
@@ -22,6 +23,7 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
 public class UserBucketRepository {
 
     private static final Logger log = Logger.getLogger(UserBucketRepository.class);
+    private static final String CLASS_NAME = "UserBucketRepository";
 
     private static final String COL_BUCKET_ID = "BUCKET_ID";
     private static final String COL_CURRENT_BALANCE = "CURRENT_BALANCE";
@@ -73,23 +75,17 @@ public class UserBucketRepository {
             maxDuration = 10000
     )
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
-        if (log.isDebugEnabled()) {
-            log.debugf("Fetching service buckets for user: %s", userName);
-        }
+        LoggingUtil.logDebug(log, CLASS_NAME, "getServiceBucketsByUserName", "Fetching service buckets for user: %s", userName);
         return client
                 .preparedQuery(QUERY_BALANCE)
                 .execute(Tuple.of(userName))
                     .onItem().transform(this::mapRowsToServiceBuckets)
-                .onFailure().invoke(error -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf(error, "Error fetching service buckets for user: %s", userName);
-                    }
-                })
-                .onItem().invoke(results -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("Fetched %d service buckets for user: %s", results.size(), userName);
-                    }
-                });
+                .onFailure().invoke(error ->
+                    LoggingUtil.logDebug(log, CLASS_NAME, "getServiceBucketsByUserName", "Error fetching service buckets for user: %s", userName)
+                )
+                .onItem().invoke(results ->
+                    LoggingUtil.logDebug(log, CLASS_NAME, "getServiceBucketsByUserName", "Fetched %d service buckets for user: %s", results.size(), userName)
+                );
     }
 
     /**

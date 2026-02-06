@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.application.listener;
 
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
@@ -22,6 +23,7 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class AccountingConsumer {
     private static final Logger LOG = Logger.getLogger(AccountingConsumer.class);
+    private static final String CLASS_NAME = "AccountingConsumer";
 
     final AccountProducer accountingProdEvent;
     final AccountingHandlerFactory accountingHandlerFactory;
@@ -36,32 +38,32 @@ public class AccountingConsumer {
     @Acknowledgment(Acknowledgment.Strategy.MANUAL)
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Message received - will acknowledge immediately");
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "consumeAccountingEvent", "Message received - will acknowledge immediately");
 
         AccountingRequestDto request = message.getPayload();
 
         if (LOG.isDebugEnabled()) {
             message.getMetadata(IncomingKafkaRecordMetadata.class)
-                    .ifPresent(metadata -> LOG.debugf("Partition: %d, Offset: %d",
+                    .ifPresent(metadata -> LoggingUtil.logDebug(LOG, CLASS_NAME, "consumeAccountingEvent", "Partition: %d, Offset: %d",
                             metadata.getPartition(), metadata.getOffset()));
         }
 
         // Acknowledge immediately, then process asynchronously
         return Uni.createFrom().completionStage(message.ack())
                 .onItem().transformToUni(v -> {
-                    LOG.infof("Message acknowledged for session: %s, starting async processing",
+                    LoggingUtil.logInfo(LOG, CLASS_NAME, "consumeAccountingEvent", "Message acknowledged for session: %s, starting async processing",
                             request.sessionId());
 
                     // Process in background - don't wait for completion
                     accountingHandlerFactory.getHandler(request, request.eventId())
                             .onItem().invoke(success -> {
                                 long duration = System.currentTimeMillis() - startTime;
-                                LOG.infof("Complete consumeAccountingEvent process in %d ms for session: %s",
+                                LoggingUtil.logInfo(LOG, CLASS_NAME, "consumeAccountingEvent", "Complete consumeAccountingEvent process in %d ms for session: %s",
                                         duration, request.sessionId());
                             })
                             .onFailure().invoke(failure -> {
                                 long duration = System.currentTimeMillis() - startTime;
-                                LOG.errorf(failure, "Failed processing session: %s after %d ms",
+                                LoggingUtil.logError(LOG, CLASS_NAME, "consumeAccountingEvent", failure, "Failed processing session: %s after %d ms",
                                         request.sessionId(), duration);
                             })
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
@@ -71,4 +73,3 @@ public class AccountingConsumer {
                 });
     }
 }
-

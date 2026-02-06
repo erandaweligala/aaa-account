@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
@@ -28,6 +29,7 @@ import java.util.function.Function;
 public class AbstractAccountingHandler {
 
     private static final Logger log = Logger.getLogger(AbstractAccountingHandler.class);
+    private static final String CLASS_NAME = "AbstractAccountingHandler";
     private static final String NO_SERVICE_BUCKETS_MSG = "No service buckets found";
 
     private final CacheClient cacheUtil;
@@ -67,9 +69,7 @@ public class AbstractAccountingHandler {
             String traceId,
             AccountingRequestProcessor processor,
             Function<AccountingRequestDto, Session> sessionCreator) {
-        if (log.isDebugEnabled()) {
-            log.debugf("[traceId: %s] No cache entry found for user: %s", traceId, request.username());
-        }
+        LoggingUtil.logDebug(log, CLASS_NAME, "handleNewSessionUsage", "[traceId: %s] No cache entry found for user: %s", traceId, request.username());
 
         return cacheUtil.getGroupId(request.username())
                 .onItem().transformToUni(cacheGroupId -> {
@@ -108,7 +108,7 @@ public class AbstractAccountingHandler {
         return userRepository.getServiceBucketsByUserName(request.username())
                 .onItem().transformToUni(serviceBuckets -> {
                     if (serviceBuckets == null || serviceBuckets.isEmpty()) {
-                        log.warnf("[traceId: %s] No service buckets found for user: %s", traceId, request.username());
+                        LoggingUtil.logWarn(log, CLASS_NAME, "getUserServicesDetails", "[traceId: %s] No service buckets found for user: %s", traceId, request.username());
                         return coaService.produceAccountingResponseEvent(
                                 MappingUtil.createResponse(request, NO_SERVICE_BUCKETS_MSG,
                                         AccountingResponseEvent.EventType.COA,

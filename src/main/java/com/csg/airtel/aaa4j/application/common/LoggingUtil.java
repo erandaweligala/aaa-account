@@ -9,12 +9,21 @@ import java.time.format.DateTimeFormatter;
 /**
  * Centralized logging utility that provides structured logging format across all classes.
  * Format: [timestamp][traceId][className][methodName][user=userName][session=sessionId] message
+ *
+ * Optimized for 3000+ TPS:
+ * - Level checking before message construction
+ * - StringBuilder with pre-allocated capacity (avoids resize)
+ * - Cached timestamp per-second to reduce DateTimeFormatter overhead
+ * - No String.format() usage (replaced with direct StringBuilder append)
  */
 public class LoggingUtil {
 
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSZ");
     public static final String TRACE_ID = "traceId";
     private static final String FALLBACK = "-";
+
+    // Cached timestamp per-second to avoid repeated formatting at high TPS
+    private static final ThreadLocal<CachedTimestamp> CACHED_TS = new ThreadLocal<>();
 
     private LoggingUtil() {
         // Private constructor to prevent instantiation
@@ -64,47 +73,91 @@ public class LoggingUtil {
     }
 
     /**
-     * Build the structured log message in a single pass using StringBuilder.
+     * Build the structured log message using StringBuilder with pre-allocated capacity.
+     * Avoids String.format() overhead for high-TPS scenarios.
      */
     private static String buildMessage(String className, String method, String message, Object... args) {
-        String formattedMsg = args.length > 0 ? String.format(message, args) : message;
-        return '[' + getTimestamp() + ']' +
-                '[' + getTraceId() + ']' +
-                '[' + className + ']' +
-                '[' + method + ']' +
-                "[user=" + getUserName() + ']' +
-                "[session=" + getSessionId() + "] " +
-                formattedMsg;
+        String traceId = getMdcValue(TRACE_ID);
+        String userName = getMdcValue("userName");
+        String sessionId = getMdcValue("sessionId");
+
+        // Pre-allocate StringBuilder: ~40 (timestamp) + traceId + className + method + user/session + message
+        int estimatedLength = 120 + (message != null ? message.length() : 0);
+        StringBuilder sb = new StringBuilder(estimatedLength);
+
+        sb.append('[').append(getTimestamp()).append(']');
+        sb.append('[').append(traceId).append(']');
+        sb.append('[').append(className).append(']');
+        sb.append('[').append(method).append(']');
+        sb.append("[user=").append(userName).append(']');
+        sb.append("[session=").append(sessionId).append("] ");
+
+        if (args.length > 0) {
+            appendFormatted(sb, message, args);
+        } else {
+            sb.append(message);
+        }
+
+        return sb.toString();
     }
 
     /**
-     * Get formatted current timestamp
+     * Append formatted message to StringBuilder, replacing %s/%d placeholders.
+     * Faster than String.format() for simple placeholder substitution.
+     */
+    private static void appendFormatted(StringBuilder sb, String template, Object... args) {
+        if (template == null) return;
+        int argIndex = 0;
+        int len = template.length();
+        int i = 0;
+        while (i < len) {
+            char c = template.charAt(i);
+            if (c == '%' && i + 1 < len && argIndex < args.length) {
+                char next = template.charAt(i + 1);
+                if (next == 's' || next == 'd') {
+                    sb.append(args[argIndex++]);
+                    i += 2;
+                    continue;
+                }
+            }
+            sb.append(c);
+            i++;
+        }
+    }
+
+    /**
+     * Get formatted current timestamp with per-second caching.
+     * At 3000 TPS, this avoids ~2999 redundant DateTimeFormatter calls per second.
      */
     private static String getTimestamp() {
-        return ZonedDateTime.now().format(TIME_FORMATTER);
+        long currentSecond = System.currentTimeMillis() / 1000;
+        CachedTimestamp cached = CACHED_TS.get();
+        if (cached != null && cached.second == currentSecond) {
+            return cached.formatted;
+        }
+        String formatted = ZonedDateTime.now().format(TIME_FORMATTER);
+        CACHED_TS.set(new CachedTimestamp(currentSecond, formatted));
+        return formatted;
     }
 
     /**
-     * Get traceId from MDC with fallback to "-"
+     * Get MDC value with fallback to "-"
      */
-    private static String getTraceId() {
-        String traceId = MDC.get(TRACE_ID);
-        return traceId != null ? traceId : FALLBACK;
+    private static String getMdcValue(String key) {
+        String value = MDC.get(key);
+        return value != null ? value : FALLBACK;
     }
 
     /**
-     * Get userName from MDC with fallback to "-"
+     * Cached timestamp holder to avoid repeated DateTimeFormatter calls within same second.
      */
-    private static String getUserName() {
-        String userName = MDC.get("userName");
-        return userName != null ? userName : FALLBACK;
-    }
+    private static final class CachedTimestamp {
+        final long second;
+        final String formatted;
 
-    /**
-     * Get sessionId from MDC with fallback to "-"
-     */
-    private static String getSessionId() {
-        String sessionId = MDC.get("sessionId");
-        return sessionId != null ? sessionId : FALLBACK;
+        CachedTimestamp(long second, String formatted) {
+            this.second = second;
+            this.formatted = formatted;
+        }
     }
 }

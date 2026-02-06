@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.MessageTemplate;
 import com.csg.airtel.aaa4j.domain.model.ThresholdGlobalTemplates;
 import com.csg.airtel.aaa4j.external.repository.MessageTemplateRepository;
@@ -24,6 +25,7 @@ import java.util.Map;
 public class MessageTemplateCacheService {
 
     private static final Logger LOG = Logger.getLogger(MessageTemplateCacheService.class);
+    private static final String CLASS_NAME = "MessageTemplateCacheService";
 
     private final MessageTemplateRepository templateRepository;
 
@@ -49,33 +51,33 @@ public class MessageTemplateCacheService {
      */
     @PostConstruct
     void initializeTemplateCache() {
-        LOG.info("Initializing message template cache at application startup...");
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "initializeTemplateCache", "Initializing message template cache at application startup...");
 
         templateRepository.getAllActiveTemplates()
                 .onItem().invoke(templates -> {
                     if (templates == null || templates.isEmpty()) {
-                        LOG.warn("No active message templates found in database");
+                        LoggingUtil.logWarn(LOG, CLASS_NAME, "initializeTemplateCache", "No active message templates found in database");
                         return;
                     }
 
-                    LOG.infof("Loading %d active message templates into cache", templates.size());
+                    LoggingUtil.logInfo(LOG, CLASS_NAME, "initializeTemplateCache", "Loading %d active message templates into cache", templates.size());
 
                     for (MessageTemplate template : templates) {
                         try {
                             cacheTemplate(template);
                         } catch (Exception e) {
-                            LOG.errorf(e, "Failed to cache template ID %d: %s",
+                            LoggingUtil.logError(LOG, CLASS_NAME, "initializeTemplateCache", e, "Failed to cache template ID %d: %s",
                                     template.getTemplateId(), template.getTemplateName());
                         }
                     }
 
-                    LOG.infof("Successfully loaded %d message templates into cache", templates.size());
+                    LoggingUtil.logInfo(LOG, CLASS_NAME, "initializeTemplateCache", "Successfully loaded %d message templates into cache", templates.size());
                 })
                 .onFailure().invoke(error ->
-                        LOG.error("Failed to initialize message template cache from database. Using fallback.", error))
+                        LoggingUtil.logError(LOG, CLASS_NAME, "initializeTemplateCache", error, "Failed to initialize message template cache from database. Using fallback."))
                 .subscribe().with(
-                        result -> LOG.debug("Template cache initialization completed"),
-                        error -> LOG.error("Template cache initialization failed", error)
+                        result -> LoggingUtil.logDebug(LOG, CLASS_NAME, "initializeTemplateCache", "Template cache initialization completed"),
+                        error -> LoggingUtil.logError(LOG, CLASS_NAME, "initializeTemplateCache", error, "Template cache initialization failed")
                 );
     }
 
@@ -85,13 +87,13 @@ public class MessageTemplateCacheService {
      */
     private void cacheTemplate(MessageTemplate template) {
         if (template == null || template.getTemplateId() == null) {
-            LOG.warn("Skipping null or invalid template");
+            LoggingUtil.logWarn(LOG, CLASS_NAME, "cacheTemplate", "Skipping null or invalid template");
             return;
         }
 
         // Currently only USAGE type templates are used for quota notifications
         if (!"USAGE".equals(template.getMessageType())) {
-            LOG.debugf("Skipping non-USAGE template ID %d (type: %s)",
+            LoggingUtil.logDebug(LOG, CLASS_NAME, "cacheTemplate", "Skipping non-USAGE template ID %d (type: %s)",
                     template.getTemplateId(), template.getMessageType());
             return;
         }
@@ -102,16 +104,16 @@ public class MessageTemplateCacheService {
         // Cache in Redis (fire and forget for startup performance)
         valueCommands.set(cacheKey, thresholdTemplate)
                 .subscribe().with(
-                        success -> LOG.debugf("Cached template ID %d in Redis: %s (%d%%)",
+                        success -> LoggingUtil.logDebug(LOG, CLASS_NAME, "cacheTemplate", "Cached template ID %d in Redis: %s (%d%%)",
                                 template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage()),
-                        error -> LOG.warnf("Failed to cache template ID %d in Redis: %s",
+                        error -> LoggingUtil.logWarn(LOG, CLASS_NAME, "cacheTemplate", "Failed to cache template ID %d in Redis: %s",
                                 template.getTemplateId(), error.getMessage())
                 );
 
         // Cache in memory for fast access
         inMemoryCache.put(template.getSuperTemplateId() + template.getTemplateId(), thresholdTemplate);
 
-        LOG.debugf("Cached template ID %d in-memory: %s (%d%%)",
+        LoggingUtil.logDebug(LOG, CLASS_NAME, "cacheTemplate", "Cached template ID %d in-memory: %s (%d%%)",
                 template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
     }
 
@@ -138,7 +140,7 @@ public class MessageTemplateCacheService {
             return Uni.createFrom().item(Collections.emptyList());
         }
 
-        LOG.debugf("Fetching all templates for superTemplateId: %d", superTemplateId);
+        LoggingUtil.logDebug(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", "Fetching all templates for superTemplateId: %d", superTemplateId);
 
         // Fast path: Filter in-memory cache for templates with matching superTemplateId prefix
         // Templates are keyed as: superTemplateId + templateId (concatenated Long values)
@@ -153,14 +155,14 @@ public class MessageTemplateCacheService {
                 .map(Map.Entry::getValue)
                 .toList();
 
-        LOG.debugf("Found %d templates in-memory for superTemplateId: %d", matchingTemplates.size(), superTemplateId);
+        LoggingUtil.logDebug(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", "Found %d templates in-memory for superTemplateId: %d", matchingTemplates.size(), superTemplateId);
 
         // If found in memory, return immediately
         if (!matchingTemplates.isEmpty()) {
             return Uni.createFrom().item(matchingTemplates);
         }
 
-        LOG.debugf("No templates found in-memory for superTemplateId: %d, checking Redis", superTemplateId);
+        LoggingUtil.logDebug(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", "No templates found in-memory for superTemplateId: %d, checking Redis", superTemplateId);
 
 
         String pattern = superTemplateId + ":*";
@@ -168,11 +170,11 @@ public class MessageTemplateCacheService {
         return keyCommands.keys(pattern)
                 .onItem().transformToUni(keys -> {
                     if (keys == null || keys.isEmpty()) {
-                        LOG.warnf("No templates found in Redis for superTemplateId: %d", superTemplateId);
+                        LoggingUtil.logWarn(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", "No templates found in Redis for superTemplateId: %d", superTemplateId);
                         return Uni.createFrom().item(Collections.<ThresholdGlobalTemplates>emptyList());
                     }
 
-                    LOG.debugf("Found %d template keys in Redis for superTemplateId: %d", keys.size(), superTemplateId);
+                    LoggingUtil.logDebug(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", "Found %d template keys in Redis for superTemplateId: %d", keys.size(), superTemplateId);
 
                     // Fetch all templates from Redis
                     List<Uni<ThresholdGlobalTemplates>> fetches = keys.stream()
@@ -183,12 +185,12 @@ public class MessageTemplateCacheService {
                                             Long compositeKey = extractCompositeKey(key);
                                             if (compositeKey != null) {
                                                 inMemoryCache.put(compositeKey, template);
-                                                LOG.debugf("Cached template from Redis to in-memory: %s", key);
+                                                LoggingUtil.logDebug(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", "Cached template from Redis to in-memory: %s", key);
                                             }
                                         }
                                     })
                                     .onFailure().invoke(error ->
-                                            LOG.errorf(error, "Error retrieving template from Redis: %s", key))
+                                            LoggingUtil.logError(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", error, "Error retrieving template from Redis: %s", key))
                                     .onFailure().recoverWithNull())
                             .toList();
 
@@ -201,7 +203,7 @@ public class MessageTemplateCacheService {
                     );
                 })
                 .onFailure().invoke(error ->
-                        LOG.errorf(error, "Error retrieving templates from Redis for superTemplateId: %d", superTemplateId))
+                        LoggingUtil.logError(LOG, CLASS_NAME, "getTemplatesBySuperTemplateId", error, "Error retrieving templates from Redis for superTemplateId: %d", superTemplateId))
                 .onFailure().recoverWithItem(Collections.emptyList());
     }
 
@@ -229,7 +231,7 @@ public class MessageTemplateCacheService {
                 return Long.parseLong(superTemplateId.toString() + templateId.toString());
             }
         } catch (NumberFormatException e) {
-            LOG.warnf("Failed to extract composite key from Redis key: %s", redisKey);
+            LoggingUtil.logWarn(LOG, CLASS_NAME, "extractCompositeKey", "Failed to extract composite key from Redis key: %s", redisKey);
         }
         return null;
     }
@@ -241,7 +243,7 @@ public class MessageTemplateCacheService {
      * @return Uni that completes when refresh is done
      */
     public Uni<Void> refreshCache() {
-        LOG.info("Refreshing message template cache from database...");
+        LoggingUtil.logInfo(LOG, CLASS_NAME, "refreshCache", "Refreshing message template cache from database...");
 
         return templateRepository.getAllActiveTemplates()
                 .onItem().invoke(templates -> {
@@ -249,7 +251,7 @@ public class MessageTemplateCacheService {
                     inMemoryCache.clear();
 
                     if (templates == null || templates.isEmpty()) {
-                        LOG.warn("No active templates found during refresh");
+                        LoggingUtil.logWarn(LOG, CLASS_NAME, "refreshCache", "No active templates found during refresh");
                         return;
                     }
 
@@ -258,15 +260,15 @@ public class MessageTemplateCacheService {
                         try {
                             cacheTemplate(template);
                         } catch (Exception e) {
-                            LOG.errorf(e, "Failed to cache template ID %d during refresh",
+                            LoggingUtil.logError(LOG, CLASS_NAME, "refreshCache", e, "Failed to cache template ID %d during refresh",
                                     template.getTemplateId());
                         }
                     }
 
-                    LOG.infof("Cache refresh completed: %d templates loaded", templates.size());
+                    LoggingUtil.logInfo(LOG, CLASS_NAME, "refreshCache", "Cache refresh completed: %d templates loaded", templates.size());
                 })
                 .onFailure().invoke(error ->
-                        LOG.error("Failed to refresh message template cache", error))
+                        LoggingUtil.logError(LOG, CLASS_NAME, "refreshCache", error, "Failed to refresh message template cache"))
                 .replaceWithVoid();
     }
 
