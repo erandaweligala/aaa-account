@@ -690,7 +690,7 @@ public class AccountingUtil {
             long totalUsage) {
 
         if (foundBalance == null) {
-            return handleNoValidBalance(userData, request);
+            return handleNoValidBalance(userData, request,sessionData);
         }
 
 
@@ -702,7 +702,7 @@ public class AccountingUtil {
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
-                    sessionData, request.username()).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded"));
+                    sessionData, request.username()).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded",sessionData));
         }
         if (log.isTraceEnabled()) {
             log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
@@ -835,7 +835,7 @@ public class AccountingUtil {
      * @param request accounting request
      * @return Uni of UpdateResult with failure status
      */
-    private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request) {
+    private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request,Session sessionData) {
         log.warnf("No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
         // Send COA disconnect for all existing sessions
@@ -845,12 +845,12 @@ public class AccountingUtil {
                         log.debugf("Successfully sent COA disconnect for user: %s due to no valid balance",
                                 request.username());
                     }
-                    return UpdateResult.failure("No valid balance found");
+                    return UpdateResult.failure("No valid balance found",sessionData);
                 })
                 .onFailure().invoke(err ->
                         log.errorf(err, "Error sending COA disconnect for user: %s with no valid balance",
                                 request.username()))
-                .onFailure().recoverWithItem(UpdateResult.failure("No valid balance found"));
+                .onFailure().recoverWithItem(UpdateResult.failure("No valid balance found",sessionData));
     }
 
     /**
@@ -966,7 +966,7 @@ public class AccountingUtil {
         }
 
         UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
-                balance, previousUsageBucketId);
+                balance, previousUsageBucketId,null);
 
         return handleConsumptionLimitExceeded(userData, request, balance, result);
     }
@@ -986,7 +986,7 @@ public class AccountingUtil {
         updateSessionData(sessionData, balance, totalUsage, request.sessionTime());
 
         UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
-                balance, previousUsageBucketId);
+                balance, previousUsageBucketId,sessionData);
 
         if (shouldDisconnectSession(result, balance, previousUsageBucketId)) {
             return handleSessionDisconnect(userData, request, balance, result);
@@ -1084,7 +1084,9 @@ public class AccountingUtil {
     }
 
     private void updateSessionData(Session sessionData, Balance foundBalance, long totalUsage, Integer sessionTime) {
+        Long previousTotalUsageQuotaValue = sessionData.getPreviousTotalUsageQuotaValue();
         sessionData.setPreviousTotalUsageQuotaValue(totalUsage);
+        sessionData.setSessionUsage(totalUsage-previousTotalUsageQuotaValue);
         sessionData.setSessionTime(sessionTime);
         sessionData.setPreviousUsageBucketId(foundBalance.getBucketId());
         sessionData.setServiceId(foundBalance.getServiceId());
@@ -1136,6 +1138,12 @@ public class AccountingUtil {
             } else {
                 updatedUserData.getBalance().removeIf(rs -> !rs.isGroup());
                 updatedUserData.setUserName(null);
+            }
+            if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
+                updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
+            }
+            if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
+                updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
             }
             if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
                 updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
@@ -1256,7 +1264,7 @@ public class AccountingUtil {
                     .onFailure().invoke(err ->
                             log.errorf(err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
                                     request.username(), currentSession.getSessionId()))
-                    .replaceWith(UpdateResult.failure("Failed to disconnect timed-out session"));
+                    .replaceWith(UpdateResult.failure("Failed to disconnect timed-out session",currentSession));
         }
 
         return extractCoaCacheAndDBUpdate(request, foundBalance,

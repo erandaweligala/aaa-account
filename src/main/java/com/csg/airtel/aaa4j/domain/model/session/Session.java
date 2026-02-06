@@ -21,7 +21,7 @@ public class Session {
     private String framedId;
     private String nasIp;
     private String nasPortId;
-    private boolean isNewSession;
+    private long sessionUsage;
     private long availableBalance;
     private String groupId;
     private String userName;

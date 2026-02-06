@@ -117,11 +117,12 @@ public class InterimHandler {
                     .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {
-                            log.warnf("update failed for sessionId: %s", request.sessionId());
+                            log.warnf("update failed for sessionId: %s error :", request.sessionId(),updateResult.errorMessage());
                         }
                         log.infof("Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
-                        generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
+                        Session updatedSessions  = updateResult.sessionData() != null ? updateResult.sessionData():finalSession;
+                        generateAndSendCDR(request, updatedSessions, updatedSessions.getServiceId(), updatedSessions.getPreviousUsageBucketId());
                         return Uni.createFrom().voidItem();
 
                     });
@@ -148,7 +149,7 @@ public class InterimHandler {
                 request.framedIPAddress(),
                 request.nasIP(),
                 request.nasPortId(),
-                true,
+                0,
                 0,null,
                 request.username(),null,null,
                 null,

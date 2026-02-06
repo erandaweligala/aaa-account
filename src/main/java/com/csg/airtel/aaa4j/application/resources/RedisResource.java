@@ -71,8 +71,7 @@ public class RedisResource {
 
     @DELETE
     @Path("/redis/delete")
-    @Produces(MediaType.TEXT_PLAIN)
-    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
     public Uni<Map<String, Object>> deleteKeyCache(@QueryParam("username") String key) {
 
         return cacheClient

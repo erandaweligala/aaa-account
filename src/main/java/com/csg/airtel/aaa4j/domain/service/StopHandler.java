@@ -126,7 +126,7 @@ public class StopHandler {
                 request.framedIPAddress(),
                 request.nasIP(),
                 request.nasPortId(),
-                false,
+                0,
                 0,null,
                 request.username(),
                 null,null,

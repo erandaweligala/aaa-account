@@ -86,7 +86,7 @@ public class CacheClient {
                 }))
                 .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
     }
-
+/*
     @Retry(
             maxRetries = 1,
             delay = 30,
@@ -125,6 +125,74 @@ public class CacheClient {
             ));
         }
     }
+
+ */
+
+
+    @Retry(
+            maxRetries = 1,
+            delay = 30,
+            maxDuration = 1500
+    )
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
+    public Uni<Void> storeUserData(String userId, UserSessionData userData, String userName) {
+
+        if (log.isDebugEnabled()) {
+            log.debugf("Storing user data for cache userId: %s", userId);
+        }
+
+        String key = KEY_PREFIX + userId;
+
+        return Uni.createFrom().item(userData)
+                .onItem().transformToUni(data -> {
+                    try {
+                        String jsonValue = objectMapper.writeValueAsString(data);
+
+                        // Always store user data
+                        Uni<?> storeUserDataUni = valueCommands.set(key, jsonValue);
+
+                        // No group handling required
+                        if (data == null || data.getGroupId() == null
+                                || "1".equalsIgnoreCase(data.getGroupId())) {
+                            return storeUserDataUni.replaceWithVoid();
+                        }
+
+                        String groupKey = GROUP_KEY_PREFIX + userName;
+                        String groupValues = data.getGroupId() + "," +
+                                data.getConcurrency() + "," +
+                                data.getUserStatus() + "," +
+                                data.getSessionTimeOut();
+
+                        // Check cache first
+                        return valueCommands.get(groupKey)
+                                .onItem().transformToUni(existingValue -> {
+                                    if (existingValue == null) {
+                                        // Group cache missing → update it
+                                        return Uni.combine().all().unis(
+                                                valueCommands.set(groupKey, groupValues),
+                                                storeUserDataUni
+                                        ).discardItems();
+                                    }
+
+                                    // Group cache already exists → only store user data
+                                    return storeUserDataUni.replaceWithVoid();
+                                });
+
+                    } catch (Exception e) {
+                        log.errorf("Failed to serialize user data for userId: %s - %s",
+                                userId, e.getMessage());
+
+                        return Uni.createFrom().failure(new BaseException(
+                                "Failed to serialize user data",
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
+                                Response.Status.INTERNAL_SERVER_ERROR,
+                                ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
+                                null
+                        ));
+                    }
+                });
+    }
+
 
     /**
      * Retrieve user data from Redis.

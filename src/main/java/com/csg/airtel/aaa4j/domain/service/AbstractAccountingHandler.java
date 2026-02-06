@@ -185,7 +185,7 @@ public class AbstractAccountingHandler {
                 request.framedIPAddress(),
                 request.nasIP(),
                 request.nasPortId(),
-                true,
+                0,
                 0,
                 null,
                 request.username(),

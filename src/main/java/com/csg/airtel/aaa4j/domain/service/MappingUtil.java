@@ -2,7 +2,6 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.*;
-import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectRequest;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 
 import java.time.LocalDateTime;

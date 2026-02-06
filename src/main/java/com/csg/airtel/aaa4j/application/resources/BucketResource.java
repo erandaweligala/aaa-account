@@ -53,20 +53,20 @@ public class BucketResource {
 
     }
 
-    @PATCH
-    @Path("/terminate-sessions/{userName}/{sessionId}")
-    @Produces(MediaType.APPLICATION_JSON)
-    @Consumes(MediaType.APPLICATION_JSON)
-    public Uni<Response> terminate(@PathParam("userName") String userName,@PathParam("sessionId") String sessionId) {
-        log.infof("Sessions Terminate  Start %s", userName);
-        return bucketService.terminateSessions(userName,sessionId)
-                .onItem().transform(apiResponse -> {
-                    log.infof("Sessions Terminate Completed %s", userName);
-                    return Response.status(apiResponse.getStatus())
-                            .entity(apiResponse)
-                            .build();
-                });
-    }
+//    @PATCH
+//    @Path("/terminate-sessions/{userName}/{sessionId}")
+//    @Produces(MediaType.APPLICATION_JSON)
+//    @Consumes(MediaType.APPLICATION_JSON)
+//    public Uni<Response> terminate(@PathParam("userName") String userName,@PathParam("sessionId") String sessionId) {
+//        log.infof("Sessions Terminate  Start %s", userName);
+//        return bucketService.terminateSessions(userName,sessionId)
+//                .onItem().transform(apiResponse -> {
+//                    log.infof("Sessions Terminate Completed %s", userName);
+//                    return Response.status(apiResponse.getStatus())
+//                            .entity(apiResponse)
+//                            .build();
+//                });
+//    }
 
     /**
      * Terminate sessions via HTTP-based CoA disconnect (non-blocking, no Kafka overhead).
@@ -78,7 +78,7 @@ public class BucketResource {
      * @return Response with operation result
      */
     @PATCH
-    @Path("/terminate-sessions-http/{userName}/{sessionId}")
+    @Path("/terminate-sessions/{userName}/{sessionId}")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Response> terminateViaHttp(@PathParam("userName") String userName,
