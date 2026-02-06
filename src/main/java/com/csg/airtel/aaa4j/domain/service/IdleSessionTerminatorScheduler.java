@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 public class IdleSessionTerminatorScheduler {
 
     private static final Logger log = Logger.getLogger(IdleSessionTerminatorScheduler.class);
-    private static final String CLASS_NAME = "IdleSessionTerminatorScheduler";
+    private static final String CLASS_NAME = IdleSessionTerminatorScheduler.class.getSimpleName();
 
     private final CacheClient cacheClient;
     private final SessionExpiryIndex sessionExpiryIndex;

@@ -28,7 +28,7 @@ import java.util.concurrent.CompletableFuture;
 public class AccountProducer {
 
     private static final Logger LOG = Logger.getLogger(AccountProducer.class);
-    private static final String CLASS_NAME = "AccountProducer";
+    private static final String CLASS_NAME = AccountProducer.class.getSimpleName();
     private final Emitter<DBWriteRequest> dbWriteRequestEmitter;
     private final Emitter<AccountingResponseEvent> accountingResponseEmitter;
     private final Emitter<AccountingCDREvent> accountingCDREventEmitter;

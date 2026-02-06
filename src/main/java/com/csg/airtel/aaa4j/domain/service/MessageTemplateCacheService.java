@@ -25,7 +25,7 @@ import java.util.Map;
 public class MessageTemplateCacheService {
 
     private static final Logger LOG = Logger.getLogger(MessageTemplateCacheService.class);
-    private static final String CLASS_NAME = "MessageTemplateCacheService";
+    private static final String CLASS_NAME = MessageTemplateCacheService.class.getSimpleName();
 
     private final MessageTemplateRepository templateRepository;
 

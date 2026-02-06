@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 public class StopHandler {
 
     private static final Logger log = Logger.getLogger(StopHandler.class);
-    private static final String CLASS_NAME = "StopHandler";
+    private static final String CLASS_NAME = StopHandler.class.getSimpleName();
 
     private final AbstractAccountingHandler accountingHandler;
     private final CacheClient cacheUtil;

@@ -23,7 +23,7 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class AccountingConsumer {
     private static final Logger LOG = Logger.getLogger(AccountingConsumer.class);
-    private static final String CLASS_NAME = "AccountingConsumer";
+    private static final String CLASS_NAME = AccountingConsumer.class.getSimpleName();
 
     final AccountProducer accountingProdEvent;
     final AccountingHandlerFactory accountingHandlerFactory;

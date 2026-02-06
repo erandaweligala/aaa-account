@@ -8,7 +8,7 @@ import org.jboss.logging.Logger;
  */
 public final class FailoverPathLogger {
 
-    private static final String CLASS_NAME = "FailoverPathLogger";
+    private static final String CLASS_NAME = FailoverPathLogger.class.getSimpleName();
 
     private FailoverPathLogger() {
     }

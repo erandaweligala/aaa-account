@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @ApplicationScoped
 public class InterimHandler {
     private static final Logger log = Logger.getLogger(InterimHandler.class);
-    private static final String CLASS_NAME = "InterimHandler";
+    private static final String CLASS_NAME = InterimHandler.class.getSimpleName();
 
     private final AbstractAccountingHandler accountingHandler;
     private final CacheClient cacheUtil;

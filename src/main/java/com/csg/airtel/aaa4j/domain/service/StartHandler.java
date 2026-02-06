@@ -26,7 +26,7 @@ import java.util.Objects;
 @ApplicationScoped
 public class StartHandler {
     private static final Logger log = Logger.getLogger(StartHandler.class);
-    private static final String CLASS_NAME = "StartHandler";
+    private static final String CLASS_NAME = StartHandler.class.getSimpleName();
     private final CacheClient utilCache;
     private final UserBucketRepository userRepository;
     private final AccountProducer  accountProducer;
