@@ -46,8 +46,10 @@ public class COAService {
 
         // Use merge instead of concatenate for parallel execution (better throughput)
         return Multi.createFrom().iterable(sessions)
-                .onItem().transformToUni(session ->
-                        accountProducer.produceAccountingResponseEvent(
+                .onItem().transformToUni(session -> {
+                        // Generate CoA Request CDR before sending the disconnect event
+                        generateAndSendCoaRequestCDR(session, username);
+                        return accountProducer.produceAccountingResponseEvent(
                                         MappingUtil.createResponse(
                                                 session.getSessionId(),
                                                 AppConstant.DISCONNECT_ACTION,
@@ -70,8 +72,8 @@ public class COAService {
                                                 session.getSessionId());
                                     }
                                 })
-                                .onFailure().recoverWithNull()
-                )
+                                .onFailure().recoverWithNull();
+                })
                 .merge() // Parallel execution instead of sequential
                 .collect().asList()
                 .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
@@ -103,6 +105,55 @@ public class COAService {
     }
 
     /**
+     * Generate and send COA Request CDR event asynchronously.
+     * This method builds a CDR event when a COA disconnect request is about to be sent to the NAS.
+     *
+     * @param session the session for which CoA request is being initiated
+     * @param username the username associated with the session
+     */
+    private void generateAndSendCoaRequestCDR(Session session, String username) {
+        try {
+            AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaRequestCDREvent(session, username);
+            accountProducer.produceAccountingCDREvent(cdrEvent)
+                    .subscribe()
+                    .with(
+                            success -> log.infof("COA Request CDR event sent successfully for session: %s, user: %s",
+                                    session.getSessionId(), username),
+                            failure -> log.errorf(failure, "Failed to send COA Request CDR event for session: %s, user: %s",
+                                    session.getSessionId(), username)
+                    );
+        } catch (Exception e) {
+            log.errorf(e, "Error building COA Request CDR event for session: %s, user: %s",
+                    session.getSessionId(), username);
+        }
+    }
+
+    /**
+     * Generate and send COA Response CDR event asynchronously.
+     * This method builds a CDR event when a COA disconnect response (ACK/NAK) is received from the NAS.
+     *
+     * @param session the session for which CoA response was received
+     * @param username the username associated with the session
+     * @param responseStatus the response status from NAS (e.g. "ACK", "NAK", "FAILED")
+     */
+    private void generateAndSendCoaResponseCDR(Session session, String username, String responseStatus) {
+        try {
+            AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaResponseCDREvent(session, username, responseStatus);
+            accountProducer.produceAccountingCDREvent(cdrEvent)
+                    .subscribe()
+                    .with(
+                            success -> log.infof("COA Response CDR event sent successfully for session: %s, user: %s, status: %s",
+                                    session.getSessionId(), username, responseStatus),
+                            failure -> log.errorf(failure, "Failed to send COA Response CDR event for session: %s, user: %s, status: %s",
+                                    session.getSessionId(), username, responseStatus)
+                    );
+        } catch (Exception e) {
+            log.errorf(e, "Error building COA Response CDR event for session: %s, user: %s, status: %s",
+                    session.getSessionId(), username, responseStatus);
+        }
+    }
+
+    /**
      * Produce accounting response event and generate COA disconnect CDR.
      * This method sends disconnect request to NAS for session rejection scenarios.
      * Used when rejecting new sessions (concurrency exceeded, no balance, etc.).
@@ -113,20 +164,24 @@ public class COAService {
      * @return Uni<Void> after the disconnect request is sent
      */
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
+        // Generate CoA Request CDR before sending the disconnect request
+        generateAndSendCoaRequestCDR(session, username);
         return coaHttpClient.sendDisconnect(event)
                 .onItem().invoke(response -> {
                     if (response.isAck()) {
                         log.infof("CoA disconnect ACK received for rejected session: %s", session.getSessionId());
                         monitoringService.recordCOARequest();
-                        generateAndSendCoaDisconnectCDR(session, username);
+                        generateAndSendCoaResponseCDR(session, username, "ACK");
                     } else {
                         log.warnf("CoA disconnect NAK/Failed for rejected session: %s, status: %s",
                                 session.getSessionId(), response.status());
+                        generateAndSendCoaResponseCDR(session, username, response.status());
                     }
                 })
-                .onFailure().invoke(failure ->
-                        log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
-                )
+                .onFailure().invoke(failure -> {
+                        log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
+                        generateAndSendCoaResponseCDR(session, username, "FAILED");
+                })
                 .replaceWithVoid();
     }
 
@@ -182,23 +237,28 @@ public class COAService {
                             session.getFramedId(),
                             session.getUserName() != null ? session.getUserName() : username);
 
+                    // Generate CoA Request CDR before sending the HTTP disconnect
+                    generateAndSendCoaRequestCDR(session, username);
+
                     // Send HTTP request and track ACK/NAK result
                     return coaHttpClient.sendDisconnect(request)
                             .onItem().transform(response -> {
                                 if (response.isAck()) {
                                     log.infof("CoA disconnect ACK received for session: %s", session.getSessionId());
                                     monitoringService.recordCOARequest();
-                                    generateAndSendCoaDisconnectCDR(session, username);
-                                    return new CoAResult(session.getSessionId(), true);// current change
+                                    generateAndSendCoaResponseCDR(session, username, "ACK");
+                                    return new CoAResult(session.getSessionId(), true);
                                 } else {
                                     log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
                                             session.getSessionId(), response.status(), response.message());
+                                    generateAndSendCoaResponseCDR(session, username, response.status());
                                     return new CoAResult(session.getSessionId(), false);
                                 }
                             })
-                            .onFailure().invoke(failure ->
-                                    log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
-                            )
+                            .onFailure().invoke(failure -> {
+                                    log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
+                                    generateAndSendCoaResponseCDR(session, username, "FAILED");
+                            })
                             .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // NAK on failure
                 })
                 .merge() // Parallel execution for all sessions
