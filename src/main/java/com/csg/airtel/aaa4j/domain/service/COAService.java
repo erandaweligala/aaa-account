@@ -1,6 +1,5 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
@@ -22,7 +21,6 @@ import java.util.Objects;
 @ApplicationScoped
 public class COAService {
     private static final Logger log = Logger.getLogger(COAService.class);
-    private static final String CLASS_NAME = COAService.class.getSimpleName();
 
     private final AccountProducer accountProducer;
     private final MonitoringService monitoringService;
@@ -68,10 +66,12 @@ public class COAService {
                                 .onFailure().retry()
                                 .withBackOff(Duration.ofMillis(AppConstant.COA_RETRY_INITIAL_BACKOFF_MS), Duration.ofSeconds(AppConstant.COA_RETRY_MAX_BACKOFF_SECONDS))
                                 .atMost(AppConstant.COA_RETRY_MAX_ATTEMPTS)
-                                .onFailure().invoke(failure ->
-                                    LoggingUtil.logDebug(log, CLASS_NAME, "clearAllSessionsAndSendCOAMassageQue", "Failed to produce disconnect event for session: %s",
-                                            session.getSessionId())
-                                )
+                                .onFailure().invoke(failure -> {
+                                    if (log.isDebugEnabled()) {
+                                        log.debugf(failure, "Failed to produce disconnect event for session: %s",
+                                                session.getSessionId());
+                                    }
+                                })
                                 .onFailure().recoverWithNull();
                 })
                 .merge() // Parallel execution instead of sequential
@@ -93,13 +93,13 @@ public class COAService {
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, CLASS_NAME, "generateAndSendCoaDisconnectCDR", "COA Disconnect CDR event sent successfully for session: %s, user: %s",
+                            success -> log.infof("COA Disconnect CDR event sent successfully for session: %s, user: %s",
                                     session.getSessionId(), username),
-                            failure -> LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCoaDisconnectCDR", failure, "Failed to send COA Disconnect CDR event for session: %s, user: %s",
+                            failure -> log.errorf(failure, "Failed to send COA Disconnect CDR event for session: %s, user: %s",
                                     session.getSessionId(), username)
                     );
         } catch (Exception e) {
-            LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCoaDisconnectCDR", e, "Error building COA Disconnect CDR event for session: %s, user: %s",
+            log.errorf(e, "Error building COA Disconnect CDR event for session: %s, user: %s",
                     session.getSessionId(), username);
         }
     }
@@ -117,13 +117,13 @@ public class COAService {
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, CLASS_NAME, "generateAndSendCoaRequestCDR", "COA Request CDR event sent successfully for session: %s, user: %s",
+                            success -> log.infof("COA Request CDR event sent successfully for session: %s, user: %s",
                                     session.getSessionId(), username),
-                            failure -> LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCoaRequestCDR", failure, "Failed to send COA Request CDR event for session: %s, user: %s",
+                            failure -> log.errorf(failure, "Failed to send COA Request CDR event for session: %s, user: %s",
                                     session.getSessionId(), username)
                     );
         } catch (Exception e) {
-            LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCoaRequestCDR", e, "Error building COA Request CDR event for session: %s, user: %s",
+            log.errorf(e, "Error building COA Request CDR event for session: %s, user: %s",
                     session.getSessionId(), username);
         }
     }
@@ -142,13 +142,13 @@ public class COAService {
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, CLASS_NAME, "generateAndSendCoaResponseCDR", "COA Response CDR event sent successfully for session: %s, user: %s, status: %s",
+                            success -> log.infof("COA Response CDR event sent successfully for session: %s, user: %s, status: %s",
                                     session.getSessionId(), username, responseStatus),
-                            failure -> LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCoaResponseCDR", failure, "Failed to send COA Response CDR event for session: %s, user: %s, status: %s",
+                            failure -> log.errorf(failure, "Failed to send COA Response CDR event for session: %s, user: %s, status: %s",
                                     session.getSessionId(), username, responseStatus)
                     );
         } catch (Exception e) {
-            LoggingUtil.logError(log, CLASS_NAME, "generateAndSendCoaResponseCDR", e, "Error building COA Response CDR event for session: %s, user: %s, status: %s",
+            log.errorf(e, "Error building COA Response CDR event for session: %s, user: %s, status: %s",
                     session.getSessionId(), username, responseStatus);
         }
     }
@@ -169,17 +169,17 @@ public class COAService {
         return coaHttpClient.sendDisconnect(event)
                 .onItem().invoke(response -> {
                     if (response.isAck()) {
-                        LoggingUtil.logInfo(log, CLASS_NAME, "produceAccountingResponseEvent", "CoA disconnect ACK received for rejected session: %s", session.getSessionId());
+                        log.infof("CoA disconnect ACK received for rejected session: %s", session.getSessionId());
                         monitoringService.recordCOARequest();
                         generateAndSendCoaResponseCDR(session, username, "ACK");
                     } else {
-                        LoggingUtil.logWarn(log, CLASS_NAME, "produceAccountingResponseEvent", "CoA disconnect NAK/Failed for rejected session: %s, status: %s",
+                        log.warnf("CoA disconnect NAK/Failed for rejected session: %s, status: %s",
                                 session.getSessionId(), response.status());
                         generateAndSendCoaResponseCDR(session, username, response.status());
                     }
                 })
                 .onFailure().invoke(failure -> {
-                        LoggingUtil.logError(log, CLASS_NAME, "produceAccountingResponseEvent", failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
+                        log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
                         generateAndSendCoaResponseCDR(session, username, "FAILED");
                 })
                 .replaceWithVoid();
@@ -206,7 +206,7 @@ public class COAService {
     public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
-            LoggingUtil.logDebug(log, CLASS_NAME, "clearAllSessionsAndSendCOA", "No sessions to disconnect for user: %s", username);
+            log.debugf("No sessions to disconnect for user: %s", username);
             return Uni.createFrom().item(userSessionData);
         }
 
@@ -221,11 +221,11 @@ public class COAService {
         }
 
         if (sessionsToDisconnect.isEmpty()) {
-            LoggingUtil.logDebug(log, CLASS_NAME, "clearAllSessionsAndSendCOA", "No matching sessions found for user: %s, sessionId: %s", username, sessionId);
+            log.debugf("No matching sessions found for user: %s, sessionId: %s", username, sessionId);
             return Uni.createFrom().item(userSessionData);
         }
 
-        LoggingUtil.logInfo(log, CLASS_NAME, "clearAllSessionsAndSendCOA", "Sending HTTP CoA disconnect for user: %s, session count: %d", username, sessionsToDisconnect.size());
+        log.infof("Sending HTTP CoA disconnect for user: %s, session count: %d", username, sessionsToDisconnect.size());
 
         // Send HTTP disconnect for each session in parallel (non-blocking)
         return Multi.createFrom().iterable(sessionsToDisconnect)
@@ -244,19 +244,19 @@ public class COAService {
                     return coaHttpClient.sendDisconnect(request)
                             .onItem().transform(response -> {
                                 if (response.isAck()) {
-                                    LoggingUtil.logInfo(log, CLASS_NAME, "clearAllSessionsAndSendCOA", "CoA disconnect ACK received for session: %s", session.getSessionId());
+                                    log.infof("CoA disconnect ACK received for session: %s", session.getSessionId());
                                     monitoringService.recordCOARequest();
                                     generateAndSendCoaResponseCDR(session, username, "ACK");
                                     return new CoAResult(session.getSessionId(), true);
                                 } else {
-                                    LoggingUtil.logWarn(log, CLASS_NAME, "clearAllSessionsAndSendCOA", "CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
+                                    log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
                                             session.getSessionId(), response.status(), response.message());
                                     generateAndSendCoaResponseCDR(session, username, response.status());
                                     return new CoAResult(session.getSessionId(), false);
                                 }
                             })
                             .onFailure().invoke(failure -> {
-                                    LoggingUtil.logError(log, CLASS_NAME, "clearAllSessionsAndSendCOA", failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
+                                    log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
                                     generateAndSendCoaResponseCDR(session, username, "FAILED");
                             })
                             .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // NAK on failure
@@ -271,7 +271,7 @@ public class COAService {
                             .toList();
 
                     if (nakSessionIds.isEmpty()) {
-                        LoggingUtil.logInfo(log, CLASS_NAME, "clearAllSessionsAndSendCOA", "No sessions received NAK for user: %s, returning original data", username);
+                        log.infof("No sessions received NAK for user: %s, returning original data", username);
                         return userSessionData;
                     }
 
@@ -280,7 +280,7 @@ public class COAService {
                             .filter(s -> !nakSessionIds.contains(s.getSessionId()))
                             .toList();
 
-                    LoggingUtil.logInfo(log, CLASS_NAME, "clearAllSessionsAndSendCOA", "Removed %d NAK sessions from user: %s, remaining sessions: %d",
+                    log.infof("Removed %d NAK sessions from user: %s, remaining sessions: %d",
                             nakSessionIds.size(), username, remainingSessions.size());
 
                     // Return updated UserSessionData with NAK sessions removed

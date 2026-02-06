@@ -1,7 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
@@ -26,48 +25,45 @@ import java.util.Objects;
 @ApplicationScoped
 public class StartHandler {
     private static final Logger log = Logger.getLogger(StartHandler.class);
-    private static final String CLASS_NAME = StartHandler.class.getSimpleName();
     private final CacheClient utilCache;
     private final UserBucketRepository userRepository;
     private final AccountProducer  accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
-    private final AbstractAccountingHandler accountingHandler;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService, AbstractAccountingHandler accountingHandler) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
         this.coaService = coaService;
-        this.accountingHandler = accountingHandler;
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
-        LoggingUtil.logInfo(log, CLASS_NAME, "processAccountingStart", "traceId: %s  Processing accounting start for user: %s, sessionId: %s",
+        log.infof("traceId: %s  Processing accounting start for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
 
         return utilCache.getUserData(request.username())
                 .onItem().invoke(userData ->
-                        LoggingUtil.logInfo(log, CLASS_NAME, "processAccountingStart", "traceId: %s User data retrieved for user: %s",traceId, request.username()))
+                        log.infof("traceId: %s User data retrieved for user: %s",traceId, request.username()))
                 .onItem().transformToUni(userSessionData -> {
                     if (userSessionData == null) {
-                        LoggingUtil.logInfo(log, CLASS_NAME, "processAccountingStart", "traceId: %s No cache entry found for user: %s", traceId,request.username());
+                        log.infof("traceId: %s No cache entry found for user: %s", traceId,request.username());
                         Uni<Void> accountingResponseEventUni = handleNewUserSession(request);
 
                         long duration = System.currentTimeMillis() - startTime;
-                        LoggingUtil.logInfo(log, CLASS_NAME, "processAccountingStart", "traceId: %s Completed processing accounting start for user: %s in %d ms",
+                        log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
                                 traceId, request.username(), duration);
                         return accountingResponseEventUni;
                     } else {
-                        LoggingUtil.logInfo(log, CLASS_NAME, "processAccountingStart", "traceId: %s Existing session found for user: %s",traceId, request.username());
+                        log.infof("traceId: %s Existing session found for user: %s",traceId, request.username());
                         Uni<Void> accountingResponseEventUni = handleExistingUserSession(request, userSessionData);
                         long duration = System.currentTimeMillis() - startTime;
-                        LoggingUtil.logInfo(log, CLASS_NAME, "processAccountingStart", "traceId: %s Completed processing accounting start for user: %s in %d ms",
+                        log.infof("traceId: %s Completed processing accounting start for user: %s in %d ms",
                                 traceId, request.username(), duration);
                         return accountingResponseEventUni;
                     }
@@ -75,13 +71,13 @@ public class StartHandler {
                 .onFailure().recoverWithUni(throwable -> {
                     // Handle circuit breaker open specifically - service temporarily unavailable
                     if (throwable instanceof CircuitBreakerOpenException) {
-                        LoggingUtil.logError(log, CLASS_NAME, "processAccountingStart", null, "traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
+                        log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
                                         "Service temporarily unavailable due to high tps or Redis connectivity issues.",
                                 traceId, request.username());
 
                     }
                     // Handle other errors
-                    LoggingUtil.logError(log, CLASS_NAME, "processAccountingStart", throwable, "[traceId: %s] Error processing accounting start for user: %s",
+                    log.errorf(throwable, "[traceId: %s] Error processing accounting start for user: %s",
                             traceId, request.username());
                     return Uni.createFrom().voidItem();
                 });
@@ -139,7 +135,7 @@ public class StartHandler {
 
         double availableBalance = calculateAvailableBalance(combinedBalances);
         if (availableBalance <= 0) {
-            LoggingUtil.logWarn(log, CLASS_NAME, "validateBalanceAndSession", "User: %s has exhausted their data balance. Cannot start new session.", request.username());
+            log.warnf("User: %s has exhausted their data balance. Cannot start new session.", request.username());
             return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "Data balance exhausted",
                             AccountingResponseEvent.EventType.COA,
@@ -149,7 +145,7 @@ public class StartHandler {
         }
 
         if (sessionAlreadyExists(userSessionData, request.sessionId())) {
-            LoggingUtil.logInfo(log, CLASS_NAME, "validateBalanceAndSession", "Session already exists for user: %s, sessionId: %s",
+            log.infof("Session already exists for user: %s, sessionId: %s",
                     request.username(), request.sessionId());
             return Uni.createFrom().voidItem();
         }
@@ -169,7 +165,7 @@ public class StartHandler {
             Balance highestPriorityBalance) {
 
         if (highestPriorityBalance == null) {
-            LoggingUtil.logWarn(log, CLASS_NAME, "processSessionWithHighestPriority", "No valid balance found for user: %s. Cannot start new session.", request.username());
+            log.warnf("No valid balance found for user: %s. Cannot start new session.", request.username());
             return coaService.produceAccountingResponseEvent(
                     MappingUtil.createResponse(request, "No valid balance found",
                             AccountingResponseEvent.EventType.COA,
@@ -191,11 +187,11 @@ public class StartHandler {
         return updateCachesForSession(request, userSessionData, newSession, isGroupBalance)
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
                 .invoke(() -> {
-                    LoggingUtil.logInfo(log, CLASS_NAME, "processSessionWithHighestPriority", "cdr write event started for user: %s", request.username());
+                    log.infof("cdr write event started for user: %s", request.username());
                     generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId());
                 })
                 .onFailure().recoverWithUni(throwable -> {
-                    LoggingUtil.logError(log, CLASS_NAME, "processSessionWithHighestPriority", throwable, "Failed to update cache for user: %s", request.username());
+                    log.errorf(throwable, "Failed to update cache for user: %s", request.username());
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -220,7 +216,7 @@ public class StartHandler {
             return updateUserAndGroupCaches(request, userSessionData, newSession, groupId);
         }else {
             if (hasMatchingNasPortId(userSessionData.getSessions(),request.nasPortId(),request.username()) && userSessionData.getSessions().size() >= newSession.getUserConcurrency() ) {
-                LoggingUtil.logError(log, CLASS_NAME, "updateCachesForSession", null, "Maximum concurrent sessions exceeded for individual user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                log.errorf("Maximum concurrent sessions exceeded for individual user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
                         request.username(), userSessionData.getSessions().size(),
                         userSessionData.getConcurrency(), request.nasPortId());
                 return coaService.produceAccountingResponseEvent(
@@ -241,7 +237,7 @@ public class StartHandler {
             Session newSession,
             String groupId) {
 
-        LoggingUtil.logInfo(log, CLASS_NAME, "updateUserAndGroupCaches", "Highest priority balance is a group balance. Adding session to group data for groupId: %s", groupId);
+        log.infof("Highest priority balance is a group balance. Adding session to group data for groupId: %s", groupId);
 
 
 
@@ -256,7 +252,7 @@ public class StartHandler {
                             }
                         }
                         if (hasMatchingNasPortId(groupSessionData.getSessions(),request.nasPortId(),request.username()) && count >= newSession.getUserConcurrency() ) {
-                            LoggingUtil.logError(log, CLASS_NAME, "updateUserAndGroupCaches", null, "Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+                            log.errorf("Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
                                     request.username(), groupSessionData.getSessions().size(),
                                     userSessionData.getConcurrency(), request.nasPortId());
                             return coaService.produceAccountingResponseEvent(
@@ -270,7 +266,7 @@ public class StartHandler {
                         return updateBothCaches(request.username(), userSessionData, groupId, groupSessionData);
                     }
 
-                    LoggingUtil.logWarn(log, CLASS_NAME, "updateUserAndGroupCaches", "Group data not found for groupId: %s. Only updating user data.", groupId);
+                    log.warnf("Group data not found for groupId: %s. Only updating user data.", groupId);
                     return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData,request.username());
                 })
                 .replaceWithVoid();
@@ -294,13 +290,13 @@ public class StartHandler {
                         utilCache.updateUserAndRelatedCaches(groupId, groupSessionData,groupId)
                 ).discardItems()
                 .onItem().invoke(unused ->
-                        LoggingUtil.logInfo(log, CLASS_NAME, "updateBothCaches", "Session added to both user: %s and group: %s", username, groupId));
+                        log.infof("Session added to both user: %s and group: %s", username, groupId));
     }
 
     private Uni<Void> updateUserCacheOnly(AccountingRequestDto request, UserSessionData userSessionData) {
         return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData,request.username())
                 .onItem().invoke(unused ->
-                        LoggingUtil.logInfo(log, CLASS_NAME, "updateUserCacheOnly", "New session added for user: %s, sessionId: %s",
+                        log.infof("New session added for user: %s, sessionId: %s",
                                 request.username(), request.sessionId()))
                 .replaceWithVoid();
     }
@@ -308,14 +304,14 @@ public class StartHandler {
 
 
     private Uni<Void> handleNewUserSession(AccountingRequestDto request) {
-        LoggingUtil.logInfo(log, CLASS_NAME, "handleNewUserSession", "No existing session data found for user: %s. Creating new session data.",
+        log.infof("No existing session data found for user: %s. Creating new session data.",
                 request.username());
 
         return userRepository.getServiceBucketsByUserName(request.username())
                 .onItem().transformToUni(serviceBuckets ->
                         processServiceBuckets(request, serviceBuckets))
                 .onFailure().recoverWithUni(throwable -> {
-                    LoggingUtil.logError(log, CLASS_NAME, "handleNewUserSession", throwable, "Error creating new user session for user: %s",
+                    log.errorf(throwable, "Error creating new user session for user: %s",
                             request.username());
                     return Uni.createFrom().voidItem();
                 });
@@ -340,7 +336,7 @@ public class StartHandler {
     }
 
     private Uni<Void> handleNoServiceBuckets(AccountingRequestDto request) {
-        LoggingUtil.logWarn(log, CLASS_NAME, "handleNoServiceBuckets", "No service buckets found for user: %s. Cannot create session data.", request.username());
+        log.warnf("No service buckets found for user: %s. Cannot create session data.", request.username());
         return coaService.produceAccountingResponseEvent(
                 MappingUtil.createResponse(request, "No service buckets found",
                         AccountingResponseEvent.EventType.COA,
@@ -350,7 +346,7 @@ public class StartHandler {
     }
 
     private Uni<Void> handleZeroQuota(AccountingRequestDto request) {
-        LoggingUtil.logWarn(log, CLASS_NAME, "handleZeroQuota", "User: %s has zero total data quota. Cannot create session data.", request.username());
+        log.warnf("User: %s has zero total data quota. Cannot create session data.", request.username());
         return coaService.produceAccountingResponseEvent(
                 MappingUtil.createResponse(request, "Data quota is zero",
                         AccountingResponseEvent.EventType.COA,
@@ -414,13 +410,13 @@ public class StartHandler {
         return userStorageUni
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
                 .onItem().invoke(unused -> {
-                    LoggingUtil.logInfo(log, CLASS_NAME, "createAndStoreNewSession", "CDR write event started for user: %s", request.username());
+                    log.infof("CDR write event started for user: %s", request.username());
                     generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
                 });
     }
 
     private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {
-        LoggingUtil.logWarn(log, CLASS_NAME, "handleNoValidBalance", "No valid balance found for user: %s. Cannot create session data.", request.username());
+        log.warnf("No valid balance found for user: %s. Cannot create session data.", request.username());
         return coaService.produceAccountingResponseEvent(
                 MappingUtil.createResponse(request, "No valid balance found",
                         AccountingResponseEvent.EventType.COA,
@@ -456,7 +452,7 @@ public class StartHandler {
     private Uni<Void> storeUserSessionData(String username, UserSessionData sessionData) {
         return utilCache.storeUserData(username, sessionData,username)
                 .onItem().invoke(unused ->
-                        LoggingUtil.logInfo(log, CLASS_NAME, "storeUserSessionData", "New user session data created and stored for user: %s", username))
+                        log.infof("New user session data created and stored for user: %s", username))
                 .replaceWithVoid();
     }
 
@@ -502,14 +498,14 @@ public class StartHandler {
             groupSessionData.setGroupId(groupId);
         if (isHighestPriorityGroupBalance) {
             groupSessionData.setSessions(new ArrayList<>(List.of(session)));
-            LoggingUtil.logInfo(log, CLASS_NAME, "storeNewGroupData", "Adding session to new group data for groupId: %s (highest priority balance is group balance)", groupId);
+            log.infof("Adding session to new group data for groupId: %s (highest priority balance is group balance)", groupId);
         } else {
             groupSessionData.setSessions(new ArrayList<>());
         }
 
         return utilCache.storeUserData(groupId, groupSessionData,session.getUserName())
-                .onItem().invoke(unused -> LoggingUtil.logInfo(log, CLASS_NAME, "storeNewGroupData", "Group session data stored for groupId: %s", groupId))
-                .onFailure().invoke(failure -> LoggingUtil.logError(log, CLASS_NAME, "storeNewGroupData", failure, "Failed to store group data for groupId: %s", groupId));
+                .onItem().invoke(unused -> log.infof("Group session data stored for groupId: %s", groupId))
+                .onFailure().invoke(failure -> log.errorf(failure, "Failed to store group data for groupId: %s", groupId));
     }
 
     private Uni<Void> updateExistingGroupData(
@@ -523,12 +519,12 @@ public class StartHandler {
                 existingData.setSessions(new ArrayList<>());
             }
             existingData.getSessions().add(session);
-            LoggingUtil.logInfo(log, CLASS_NAME, "updateExistingGroupData", "Adding session to existing group data for groupId: %s (highest priority balance is group balance)", groupId);
+            log.infof("Adding session to existing group data for groupId: %s (highest priority balance is group balance)", groupId);
         }
 
-        LoggingUtil.logInfo(log, CLASS_NAME, "updateExistingGroupData", "Group session data already exists for groupId: %s", groupId);
+        log.infof("Group session data already exists for groupId: %s", groupId);
         return utilCache.updateUserAndRelatedCaches(groupId, existingData,session.getUserName())
-                .onItem().invoke(unused -> LoggingUtil.logInfo(log, CLASS_NAME, "updateExistingGroupData", "Existing group session data updated for groupId: %s", groupId));
+                .onItem().invoke(unused -> log.infof("Existing group session data updated for groupId: %s", groupId));
     }
 
     private record BucketProcessingResult(

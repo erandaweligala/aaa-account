@@ -1,6 +1,5 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.QuotaNotificationEvent;
 import com.csg.airtel.aaa4j.domain.model.ThresholdGlobalTemplates;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
@@ -17,7 +16,6 @@ import java.util.*;
 public class QuotaNotificationService {
 
     private static final Logger LOG = Logger.getLogger(QuotaNotificationService.class);
-    private static final String CLASS_NAME = QuotaNotificationService.class.getSimpleName();
 
     private final AccountProducer accountProducer;
     private final MessageTemplateCacheService templateCacheService;
@@ -66,18 +64,18 @@ public class QuotaNotificationService {
         double oldUsagePercentage = ((double) (initialBalance - oldQuota) / initialBalance) * 100;
         double newUsagePercentage = ((double) (initialBalance - newQuota) / initialBalance) * 100;
 
-        LoggingUtil.logDebug(LOG, CLASS_NAME, "checkAndNotifyThresholds", "Checking thresholds for user=%s, bucket=%s, oldUsage=%.2f%%, newUsage=%.2f%%",
+        LOG.debugf("Checking thresholds for user=%s, bucket=%s, oldUsage=%.2f%%, newUsage=%.2f%%",
                 userData.getUserName(), balance.getBucketId(), oldUsagePercentage, newUsagePercentage);
 
         // Get all templates matching the superTemplateId prefix and check each threshold
         return templateCacheService.getTemplatesBySuperTemplateId(superTemplateId)
                 .onItem().transformToUni(templates -> {
                     if (templates == null || templates.isEmpty()) {
-                        LoggingUtil.logDebug(LOG, CLASS_NAME, "checkAndNotifyThresholds", "No templates found for superTemplateId: %d", superTemplateId);
+                        LOG.debugf("No templates found for superTemplateId: %d", superTemplateId);
                         return Uni.createFrom().voidItem();
                     }
 
-                    LoggingUtil.logDebug(LOG, CLASS_NAME, "checkAndNotifyThresholds", "Processing %d templates for superTemplateId: %d", templates.size(), superTemplateId);
+                    LOG.debugf("Processing %d templates for superTemplateId: %d", templates.size(), superTemplateId);
 
                     // Create a notification check for each template
                     List<Uni<Void>> notifications = new ArrayList<>();
@@ -97,7 +95,7 @@ public class QuotaNotificationService {
                     return Uni.join().all(notifications).andFailFast()
                             .replaceWithVoid()
                             .onFailure().invoke(throwable ->
-                                    LoggingUtil.logError(LOG, CLASS_NAME, "checkAndNotifyThresholds", throwable, "Failed to publish quota notifications for user: %s",
+                                    LOG.errorf(throwable, "Failed to publish quota notifications for user: %s",
                                             userData.getUserName()))
                             .onFailure().recoverWithNull()
                             .replaceWithVoid();
@@ -124,7 +122,7 @@ public class QuotaNotificationService {
 
         // Check if threshold was just crossed (old < threshold <= new)
         if (oldUsagePercentage < threshold && newUsagePercentage >= threshold) {
-            LoggingUtil.logInfo(LOG, CLASS_NAME, "checkThreshold", "Threshold %d%% exceeded for user=%s, bucket=%s (%.2f%% -> %.2f%%)",
+            LOG.infof("Threshold %d%% exceeded for user=%s, bucket=%s (%.2f%% -> %.2f%%)",
                     threshold, userData.getUserName(), balance.getBucketId(),
                     oldUsagePercentage, newUsagePercentage);
 
@@ -136,7 +134,7 @@ public class QuotaNotificationService {
                     threshold
             ).onItem().transformToUni(isDuplicate -> {
                 if (Boolean.TRUE.equals(isDuplicate)) {
-                    LoggingUtil.logInfo(LOG, CLASS_NAME, "checkThreshold", "Skipping duplicate notification for user=%s, templateId=%d, bucket=%s, threshold=%d%%",
+                    LOG.infof("Skipping duplicate notification for user=%s, templateId=%d, bucket=%s, threshold=%d%%",
                             userData.getUserName(), templateId, balance.getBucketId(), threshold);
                     return Uni.createFrom().voidItem();
                 }
@@ -247,7 +245,7 @@ public class QuotaNotificationService {
                 Long id = Long.parseLong(part.trim());
                 ids.add(id);
             } catch (NumberFormatException e) {
-                LoggingUtil.logWarn(LOG, CLASS_NAME, "parseTemplateIds", "Invalid template ID: %s", part);
+                LOG.warnf("Invalid template ID: %s", part);
             }
         }
 
@@ -259,7 +257,7 @@ public class QuotaNotificationService {
      * Useful for runtime updates without restart.
      */
     public Uni<Void> refreshTemplateCache() {
-        LoggingUtil.logInfo(LOG, CLASS_NAME, "refreshTemplateCache", "Triggering template cache refresh");
+        LOG.info("Triggering template cache refresh");
         return templateCacheService.refreshCache();
     }
 }

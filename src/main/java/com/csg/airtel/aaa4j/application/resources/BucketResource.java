@@ -1,7 +1,6 @@
 package com.csg.airtel.aaa4j.application.resources;
 
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
 import com.csg.airtel.aaa4j.domain.service.BucketService;
@@ -17,7 +16,6 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class BucketResource {
     private static final Logger log = Logger.getLogger(BucketResource.class);
-    private static final String CLASS_NAME = BucketResource.class.getSimpleName();
     private final BucketService bucketService;
 
     public BucketResource(BucketService bucketService) {
@@ -29,10 +27,10 @@ public class BucketResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Response> addBucket(@PathParam("userName") String userName, BalanceWrapper balance) {
-        LoggingUtil.logInfo(log, CLASS_NAME, "addBucket", "Adding bucket  Start %s", userName);
+        log.infof("Adding bucket  Start %s", userName);
         return bucketService.addBucketBalance(userName, balance)
                 .onItem().transform(apiResponse -> {
-                    LoggingUtil.logInfo(log, CLASS_NAME, "addBucket", "Adding bucket  Completed %s", userName);
+                    log.infof("Adding bucket  Completed %s", userName);
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
@@ -44,10 +42,10 @@ public class BucketResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Response> updateBucket(@PathParam("userName") String userName, Balance balance,@PathParam("serviceId") String serviceId) {
-        LoggingUtil.logInfo(log, CLASS_NAME, "updateBucket", "update bucket  Start %s", userName);
+        log.infof("update bucket  Start %s", userName);
         return bucketService.updateBucketBalance(userName, balance,serviceId)
                 .onItem().transform(apiResponse -> {
-                    LoggingUtil.logInfo(log, CLASS_NAME, "updateBucket", "update bucket  Completed %s", userName);
+                    log.infof("update bucket  Completed %s", userName);
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
@@ -85,14 +83,14 @@ public class BucketResource {
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Response> terminateViaHttp(@PathParam("userName") String userName,
                                           @PathParam("sessionId") String sessionId) {
-        LoggingUtil.logInfo(log, CLASS_NAME, "terminateViaHttp", "HTTP CoA disconnect started for user: %s, sessionId: %s", userName, sessionId);
+        log.infof("HTTP CoA disconnect started for user: %s, sessionId: %s", userName, sessionId);
 
         // Convert "all" to null for disconnecting all sessions
         String sessionIdParam = "all".equalsIgnoreCase(sessionId) ? null : sessionId;
 
         return bucketService.terminateSessionsViaHttp(userName, sessionIdParam)
                 .onItem().transform(apiResponse -> {
-                    LoggingUtil.logInfo(log, CLASS_NAME, "terminateViaHttp", "HTTP CoA disconnect completed for user: %s", userName);
+                    log.infof("HTTP CoA disconnect completed for user: %s", userName);
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
@@ -104,10 +102,10 @@ public class BucketResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni<Response> userStatusUpdate(@PathParam("userName") String userName,@PathParam("status") String status) {
-        LoggingUtil.logInfo(log, CLASS_NAME, "userStatusUpdate", "Update User Status  Start %s", userName);
+        log.infof("Update User Status  Start %s", userName);
         return bucketService.updateUserStatus(userName,status)
                 .onItem().transform(apiResponse -> {
-                    LoggingUtil.logInfo(log, CLASS_NAME, "userStatusUpdate", "Update User Status Completed %s", userName);
+                    log.infof("Update User Status Completed %s", userName);
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();

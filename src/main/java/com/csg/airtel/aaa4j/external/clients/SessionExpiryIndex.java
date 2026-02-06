@@ -1,6 +1,5 @@
 package com.csg.airtel.aaa4j.external.clients;
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.sortedset.ReactiveSortedSetCommands;
 import io.quarkus.redis.datasource.sortedset.ScoreRange;
@@ -32,7 +31,6 @@ import java.util.Objects;
 public class SessionExpiryIndex {
 
     private static final Logger log = Logger.getLogger(SessionExpiryIndex.class);
-    private static final String CLASS_NAME = SessionExpiryIndex.class.getSimpleName();
 
     private static final String EXPIRY_INDEX_KEY = "session:";
     private static final String MEMBER_SEPARATOR = ":";
@@ -59,7 +57,9 @@ public class SessionExpiryIndex {
 
         return sortedSetCommands.zadd(EXPIRY_INDEX_KEY, score, member)
                 .onItem().invoke(added -> {
-                    LoggingUtil.logDebug(log, CLASS_NAME, "registerSession", "Registered session in expiry index: %s -> %d", member, expiryTimeMillis);
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Registered session in expiry index: %s -> %d", member, expiryTimeMillis);
+                    }
                 })
                 .replaceWithVoid();
     }
@@ -80,7 +80,9 @@ public class SessionExpiryIndex {
         // ZADD with default behavior updates score if member exists
         return sortedSetCommands.zadd(EXPIRY_INDEX_KEY, score, member)
                 .onItem().invoke(result -> {
-                    LoggingUtil.logDebug(log, CLASS_NAME, "updateSessionExpiry", "Updated session expiry: %s -> %d", member, newExpiryTimeMillis);
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Updated session expiry: %s -> %d", member, newExpiryTimeMillis);
+                    }
                 })
                 .replaceWithVoid();
     }
@@ -98,7 +100,9 @@ public class SessionExpiryIndex {
 
         return sortedSetCommands.zrem(EXPIRY_INDEX_KEY, member)
                 .onItem().invoke(removed -> {
-                    LoggingUtil.logDebug(log, CLASS_NAME, "removeSession", "Removed session from expiry index: %s, removed: %d", member, removed);
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Removed session from expiry index: %s, removed: %d", member, removed);
+                    }
                 })
                 .replaceWithVoid();
     }
@@ -131,7 +135,7 @@ public class SessionExpiryIndex {
      * @see CacheClient#getExpiredSessionsWithData(long, int)
      */
     public Multi<SessionExpiryEntry> getExpiredSessions(long expiryThresholdMillis, int limit) {
-        LoggingUtil.logInfo(log, CLASS_NAME, "getExpiredSessions", "Querying expired sessions with threshold: %d, limit: %d", expiryThresholdMillis, limit);
+        log.infof("Querying expired sessions with threshold: %d, limit: %d", expiryThresholdMillis, limit);
 
         // Use ZRANGEBYSCORE with limit to get oldest expired sessions first
         ScoreRange<Double> scoreRange = ScoreRange.from(Double.NEGATIVE_INFINITY, expiryThresholdMillis);
@@ -175,7 +179,7 @@ public class SessionExpiryIndex {
 
         int separatorIndex = member.indexOf(MEMBER_SEPARATOR);
         if (separatorIndex <= 0 || separatorIndex >= member.length() - 1) {
-            LoggingUtil.logWarn(log, CLASS_NAME, "parseMember", "Invalid member format in expiry index: %s", member);
+            log.warnf("Invalid member format in expiry index: %s", member);
             return null;
         }
 

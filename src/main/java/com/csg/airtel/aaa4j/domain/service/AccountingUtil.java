@@ -1,6 +1,5 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.*;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
@@ -22,7 +21,6 @@ import java.util.*;
 @ApplicationScoped
 public class AccountingUtil {
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
-    private static final String CLASS_NAME = AccountingUtil.class.getSimpleName();
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
     private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
     public static final String ERROR_UPDATING_CACHE_FOR_USER_S = "Error updating cache for user: %s";
@@ -67,7 +65,7 @@ public class AccountingUtil {
             LocalDateTime cachedNow = CACHED_NOW.get();
             LocalDate cachedToday = CACHED_TODAY.get();
             if (cachedNow != null || cachedToday != null) {
-                LoggingUtil.logTrace(log, CLASS_NAME, "clearTemporalCache", "Clearing temporal cache - cached now: %s, cached today: %s",
+                log.tracef("Clearing temporal cache - cached now: %s, cached today: %s",
                         cachedNow, cachedToday);
             }
         }
@@ -84,7 +82,9 @@ public class AccountingUtil {
      */
     public Uni<Balance> findBalanceWithHighestPriority(List<Balance> balances, String bucketId) {
 
-        LoggingUtil.logTrace(log, CLASS_NAME, "findBalanceWithHighestPriority", "Finding balance with highest priority from %d balances", balances.size());
+        if (log.isTraceEnabled()) {
+            log.tracef("Finding balance with highest priority from %d balances", balances.size());
+        }
         return Uni.createFrom().item(() -> computeHighestPriority(balances, bucketId));
     }
 
@@ -141,8 +141,10 @@ public class AccountingUtil {
             long currentConsumption = calculateConsumptionInWindow(balance, consumptionLimitWindow);
 
             if (currentConsumption >= consumptionLimit) {
-                LoggingUtil.logDebug(log, CLASS_NAME, "isBalanceEligible", "Skipping bucket %s: consumption limit exceeded (current=%d, limit=%d)",
-                        balance.getBucketId(), currentConsumption, consumptionLimit);
+                if (log.isDebugEnabled()) {
+                    log.debugf("Skipping bucket %s: consumption limit exceeded (current=%d, limit=%d)",
+                            balance.getBucketId(), currentConsumption, consumptionLimit);
+                }
                 return false;
             }
         }
@@ -185,7 +187,9 @@ public class AccountingUtil {
             }
         }
 
-        LoggingUtil.logTrace(log, CLASS_NAME, "getBalance", "Balance with highest priority selected: %s", highest != null ? highest.getBucketId() : "None");
+        if (log.isTraceEnabled()) {
+            log.tracef("Balance with highest priority selected: %s", highest != null ? highest.getBucketId() : "None");
+        }
         return highest;
     }
 
@@ -280,8 +284,10 @@ public class AccountingUtil {
 
         if (sessionData != null && sessionData.getSessionTime() != null
                 && request.sessionTime() <= sessionData.getSessionTime() && AccountingRequestDto.ActionType.INTERIM_UPDATE.equals(request.actionType())) {
-            LoggingUtil.logDebug(log, CLASS_NAME, "processWithGroupData", "Skipping processing in group context: session time unchanged for sessionId: %s (request: %d, session: %d)",
-                    request.sessionId(), request.sessionTime(), sessionData.getSessionTime());
+            if (log.isDebugEnabled()) {
+                log.debugf("Skipping processing in group context: session time unchanged for sessionId: %s (request: %d, session: %d)",
+                        request.sessionId(), request.sessionTime(), sessionData.getSessionTime());
+            }
             return Uni.createFrom().item(UpdateResult.skipped("Session time unchanged"));
         }
 
@@ -358,8 +364,10 @@ public class AccountingUtil {
         // Calculate which window we're in (1-indexed)
         int windowPeriod = (int) (daysSinceStart / consumptionLimitWindow) + 1;
 
-        LoggingUtil.logTrace(log, CLASS_NAME, "getCurrentWindowPeriod", "Current window period: %d (days since start: %d, window size: %d days)",
-                windowPeriod, daysSinceStart, consumptionLimitWindow);
+        if (log.isTraceEnabled()) {
+            log.tracef("Current window period: %d (days since start: %d, window size: %d days)",
+                    windowPeriod, daysSinceStart, consumptionLimitWindow);
+        }
 
         return windowPeriod;
     }
@@ -380,8 +388,10 @@ public class AccountingUtil {
         // Calculate the end date of the current window (inclusive)
         LocalDate windowEndDate = serviceStartDate.plusDays(currentPeriod * consumptionLimitWindow - 1);
 
-        LoggingUtil.logTrace(log, CLASS_NAME, "calculateFixedWindowBounds", "Fixed window bounds: period=%d, start=%s, end=%s",
-                currentPeriod, windowStartDate, windowEndDate);
+        if (log.isTraceEnabled()) {
+            log.tracef("Fixed window bounds: period=%d, start=%s, end=%s",
+                    currentPeriod, windowStartDate, windowEndDate);
+        }
 
         return new LocalDate[]{windowStartDate, windowEndDate};
     }
@@ -399,8 +409,8 @@ public class AccountingUtil {
 
         history.removeIf(consumptionRecord -> consumptionRecord.getDate().isBefore(windowStartDate));
 
-        if (!history.isEmpty()) {
-            LoggingUtil.logTrace(log, CLASS_NAME, "cleanupOldConsumptionRecords", "Cleaned up old consumption records for bucket %s: remaining records=%d",
+        if (log.isTraceEnabled() && !history.isEmpty()) {
+            log.tracef("Cleaned up old consumption records for bucket %s: remaining records=%d",
                     balance.getBucketId(), history.size());
         }
     }
@@ -421,8 +431,10 @@ public class AccountingUtil {
         // Get service start date from balance
         LocalDateTime serviceStartDateTime = balance.getServiceStartDate();
         if (serviceStartDateTime == null) {
-            LoggingUtil.logDebug(log, CLASS_NAME, "calculateConsumptionInWindow", "Service start date is null for bucket %s, falling back to rolling window",
-                    balance.getBucketId());
+            if (log.isDebugEnabled()) {
+                log.debugf("Service start date is null for bucket %s, falling back to rolling window",
+                        balance.getBucketId());
+            }
             // Fallback to rolling window if serviceStartDate is not available
             return calculateRollingWindowConsumption(history, windowDays);
         }
@@ -445,8 +457,10 @@ public class AccountingUtil {
             }
         }
 
-        LoggingUtil.logDebug(log, CLASS_NAME, "calculateConsumptionInWindow", "Consumption in current window for bucket %s: %d bytes (window: %s to %s)",
-                balance.getBucketId(), total, windowStartDate, windowEndDate);
+        if (log.isDebugEnabled()) {
+            log.debugf("Consumption in current window for bucket %s: %d bytes (window: %s to %s)",
+                    balance.getBucketId(), total, windowStartDate, windowEndDate);
+        }
 
         return total;
     }
@@ -510,8 +524,10 @@ public class AccountingUtil {
         long currentConsumption = previousConsumption + usageDelta;
 
         if (currentConsumption > consumptionLimit) {
-            LoggingUtil.logDebug(log, CLASS_NAME, "isConsumptionLimitExceeded", "Consumption limit exceeded for bucket %s: current=%d, limit=%d",
-                    balance.getBucketId(), currentConsumption, consumptionLimit);
+            if (log.isDebugEnabled()) {
+                log.debugf("Consumption limit exceeded for bucket %s: current=%d, limit=%d",
+                        balance.getBucketId(), currentConsumption, consumptionLimit);
+            }
             return true;
         }
 
@@ -549,14 +565,18 @@ public class AccountingUtil {
             todayRecord = new ConsumptionRecord(today, bytesConsumed, 1);
             history.add(todayRecord);
 
-            LoggingUtil.logTrace(log, CLASS_NAME, "recordConsumption", "Created new daily consumption record for bucket %s: date=%s, bytes=%d",
-                    balance.getBucketId(), today, bytesConsumed);
+            if (log.isTraceEnabled()) {
+                log.tracef("Created new daily consumption record for bucket %s: date=%s, bytes=%d",
+                        balance.getBucketId(), today, bytesConsumed);
+            }
         } else {
             // Aggregate into existing daily record
             todayRecord.addConsumption(bytesConsumed);
 
-            LoggingUtil.logTrace(log, CLASS_NAME, "recordConsumption", "Updated daily consumption record for bucket %s: date=%s, total_bytes=%d, request_count=%d",
-                    balance.getBucketId(), today, todayRecord.getBytesConsumed(), todayRecord.getRequestCount());
+            if (log.isTraceEnabled()) {
+                log.tracef("Updated daily consumption record for bucket %s: date=%s, total_bytes=%d, request_count=%d",
+                        balance.getBucketId(), today, todayRecord.getBytesConsumed(), todayRecord.getRequestCount());
+            }
         }
     }
 
@@ -640,7 +660,9 @@ public class AccountingUtil {
             combined.addAll(groupSessions);
         }
 
-        LoggingUtil.logTrace(log, CLASS_NAME, "getCombinedSessionsSync", "Combined sessions: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
+        if (log.isTraceEnabled()) {
+            log.tracef("Combined sessions: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
+        }
 
         return combined;
     }
@@ -673,7 +695,7 @@ public class AccountingUtil {
 
 
         if (!request.actionType().equals(AccountingRequestDto.ActionType.STOP) && isCheckConcurrency(userData, sessionData, request, foundBalance, combinedSessions)) {
-            LoggingUtil.logError(log, "processBalanceUpdateWithCombinedData", null, "Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
+            log.errorf("Maximum concurrent sessions exceeded for Group user: %s. Current sessions: %d, Limit: %d, nasPortId: %s",
                     request.username(), userData.getSessions().size(),
                     sessionData.getUserConcurrency(), request.nasPortId());
             return coaService.produceAccountingResponseEvent(
@@ -682,8 +704,10 @@ public class AccountingUtil {
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                     sessionData, request.username()).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded",sessionData));
         }
-        LoggingUtil.logTrace(log, CLASS_NAME, "processBalanceUpdateWithCombinedData", "Processing balance update with combined data - balances: %d, sessions: %d",
-                combinedBalances.size(), combinedSessions.size());
+        if (log.isTraceEnabled()) {
+            log.tracef("Processing balance update with combined data - balances: %d, sessions: %d",
+                    combinedBalances.size(), combinedSessions.size());
+        }
 
         BalanceUpdateContext context = prepareBalanceUpdateContext(
                 sessionData, foundBalance, combinedBalances, totalUsage);
@@ -751,7 +775,7 @@ public class AccountingUtil {
         long concurrencyLimit = userData.getConcurrency();
 
         if (hasMatchingNasPortId && concurrencyLimit + 1 <= sessionCount) {
-            LoggingUtil.logError(log, "checkIndividualConcurrency", null, "Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
+            log.errorf("Maximum number of concurrency sessions exceeded for individual user: %s (limit: %d, current: %d)",
                     request.username(), concurrencyLimit, sessionCount);
             return true;
         }
@@ -774,7 +798,7 @@ public class AccountingUtil {
         long userConcurrencyLimit = sessionData.getUserConcurrency();
 
         if (hasMatchingNasPortId && userSessionCount >= userConcurrencyLimit + 1) {
-            LoggingUtil.logError(log, "checkGroupConcurrency", null, "Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
+            log.errorf("Maximum number of concurrency sessions exceeded for group user: %s (limit: %d, current: %d)",
                     request.username(), userConcurrencyLimit, userSessionCount);
             return true;
         }
@@ -812,17 +836,19 @@ public class AccountingUtil {
      * @return Uni of UpdateResult with failure status
      */
     private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request,Session sessionData) {
-        LoggingUtil.logWarn(log, CLASS_NAME, "handleNoValidBalance", "No valid balance found for user: %s. Disconnecting all sessions.", request.username());
+        log.warnf("No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
         // Send COA disconnect for all existing sessions
         return coaService.clearAllSessionsAndSendCOA(userData, request.username(), null)
                 .onItem().transform(updatedUserData -> {
-                    LoggingUtil.logDebug(log, "handleNoValidBalance", "Successfully sent COA disconnect for user: %s due to no valid balance",
-                            request.username());
+                    if (log.isDebugEnabled()) {
+                        log.debugf("Successfully sent COA disconnect for user: %s due to no valid balance",
+                                request.username());
+                    }
                     return UpdateResult.failure("No valid balance found",sessionData);
                 })
                 .onFailure().invoke(err ->
-                        LoggingUtil.logError(log, "handleNoValidBalance", err, "Error sending COA disconnect for user: %s with no valid balance",
+                        log.errorf(err, "Error sending COA disconnect for user: %s with no valid balance",
                                 request.username()))
                 .onFailure().recoverWithItem(UpdateResult.failure("No valid balance found",sessionData));
     }
@@ -863,8 +889,10 @@ public class AccountingUtil {
 
         Balance previousBalance = findBalanceByBucketId(combinedBalances, previousUsageBucketId);
         if (previousBalance != null) {
-            LoggingUtil.logTrace(log, CLASS_NAME, "determineEffectiveBalance", "Bucket changed - using previous balance %s instead of new balance",
-                    previousUsageBucketId);
+            if (log.isTraceEnabled()) {
+                log.tracef("Bucket changed - using previous balance %s instead of new balance",
+                        previousUsageBucketId);
+            }
             return previousBalance;
         }
 
@@ -932,8 +960,10 @@ public class AccountingUtil {
             long newQuota,
             String previousUsageBucketId) {
 
-        LoggingUtil.logDebug(log, CLASS_NAME, "handleConsumptionLimitExceededScenario", "Consumption limit exceeded for user: %s, bucket: %s. Triggering disconnect.",
-                request.username(), balance.getBucketId());
+        if (log.isDebugEnabled()) {
+            log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Triggering disconnect.",
+                    request.username(), balance.getBucketId());
+        }
 
         UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
                 balance, previousUsageBucketId,null);
@@ -983,7 +1013,7 @@ public class AccountingUtil {
         long newQuota;
 
         if (bucketChanged) {
-            LoggingUtil.logInfo(log, "updateQuotaForBucketChange", "Bucket changed from %s to %s for session: %s",
+            log.infof("Bucket changed from %s to %s for session: %s",
                     previousUsageBucketId, foundBalance.getBucketId(), sessionData.getSessionId());
 
             Balance previousBalance = findBalanceByBucketId(combinedBalances, previousUsageBucketId);
@@ -1011,14 +1041,14 @@ public class AccountingUtil {
 
         replaceInCollection(userData.getBalance(), previousBalance);
 
-        LoggingUtil.logInfo(log, "updatePreviousBucketQuota", "Updated previous bucket %s quota to %d",
+        log.infof("Updated previous bucket %s quota to %d",
                 previousBalance.getBucketId(), previousBalance.getQuota());
 
         // Check and notify quota thresholds asynchronously
         quotaNotificationService.checkAndNotifyThresholds(userData, previousBalance, oldQuota, newQuota)
                 .subscribe().with(
                         unused -> {},
-                        failure -> LoggingUtil.logError(log, "updatePreviousBucketQuota", failure, "Failed to check thresholds for bucket %s",
+                        failure -> log.errorf(failure, "Failed to check thresholds for bucket %s",
                                 previousBalance.getBucketId())
                 );
 
@@ -1035,7 +1065,7 @@ public class AccountingUtil {
         long newQuota = getNewQuota(sessionData, foundBalance, totalUsage);
 
         if (newQuota <= 0) {
-            LoggingUtil.logWarn(log, CLASS_NAME, "calculateAndUpdateCurrentBucketQuota", "Quota depleted for session: %s", sessionData.getSessionId());
+            log.warnf("Quota depleted for session: %s", sessionData.getSessionId());
         }
 
         foundBalance.setQuota(Math.max(newQuota, 0));
@@ -1046,7 +1076,7 @@ public class AccountingUtil {
         quotaNotificationService.checkAndNotifyThresholds(userData, foundBalance, oldQuota, newQuota)
                 .subscribe().with(
                         unused -> {},
-                        failure -> LoggingUtil.logError(log, "calculateAndUpdateCurrentBucketQuota", failure, "Failed to check thresholds for bucket %s",
+                        failure -> log.errorf(failure, "Failed to check thresholds for bucket %s",
                                 foundBalance.getBucketId())
                 );
 
@@ -1081,7 +1111,7 @@ public class AccountingUtil {
 
         String username = request.username();
         String bucketUsername = foundBalance.getBucketUsername();
-
+        
         // Clear all sessions and send COA disconnect for all sessions
         return coaService.clearAllSessionsAndSendCOA(userData, username, null)
                 .onItem().transformToUni(updatedUserData ->
@@ -1095,7 +1125,7 @@ public class AccountingUtil {
                         )
                 )
                 .onFailure().invoke(err ->
-                        LoggingUtil.logError(log, "handleSessionDisconnect", err,
+                        log.debugf(err,
                                 "Error clearing sessions and updating balance for user: %s",
                                 username)
                 )
@@ -1119,20 +1149,22 @@ public class AccountingUtil {
                 updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
             }
 
-        LoggingUtil.logTrace(log, "extractCoaCacheAndDBUpdate", "Successfully cleared all sessions for user: %s, remaining sessions: %d",
-                username, updatedUserData.getSessions() != null ?
-                updatedUserData.getSessions().size() : 0);
+        if (log.isTraceEnabled()) {
+            log.tracef("Successfully cleared all sessions for user: %s, remaining sessions: %d",
+                    username, updatedUserData.getSessions() != null ?
+                    updatedUserData.getSessions().size() : 0);
+        }
         if(isDBUpdate) {
             return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                     request.sessionId(), username)
                     .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username()))
                     .onFailure().invoke(err ->
-                            LoggingUtil.logError(log, "extractCoaCacheAndDBUpdate", err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
+                            log.errorf(err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
                     .replaceWithVoid();
         }else {
            return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username())
                     .onFailure().invoke(err ->
-                            LoggingUtil.logError(log, "extractCoaCacheAndDBUpdate", err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
+                            log.errorf(err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
                                 .replaceWithVoid();
         }
     }
@@ -1155,8 +1187,10 @@ public class AccountingUtil {
         String username = request.username();
         String bucketUsername = foundBalance.getBucketUsername();
 
-        LoggingUtil.logDebug(log, CLASS_NAME, "handleConsumptionLimitExceeded", "Consumption limit exceeded for user: %s, bucket: %s. Disconnecting all sessions.",
-                username, foundBalance.getBucketId());
+        if (log.isDebugEnabled()) {
+            log.debugf("Consumption limit exceeded for user: %s, bucket: %s. Disconnecting all sessions.",
+                    username, foundBalance.getBucketId());
+        }
 
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
         return coaService.clearAllSessionsAndSendCOA(userData, username, null)
@@ -1171,7 +1205,7 @@ public class AccountingUtil {
                         )
                 )
                 .onFailure().invoke(err ->
-                        LoggingUtil.logError(log, "handleConsumptionLimitExceeded", err,
+                        log.debugf(err,
                                 "Error clearing sessions and updating balance for user: %s",
                                 username)
                 )
@@ -1211,7 +1245,7 @@ public class AccountingUtil {
 
         // Check if session has exceeded absolute timeout
         if (isSessionAbsoluteTimeoutExceeded(currentSession)) {
-            LoggingUtil.logInfo(log, "getUpdateResultUni", "Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
+            log.infof("Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
                     request.username(), currentSession.getSessionId());
 
             // Remove session from userData and send COA disconnect
@@ -1228,7 +1262,7 @@ public class AccountingUtil {
                         )
                     )
                     .onFailure().invoke(err ->
-                            LoggingUtil.logError(log, "getUpdateResultUni", err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
+                            log.errorf(err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
                                     request.username(), currentSession.getSessionId()))
                     .replaceWith(UpdateResult.failure("Failed to disconnect timed-out session",currentSession));
         }
@@ -1236,7 +1270,7 @@ public class AccountingUtil {
         return extractCoaCacheAndDBUpdate(request, foundBalance,
                 userData, request.username(), foundBalance.getBucketUsername(),false)
                 .onFailure().invoke(err ->
-                            LoggingUtil.logError(log, "getUpdateResultUni", err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
+                            log.errorf(err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
                     .replaceWith(success);
 
     }
@@ -1273,8 +1307,10 @@ public class AccountingUtil {
             }
             userSessionGroupData.setSessions(groupSessions);
 
-            LoggingUtil.logDebug(log, CLASS_NAME, "prepareGroupDataWithSession", "Updated group bucket sessions: total=%d, added/updated sessionId=%s",
-                    groupSessions.size(), session.getSessionId());
+            if (log.isDebugEnabled()) {
+                log.debugf("Updated group bucket sessions: total=%d, added/updated sessionId=%s",
+                        groupSessions.size(), session.getSessionId());
+            }
         } else if (existingGroupData != null && existingGroupData.getSessions() != null) {
             // Preserve existing sessions if no session to add/update
             userSessionGroupData.setSessions(existingGroupData.getSessions());
@@ -1342,8 +1378,10 @@ public class AccountingUtil {
 
        return accountProducer.produceDBWriteEvent(dbWriteRequest)
                 .onFailure().invoke(throwable -> {
-            LoggingUtil.logError(log, "updateBalanceInDatabase", throwable, "Failed to produce DB write event for balance update, session: %s",
-                    sessionId);
+            if (log.isDebugEnabled()) {
+                log.debugf(throwable, "Failed to produce DB write event for balance update, session: %s",
+                        sessionId);
+            }
         });
     }
 
@@ -1365,7 +1403,7 @@ public class AccountingUtil {
         String[] times = timeWindow.split("-");
 
         if (times.length != 2) {
-            LoggingUtil.logError(log, "isWithinTimeWindow", null, "Invalid time window: %s", timeWindow);
+            log.errorf("Invalid time window: %s", timeWindow);
             throw new IllegalArgumentException("Invalid time window format. Expected format: 'HH-HH' (e.g., '00-24', '08-18', '0-12')");
         }
 
@@ -1422,12 +1460,16 @@ public class AccountingUtil {
             return Uni.createFrom().nullItem();
         }
 
-        LoggingUtil.logTrace(log, "getGroupBucketData", "Fetching group bucket data for groupId: %s", groupId);
+        if (log.isTraceEnabled()) {
+            log.tracef("Fetching group bucket data for groupId: %s", groupId);
+        }
 
         return cacheClient.getUserData(groupId)
-                .onFailure().invoke(throwable ->
-                    LoggingUtil.logError(log, "getGroupBucketData", throwable, "Failed to fetch group bucket data for groupId: %s", groupId)
-                )
+                .onFailure().invoke(throwable -> {
+                    if (log.isDebugEnabled()) {
+                        log.debugf(throwable, "Failed to fetch group bucket data for groupId: %s", groupId);
+                    }
+                })
                 .onFailure().recoverWithNull();
     }
 
@@ -1454,13 +1496,15 @@ public class AccountingUtil {
             LocalDateTime currentTime = LocalDateTime.now();
             boolean isExpired = currentTime.isAfter(sessionExpiryTime);
 
-            LoggingUtil.logDebug(log, "isSessionAbsoluteTimeoutExceeded", "Session timeout check - SessionId: %s, InitiatedTime: %s, Timeout : %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
-                    session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes,
-                    sessionExpiryTime, currentTime, isExpired);
+            if (log.isDebugEnabled()) {
+                log.debugf("Session timeout check - SessionId: %s, InitiatedTime: %s, Timeout : %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
+                        session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes,
+                        sessionExpiryTime, currentTime, isExpired);
+            }
 
             return isExpired;
         } catch (NumberFormatException e) {
-            LoggingUtil.logWarn(log, "isSessionAbsoluteTimeoutExceeded", "Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
+            log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
                     session.getAbsoluteTimeOut(), e.getMessage());
             return false;
         }

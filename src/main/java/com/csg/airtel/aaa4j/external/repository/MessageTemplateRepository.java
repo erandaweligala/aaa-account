@@ -1,6 +1,5 @@
 package com.csg.airtel.aaa4j.external.repository;
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.MessageTemplate;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
@@ -25,7 +24,6 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_MESSAGE_TEM
 public class MessageTemplateRepository {
 
     private static final Logger LOG = Logger.getLogger(MessageTemplateRepository.class);
-    private static final String CLASS_NAME = MessageTemplateRepository.class.getSimpleName();
 
     // Column name constants for MESSAGE_TEMPLATE table
     private static final String COL_TEMPLATE_ID = "ID";
@@ -61,16 +59,16 @@ public class MessageTemplateRepository {
             maxDuration = 15000
     )
     public Uni<List<MessageTemplate>> getAllActiveTemplates() {
-        LoggingUtil.logDebug(LOG, CLASS_NAME, "getAllActiveTemplates", "Fetching all active message templates");
+        LOG.debug("Fetching all active message templates");
 
         return client
                 .preparedQuery(QUERY_MESSAGE_TEMPLATES)
                 .execute()
                 .onItem().transform(this::mapRowsToMessageTemplates)
                 .onFailure().invoke(error ->
-                        LoggingUtil.logError(LOG, CLASS_NAME, "getAllActiveTemplates", error, "Error fetching message templates from database"))
+                        LOG.error("Error fetching message templates from database", error))
                 .onItem().invoke(results ->
-                        LoggingUtil.logInfo(LOG, CLASS_NAME, "getAllActiveTemplates", "Fetched %d active message templates from database", results.size()));
+                        LOG.infof("Fetched %d active message templates from database", results.size()));
     }
 
     /**

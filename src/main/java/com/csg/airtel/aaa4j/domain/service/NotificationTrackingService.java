@@ -1,6 +1,5 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
 import io.smallrye.mutiny.Uni;
@@ -14,7 +13,6 @@ import java.time.Duration;
 public class NotificationTrackingService {
 
     private static final Logger LOG = Logger.getLogger(NotificationTrackingService.class);
-    private static final String CLASS_NAME = NotificationTrackingService.class.getSimpleName();
     private static final String TRACKING_KEY_PREFIX = "notification-sent:";
 
     // Default time window to prevent duplicate notifications (1 hour)
@@ -48,12 +46,12 @@ public class NotificationTrackingService {
                 .onItem().transform(value -> {
                     boolean isDuplicate = value != null;
                     if (isDuplicate) {
-                        LoggingUtil.logInfo(LOG, CLASS_NAME, "isDuplicateNotification", "Duplicate notification detected for key: %s", trackingKey);
+                        LOG.infof("Duplicate notification detected for key: %s", trackingKey);
                     }
                     return isDuplicate;
                 })
                 .onFailure().invoke(error ->
-                        LoggingUtil.logWarn(LOG, CLASS_NAME, "isDuplicateNotification", "Error checking duplicate notification for key %s: %s. Allowing notification to proceed.",
+                        LOG.warnf("Error checking duplicate notification for key %s: %s. Allowing notification to proceed.",
                                 trackingKey, error.getMessage()))
                 .onFailure().recoverWithItem(false); // On error, allow notification (fail-open)
     }
@@ -97,10 +95,10 @@ public class NotificationTrackingService {
 
         return valueCommands.setex(trackingKey, ttl.getSeconds(), timestamp)
                 .onItem().invoke(success ->
-                        LoggingUtil.logDebug(LOG, CLASS_NAME, "markNotificationSent", "Marked notification as sent: %s (TTL: %d seconds)",
+                        LOG.debugf("Marked notification as sent: %s (TTL: %d seconds)",
                                 trackingKey, ttl.getSeconds()))
                 .onFailure().invoke(error ->
-                        LoggingUtil.logWarn(LOG, CLASS_NAME, "markNotificationSent", "Failed to mark notification as sent for key %s: %s",
+                        LOG.warnf("Failed to mark notification as sent for key %s: %s",
                                 trackingKey, error.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
@@ -138,9 +136,9 @@ public class NotificationTrackingService {
 
         return valueCommands.getdel(trackingKey)
                 .onItem().invoke(deleted ->
-                        LoggingUtil.logInfo(LOG, CLASS_NAME, "clearNotificationTracking", "Cleared notification tracking for key: %s", trackingKey))
+                        LOG.infof("Cleared notification tracking for key: %s", trackingKey))
                 .onFailure().invoke(error ->
-                        LoggingUtil.logWarn(LOG, CLASS_NAME, "clearNotificationTracking", "Failed to clear notification tracking for key %s: %s",
+                        LOG.warnf("Failed to clear notification tracking for key %s: %s",
                                 trackingKey, error.getMessage()))
                 .replaceWithVoid();
     }
