@@ -35,6 +35,7 @@ public class AccountingConsumer {
         long startTime = System.currentTimeMillis();
         AccountingRequestDto request = message.getPayload();
 
+        // Set MDC once on event loop thread — covers all synchronous logs
         setMdcContext(request);
         LoggingUtil.logInfo(LOG, METHOD_CONSUME, "Message received - will acknowledge immediately");
 
@@ -47,33 +48,32 @@ public class AccountingConsumer {
         // Acknowledge immediately, then process asynchronously
         return Uni.createFrom().completionStage(message.ack())
                 .onItem().transformToUni(v -> {
-                    setMdcContext(request);
+                    // Ack callback runs on same event loop thread — MDC already set
                     LoggingUtil.logInfo(LOG, METHOD_CONSUME,
                             "Message acknowledged for session: %s, starting async processing",
                             request.sessionId());
 
-                    // Process in background - don't wait for completion
+                    // Process in background on worker pool
                     accountingHandlerFactory.getHandler(request, request.eventId())
                             .onItem().invoke(success -> {
+                                // Worker thread — set MDC once for this thread
                                 setMdcContext(request);
                                 long duration = System.currentTimeMillis() - startTime;
                                 LoggingUtil.logInfo(LOG, METHOD_CONSUME,
                                         "Complete consumeAccountingEvent process in %d ms for session: %s",
                                         duration, request.sessionId());
-                                clearMdcContext();
                             })
                             .onFailure().invoke(failure -> {
+                                // Worker thread — set MDC once for this thread
                                 setMdcContext(request);
                                 long duration = System.currentTimeMillis() - startTime;
                                 LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
                                         "Failed processing session: %s after %d ms",
                                         request.sessionId(), duration);
-                                clearMdcContext();
                             })
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                             .subscribe().asCompletionStage();
 
-                    clearMdcContext();
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -82,12 +82,6 @@ public class AccountingConsumer {
         MDC.put(LoggingUtil.TRACE_ID, request.eventId());
         MDC.put("userName", request.username());
         MDC.put("sessionId", request.sessionId());
-    }
-
-    private void clearMdcContext() {
-        MDC.remove(LoggingUtil.TRACE_ID);
-        MDC.remove("userName");
-        MDC.remove("sessionId");
     }
 }
 
