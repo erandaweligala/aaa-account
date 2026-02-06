@@ -41,32 +41,31 @@ public class LoggingUtil {
     /**
      * Log INFO level message with structured format (no args variant).
      */
-    public static void logInfo(Logger logger, String className, String method, String message) {
+    public static void logInfo(Logger logger, String method, String message) {
         if (!logger.isInfoEnabled()) return;
-        logger.info(buildMessage(className, method, message));
+        logger.info(buildMessage(method, message));
     }
 
     /**
      * Log DEBUG level message with structured format (no args variant).
      */
-    public static void logDebug(Logger logger, String className, String method, String message) {
+    public static void logDebug(Logger logger,String method, String message) {
         if (!logger.isDebugEnabled()) return;
-        logger.debug(buildMessage(className, method, message));
+        logger.debug(buildMessage(method, message));
     }
 
     /**
      * Log WARN level message with structured format (no args variant).
      */
-    public static void logWarn(Logger logger, String className, String method, String message) {
-        if (!logger.isWarnEnabled()) return;
-        logger.warn(buildMessage(className, method, message));
+    public static void logWarn(Logger logger, String method, String message) {
+        logger.warn(buildMessage( method, message));
     }
 
     /**
      * Log ERROR level message with structured format and exception (no args variant).
      */
-    public static void logError(Logger logger, String className, String method, Throwable e, String message) {
-        String fullMessage = buildMessage(className, method, message);
+    public static void logError(Logger logger, String method, Throwable e, String message) {
+        String fullMessage = buildMessage(method, message);
         if (e != null) {
             logger.error(fullMessage, e);
         } else {
@@ -77,9 +76,9 @@ public class LoggingUtil {
     /**
      * Log TRACE level message with structured format (no args variant).
      */
-    public static void logTrace(Logger logger, String className, String method, String message) {
+    public static void logTrace(Logger logger, String method, String message) {
         if (!logger.isTraceEnabled()) return;
-        logger.trace(buildMessage(className, method, message));
+        logger.trace(buildMessage(method, message));
     }
 
     // ── Varargs overloads (for calls that need placeholder substitution) ─
@@ -87,32 +86,31 @@ public class LoggingUtil {
     /**
      * Log INFO level message with structured format.
      */
-    public static void logInfo(Logger logger, String className, String method, String message, Object... args) {
+    public static void logInfo(Logger logger, String method, String message, Object... args) {
         if (!logger.isInfoEnabled()) return;
-        logger.info(buildMessageWithArgs(className, method, message, args));
+        logger.info(buildMessageWithArgs(method, message, args));
     }
 
     /**
      * Log DEBUG level message with structured format.
      */
-    public static void logDebug(Logger logger, String className, String method, String message, Object... args) {
+    public static void logDebug(Logger logger, String method, String message, Object... args) {
         if (!logger.isDebugEnabled()) return;
-        logger.debug(buildMessageWithArgs(className, method, message, args));
+        logger.debug(buildMessageWithArgs(method, message, args));
     }
 
     /**
      * Log WARN level message with structured format.
      */
-    public static void logWarn(Logger logger, String className, String method, String message, Object... args) {
-        if (!logger.isWarnEnabled()) return;
-        logger.warn(buildMessageWithArgs(className, method, message, args));
+    public static void logWarn(Logger logger, String method, String message, Object... args) {
+        logger.warn(buildMessageWithArgs(method, message, args));
     }
 
     /**
      * Log ERROR level message with structured format and exception.
      */
-    public static void logError(Logger logger, String className, String method, Throwable e, String message, Object... args) {
-        String fullMessage = buildMessageWithArgs(className, method, message, args);
+    public static void logError(Logger logger,String method, Throwable e, String message, Object... args) {
+        String fullMessage = buildMessageWithArgs(method, message, args);
         if (e != null) {
             logger.error(fullMessage, e);
         } else {
@@ -123,9 +121,9 @@ public class LoggingUtil {
     /**
      * Log TRACE level message with structured format.
      */
-    public static void logTrace(Logger logger, String className, String method, String message, Object... args) {
+    public static void logTrace(Logger logger, String method, String message, Object... args) {
         if (!logger.isTraceEnabled()) return;
-        logger.trace(buildMessageWithArgs(className, method, message, args));
+        logger.trace(buildMessageWithArgs(method, message, args));
     }
 
     // ── Message building ─────────────────────────────────────────────────
@@ -134,9 +132,9 @@ public class LoggingUtil {
      * Build structured log message without placeholder substitution.
      * Uses ThreadLocal StringBuilder to avoid allocation per call.
      */
-    private static String buildMessage(String className, String method, String message) {
+    private static String buildMessage(String method, String message) {
         StringBuilder sb = acquireStringBuilder();
-        appendPrefix(sb, className, method);
+        appendPrefix(sb, method);
         sb.append(message);
         return sb.toString();
     }
@@ -145,9 +143,9 @@ public class LoggingUtil {
      * Build structured log message with placeholder substitution.
      * Uses ThreadLocal StringBuilder to avoid allocation per call.
      */
-    private static String buildMessageWithArgs(String className, String method, String message, Object[] args) {
+    private static String buildMessageWithArgs( String method, String message, Object[] args) {
         StringBuilder sb = acquireStringBuilder();
-        appendPrefix(sb, className, method);
+        appendPrefix(sb, method);
         if (args.length > 0) {
             appendFormatted(sb, message, args);
         } else {
@@ -159,14 +157,12 @@ public class LoggingUtil {
     /**
      * Append the common structured prefix to the StringBuilder.
      */
-    private static void appendPrefix(StringBuilder sb, String className, String method) {
+    private static void appendPrefix(StringBuilder sb, String method) {
         String traceId = getMdcValue(TRACE_ID);
         String userName = getMdcValue("userName");
         String sessionId = getMdcValue("sessionId");
 
-        sb.append('[').append(getTimestamp()).append(']');
         sb.append('[').append(traceId).append(']');
-        sb.append('[').append(className).append(']');
         sb.append('[').append(method).append(']');
         sb.append("[user=").append(userName).append(']');
         sb.append("[session=").append(sessionId).append("] ");
