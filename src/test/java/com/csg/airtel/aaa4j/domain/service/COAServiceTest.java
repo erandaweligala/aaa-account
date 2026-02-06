@@ -19,6 +19,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -249,4 +250,79 @@ class COAServiceTest {
 //
 //        verify(accountProducer, atLeast(2)).produceAccountingResponseEvent(any());
 //    }
+
+    @Test
+    void testHttp_WithFupApplyAction_SendsCorrectAction() {
+        CoADisconnectResponse ack = new CoADisconnectResponse("ACK", "S1", "Ok");
+
+        when(coaHttpClient.sendDisconnect(any()))
+                .thenReturn(Uni.createFrom().item(ack));
+
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
+
+        UserSessionData result = coaService
+                .clearAllSessionsAndSendCOA(userSessionData, "user", "S1",
+                        AccountingResponseEvent.ResponseAction.FUP_APPLY)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem().getItem();
+
+        assertNotNull(result);
+        verify(coaHttpClient).sendDisconnect(argThat(event ->
+                event.action() == AccountingResponseEvent.ResponseAction.FUP_APPLY));
+        verify(monitoringService, times(1)).recordCOARequest();
+    }
+
+    @Test
+    void testHttp_WithPackageUpgradeAction_SendsCorrectAction() {
+        CoADisconnectResponse ack = new CoADisconnectResponse("ACK", "S1", "Ok");
+
+        when(coaHttpClient.sendDisconnect(any()))
+                .thenReturn(Uni.createFrom().item(ack));
+
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
+
+        UserSessionData result = coaService
+                .clearAllSessionsAndSendCOA(userSessionData, "user", "S1",
+                        AccountingResponseEvent.ResponseAction.PACKAGE_UPGRADE)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem().getItem();
+
+        assertNotNull(result);
+        verify(coaHttpClient).sendDisconnect(argThat(event ->
+                event.action() == AccountingResponseEvent.ResponseAction.PACKAGE_UPGRADE));
+    }
+
+    @Test
+    void testHttp_DefaultActionIsDisconnect() {
+        CoADisconnectResponse ack = new CoADisconnectResponse("ACK", "S1", "Ok");
+
+        when(coaHttpClient.sendDisconnect(any()))
+                .thenReturn(Uni.createFrom().item(ack));
+
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
+
+        // Use the 3-param overload (should default to DISCONNECT)
+        coaService.clearAllSessionsAndSendCOA(userSessionData, "user", "S1")
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem();
+
+        verify(coaHttpClient).sendDisconnect(argThat(event ->
+                event.action() == AccountingResponseEvent.ResponseAction.DISCONNECT));
+    }
+
+    @Test
+    void testQueue_WithCustomAction_SendsCorrectAction() {
+        when(accountProducer.produceAccountingResponseEvent(any()))
+                .thenReturn(Uni.createFrom().voidItem());
+
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
+
+        coaService.clearAllSessionsAndSendCOAMassageQue(userSessionData, "user", "S1",
+                        AccountingResponseEvent.ResponseAction.FUP_APPLY)
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem(java.time.Duration.ofSeconds(2));
+
+        verify(accountProducer).produceAccountingResponseEvent(argThat(event ->
+                event.action() == AccountingResponseEvent.ResponseAction.FUP_APPLY));
+    }
 }

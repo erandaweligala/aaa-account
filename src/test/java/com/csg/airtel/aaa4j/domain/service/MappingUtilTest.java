@@ -54,6 +54,21 @@ class MappingUtilTest {
         );
 
         assertEquals(AccountingResponseEvent.EventType.COA, response.eventType());
+        assertEquals(AccountingResponseEvent.ResponseAction.DISCONNECT, response.action());
+    }
+
+    @Test
+    @DisplayName("Should create COA Response with explicit action parameter")
+    void createResponse_WithAction_ReturnsEventWithSpecifiedAction() {
+        AccountingResponseEvent response = MappingUtil.createResponse(
+                "sess-003", "FUP applied", "10.0.0.3", "192.168.1.3", "user789",
+                AccountingResponseEvent.ResponseAction.FUP_APPLY
+        );
+
+        assertEquals(AccountingResponseEvent.EventType.COA, response.eventType());
+        assertEquals(AccountingResponseEvent.ResponseAction.FUP_APPLY, response.action());
+        assertEquals("sess-003", response.sessionId());
+        assertEquals("FUP applied", response.message());
     }
 
     @Test

@@ -50,6 +50,18 @@ public class MappingUtil {
             String framedIPAddress,
             String userName) {
 
+        return createResponse(sessionId, message, nasIP, framedIPAddress, userName,
+                AccountingResponseEvent.ResponseAction.DISCONNECT);
+    }
+
+    public static AccountingResponseEvent createResponse(
+            String sessionId,
+            String message,
+            String nasIP,
+            String framedIPAddress,
+            String userName,
+            AccountingResponseEvent.ResponseAction action) {
+
         Map<String, String> attributes =
                  Map.of(
                          USERNAME, userName,
@@ -62,7 +74,7 @@ public class MappingUtil {
                 AccountingResponseEvent.EventType.COA,
                 LocalDateTime.now(),
                 sessionId,
-                AccountingResponseEvent.ResponseAction.DISCONNECT,
+                action,
                 message,
                 0L,
                 attributes);

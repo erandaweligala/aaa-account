@@ -34,7 +34,13 @@ public class COAService {
         this.coaHttpClient = coaHttpClient;
     }
 
-    public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username,String sessionId) {
+    public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username, String sessionId) {
+        return clearAllSessionsAndSendCOAMassageQue(userSessionData, username, sessionId,
+                AccountingResponseEvent.ResponseAction.DISCONNECT);
+    }
+
+    public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username, String sessionId,
+                                                           AccountingResponseEvent.ResponseAction action) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
             return Uni.createFrom().voidItem();
@@ -55,7 +61,8 @@ public class COAService {
                                                 AppConstant.DISCONNECT_ACTION,
                                                 session.getNasIp(),
                                                 session.getFramedId(),
-                                                session.getUserName() !=null ?session.getUserName():username
+                                                session.getUserName() !=null ?session.getUserName():username,
+                                                action
                                         )
                                 )
                                 .invoke(() -> {
@@ -192,11 +199,7 @@ public class COAService {
     private record CoAResult(String sessionId, boolean isAck) {}
 
     /**
-     * Send CoA Disconnect via HTTP (non-blocking).
-     * This method sends CoA disconnect requests directly to NAS via HTTP.
-     * Returns UserSessionData with sessions removed based on NAK responses:
-     * - ACK: Session remains in the list (successfully disconnected)
-     * - NAK: Session removed from the list (failed to disconnect)
+     * Send CoA Disconnect via HTTP (non-blocking) with default DISCONNECT action.
      *
      * @param userSessionData the user session data
      * @param username the username
@@ -204,59 +207,79 @@ public class COAService {
      * @return Uni<UserSessionData> with sessions removed/kept based on NAK/ACK responses
      */
     public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
+        return clearAllSessionsAndSendCOA(userSessionData, username, sessionId,
+                AccountingResponseEvent.ResponseAction.DISCONNECT);
+    }
+
+    /**
+     * Send CoA operation via HTTP (non-blocking).
+     * This method sends CoA requests directly to NAS via HTTP with a configurable action.
+     * Returns UserSessionData with sessions removed based on NAK responses:
+     * - ACK: Session remains in the list (successfully processed)
+     * - NAK: Session removed from the list (failed to process)
+     *
+     * @param userSessionData the user session data
+     * @param username the username
+     * @param sessionId specific session to target (null for all sessions)
+     * @param action the operation to send (DISCONNECT, FUP_APPLY, PACKAGE_UPGRADE, etc.)
+     * @return Uni<UserSessionData> with sessions removed/kept based on NAK/ACK responses
+     */
+    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username,
+                                                            String sessionId, AccountingResponseEvent.ResponseAction action) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
-            log.debugf("No sessions to disconnect for user: %s", username);
+            log.debugf("No sessions to process for user: %s", username);
             return Uni.createFrom().item(userSessionData);
         }
 
         // Filter sessions if specific sessionId is provided
-        List<Session> sessionsToDisconnect;
+        List<Session> sessionsToProcess;
         if (sessionId != null) {
-            sessionsToDisconnect = sessions.stream()
+            sessionsToProcess = sessions.stream()
                     .filter(s -> Objects.equals(s.getSessionId(), sessionId))
                     .toList();
         } else {
-            sessionsToDisconnect = sessions;
+            sessionsToProcess = sessions;
         }
 
-        if (sessionsToDisconnect.isEmpty()) {
+        if (sessionsToProcess.isEmpty()) {
             log.debugf("No matching sessions found for user: %s, sessionId: %s", username, sessionId);
             return Uni.createFrom().item(userSessionData);
         }
 
-        log.infof("Sending HTTP CoA disconnect for user: %s, session count: %d", username, sessionsToDisconnect.size());
+        log.infof("Sending HTTP CoA %s for user: %s, session count: %d", action, username, sessionsToProcess.size());
 
-        // Send HTTP disconnect for each session in parallel (non-blocking)
-        return Multi.createFrom().iterable(sessionsToDisconnect)
+        // Send HTTP request for each session in parallel (non-blocking)
+        return Multi.createFrom().iterable(sessionsToProcess)
                 .onItem().transformToUni(session -> {
                     AccountingResponseEvent request = MappingUtil.createResponse(
                             session.getSessionId(),
                             AppConstant.DISCONNECT_ACTION,
                             session.getNasIp(),
                             session.getFramedId(),
-                            session.getUserName() != null ? session.getUserName() : username);
+                            session.getUserName() != null ? session.getUserName() : username,
+                            action);
 
-                    // Generate CoA Request CDR before sending the HTTP disconnect
+                    // Generate CoA Request CDR before sending the HTTP request
                     generateAndSendCoaRequestCDR(session, username);
 
                     // Send HTTP request and track ACK/NAK result
                     return coaHttpClient.sendDisconnect(request)
                             .onItem().transform(response -> {
                                 if (response.isAck()) {
-                                    log.infof("CoA disconnect ACK received for session: %s", session.getSessionId());
+                                    log.infof("CoA %s ACK received for session: %s", action, session.getSessionId());
                                     monitoringService.recordCOARequest();
                                     generateAndSendCoaResponseCDR(session, username, "ACK");
                                     return new CoAResult(session.getSessionId(), true);
                                 } else {
-                                    log.warnf("CoA disconnect NAK/Failed for session: %s, status: %s, message: %s",
-                                            session.getSessionId(), response.status(), response.message());
+                                    log.warnf("CoA %s NAK/Failed for session: %s, status: %s, message: %s",
+                                            action, session.getSessionId(), response.status(), response.message());
                                     generateAndSendCoaResponseCDR(session, username, response.status());
                                     return new CoAResult(session.getSessionId(), false);
                                 }
                             })
                             .onFailure().invoke(failure -> {
-                                    log.errorf(failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
+                                    log.errorf(failure, "HTTP CoA %s failed for session: %s", action, session.getSessionId());
                                     generateAndSendCoaResponseCDR(session, username, "FAILED");
                             })
                             .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // NAK on failure
@@ -264,7 +287,7 @@ public class COAService {
                 .merge() // Parallel execution for all sessions
                 .collect().asList()
                 .onItem().transform(results -> {
-                    // Collect NAK session IDs (failed disconnects)
+                    // Collect NAK session IDs (failed operations)
                     List<String> nakSessionIds = results.stream()
                             .filter(result -> !result.isAck())
                             .map(CoAResult::sessionId)
