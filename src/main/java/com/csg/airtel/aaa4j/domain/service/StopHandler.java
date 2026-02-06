@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.*;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -17,6 +18,7 @@ import java.time.LocalDateTime;
 public class StopHandler {
 
     private static final Logger log = Logger.getLogger(StopHandler.class);
+    private static final String CLASS_NAME = "StopHandler";
 
     private final AbstractAccountingHandler accountingHandler;
     private final CacheClient cacheUtil;
@@ -39,17 +41,17 @@ public class StopHandler {
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
-        log.infof("[traceId: %s] Processing accounting stop for user: %s, sessionId: %s",
+        LoggingUtil.logInfo(log, CLASS_NAME, "stopProcessing", "[traceId: %s] Processing accounting stop for user: %s, sessionId: %s",
                 traceId, request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
-                .onItem().invoke(() -> log.infof("[traceId: %s] User data retrieved for user: %s", traceId, request.username()))
+                .onItem().invoke(() -> LoggingUtil.logInfo(log, CLASS_NAME, "stopProcessing", "[traceId: %s] User data retrieved for user: %s", traceId, request.username()))
                 .onItem().transformToUni(userSessionData ->
                         userSessionData != null ?
-                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> log.infof("[traceId: %s] Completed processing for eventType=%s, action=%s, bucketId=%s", traceId, bucketId))
+                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> LoggingUtil.logInfo(log, CLASS_NAME, "stopProcessing", "[traceId: %s] Completed processing for eventType=%s, action=%s, bucketId=%s", traceId, bucketId))
                                  : accountingHandler.handleNewSessionUsage(request, traceId, this::processAccountingStop, this::createSession)
                 )
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Error processing accounting for user: %s", request.username());
+                    LoggingUtil.logError(log, CLASS_NAME, "stopProcessing", throwable, "Error processing accounting for user: %s", request.username());
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -59,14 +61,14 @@ public class StopHandler {
             ,String bucketId) {
 
         if (request.delayTime() > 0) {
-            log.warnf("Duplicate Stop Request unchanged for sessionId: %s",request.sessionId());
+            LoggingUtil.logWarn(log, CLASS_NAME, "processAccountingStop", "Duplicate Stop Request unchanged for sessionId: %s", request.sessionId());
             return Uni.createFrom().voidItem();
 
         }
         Session session = accountingHandler.findSessionById(userSessionData.getSessions(), request.sessionId());
 
         if (session == null) {
-            log.infof( "[traceId: %s] Session not found for sessionId: %s", request.username(), request.sessionId());
+            LoggingUtil.logInfo(log, CLASS_NAME, "processAccountingStop", "[traceId: %s] Session not found for sessionId: %s", request.username(), request.sessionId());
                 session = createSession(request);
                 session.setGroupId(userSessionData.getGroupId());
         }
@@ -80,7 +82,7 @@ public class StopHandler {
                         DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(updateResult.balance(), request.username(), request.sessionId(), EventType.UPDATE_EVENT);
                         return accountProducer.produceDBWriteEvent(dbWriteRequest)
                                 .onFailure().invoke(throwable ->
-                                        log.errorf(throwable, "Failed to produce DB write event for session: %s",
+                                        LoggingUtil.logError(log, CLASS_NAME, "processAccountingStop", throwable, "Failed to produce DB write event for session: %s",
                                                 request.sessionId())
                                 );
                     }else {
@@ -92,13 +94,11 @@ public class StopHandler {
                     //send CDR event asynchronously
                     generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId())
                 )
-                .invoke(() -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("Session and balance cleaned for session: %s", request.sessionId());
-                    }
-                })
+                .invoke(() ->
+                    LoggingUtil.logDebug(log, CLASS_NAME, "processAccountingStop", "Session and balance cleaned for session: %s", request.sessionId())
+                )
                 .onFailure().recoverWithUni(throwable -> {
-                    log.errorf(throwable, "Failed to process accounting stop for session: %s",
+                    LoggingUtil.logError(log, CLASS_NAME, "processAccountingStop", throwable, "Failed to process accounting stop for session: %s",
                             request.sessionId());
                     return Uni.createFrom().voidItem();
                 });
