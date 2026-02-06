@@ -14,7 +14,7 @@ import java.time.Duration;
 public class NotificationTrackingService {
 
     private static final Logger LOG = Logger.getLogger(NotificationTrackingService.class);
-    private static final String CLASS_NAME = "NotificationTrackingService";
+    private static final String CLASS_NAME = NotificationTrackingService.class.getSimpleName();
     private static final String TRACKING_KEY_PREFIX = "notification-sent:";
 
     // Default time window to prevent duplicate notifications (1 hour)

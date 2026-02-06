@@ -22,7 +22,7 @@ import java.util.function.BiFunction;
 public class CdrMappingUtil {
 
     private static final Logger log = Logger.getLogger(CdrMappingUtil.class);
-    private static final String CLASS_NAME = "CdrMappingUtil";
+    private static final String CLASS_NAME = CdrMappingUtil.class.getSimpleName();
 
     private CdrMappingUtil() {
         // Private constructor to prevent instantiation

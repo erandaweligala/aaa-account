@@ -29,7 +29,7 @@ import java.util.function.Function;
 public class AbstractAccountingHandler {
 
     private static final Logger log = Logger.getLogger(AbstractAccountingHandler.class);
-    private static final String CLASS_NAME = "AbstractAccountingHandler";
+    private static final String CLASS_NAME = AbstractAccountingHandler.class.getSimpleName();
     private static final String NO_SERVICE_BUCKETS_MSG = "No service buckets found";
 
     private final CacheClient cacheUtil;

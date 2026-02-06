@@ -29,7 +29,7 @@ import java.time.ZoneId;
 @ApplicationScoped
 public class SessionLifecycleManager {
     private static final Logger log = Logger.getLogger(SessionLifecycleManager.class);
-    private static final String CLASS_NAME = "SessionLifecycleManager";
+    private static final String CLASS_NAME = SessionLifecycleManager.class.getSimpleName();
 
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;

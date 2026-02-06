@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 @ApplicationScoped
 public class MonitoringService {
     private static final Logger log = Logger.getLogger(MonitoringService.class);
-    private static final String CLASS_NAME = "MonitoringService";
+    private static final String CLASS_NAME = MonitoringService.class.getSimpleName();
     private static final String COA_REQUEST_COUNT_CACHE_KEY = "coaRequestCount";
 
     private final Counter sessionsCreatedCounter;

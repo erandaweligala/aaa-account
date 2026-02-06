@@ -17,7 +17,7 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class BucketResource {
     private static final Logger log = Logger.getLogger(BucketResource.class);
-    private static final String CLASS_NAME = "BucketResource";
+    private static final String CLASS_NAME = BucketResource.class.getSimpleName();
     private final BucketService bucketService;
 
     public BucketResource(BucketService bucketService) {

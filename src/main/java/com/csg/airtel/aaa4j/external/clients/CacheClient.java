@@ -30,7 +30,7 @@ import java.util.stream.Collectors;
 public class CacheClient {
 
     private static final Logger log = Logger.getLogger(CacheClient.class);
-    private static final String CLASS_NAME = "CacheClient";
+    private static final String CLASS_NAME = CacheClient.class.getSimpleName();
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;
     private static final String KEY_PREFIX = "user:";

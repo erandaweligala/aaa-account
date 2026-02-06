@@ -32,7 +32,7 @@ import java.util.Objects;
 public class SessionExpiryIndex {
 
     private static final Logger log = Logger.getLogger(SessionExpiryIndex.class);
-    private static final String CLASS_NAME = "SessionExpiryIndex";
+    private static final String CLASS_NAME = SessionExpiryIndex.class.getSimpleName();
 
     private static final String EXPIRY_INDEX_KEY = "session:";
     private static final String MEMBER_SEPARATOR = ":";

@@ -21,7 +21,7 @@ import org.jboss.logging.Logger;
 public class CoAHttpClient {
 
     private static final Logger log = Logger.getLogger(CoAHttpClient.class);
-    private static final String CLASS_NAME = "CoAHttpClient";
+    private static final String CLASS_NAME = CoAHttpClient.class.getSimpleName();
 
     private final WebClientProvider webClientProvider;
 

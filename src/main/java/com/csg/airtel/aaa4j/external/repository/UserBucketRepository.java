@@ -23,7 +23,7 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
 public class UserBucketRepository {
 
     private static final Logger log = Logger.getLogger(UserBucketRepository.class);
-    private static final String CLASS_NAME = "UserBucketRepository";
+    private static final String CLASS_NAME = UserBucketRepository.class.getSimpleName();
 
     private static final String COL_BUCKET_ID = "BUCKET_ID";
     private static final String COL_CURRENT_BALANCE = "CURRENT_BALANCE";

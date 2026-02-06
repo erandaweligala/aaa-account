@@ -22,7 +22,7 @@ import java.util.Objects;
 @ApplicationScoped
 public class BucketService {
     private static final Logger log = Logger.getLogger(BucketService.class);
-    private static final String CLASS_NAME = "BucketService";
+    private static final String CLASS_NAME = BucketService.class.getSimpleName();
     public static final String USER_NOT_FOUND = "User not found";
     public static final String USERNAME_IS_REQUIRED = "Username is required";
     private final CacheClient cacheClient;

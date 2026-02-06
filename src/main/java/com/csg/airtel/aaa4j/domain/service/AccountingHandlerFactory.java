@@ -12,7 +12,7 @@ import org.jboss.logging.Logger;
 @ApplicationScoped
 public class AccountingHandlerFactory {
     private static final Logger LOG = Logger.getLogger(AccountingHandlerFactory.class);
-    private static final String CLASS_NAME = "AccountingHandlerFactory";
+    private static final String CLASS_NAME = AccountingHandlerFactory.class.getSimpleName();
     final StartHandler startHandler;
     final InterimHandler interimHandler;
     final StopHandler stopHandler;

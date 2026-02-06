@@ -22,7 +22,7 @@ import java.util.Objects;
 @ApplicationScoped
 public class COAService {
     private static final Logger log = Logger.getLogger(COAService.class);
-    private static final String CLASS_NAME = "COAService";
+    private static final String CLASS_NAME = COAService.class.getSimpleName();
 
     private final AccountProducer accountProducer;
     private final MonitoringService monitoringService;
