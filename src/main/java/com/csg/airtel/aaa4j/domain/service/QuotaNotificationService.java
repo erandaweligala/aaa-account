@@ -17,7 +17,7 @@ import java.util.*;
 public class QuotaNotificationService {
 
     private static final Logger LOG = Logger.getLogger(QuotaNotificationService.class);
-    private static final String CLASS_NAME = "QuotaNotificationService";
+    private static final String CLASS_NAME = QuotaNotificationService.class.getSimpleName();
 
     private final AccountProducer accountProducer;
     private final MessageTemplateCacheService templateCacheService;

@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit;
 public class OraclePoolCustomizer implements OraclePoolCreator {
 
     private static final Logger log = Logger.getLogger(OraclePoolCustomizer.class);
-    private static final String CLASS_NAME = "OraclePoolCustomizer";
+    private static final String CLASS_NAME = OraclePoolCustomizer.class.getSimpleName();
 
     private final PoolConfig poolConfig;
 

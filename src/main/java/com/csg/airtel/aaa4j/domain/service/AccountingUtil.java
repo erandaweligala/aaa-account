@@ -22,7 +22,7 @@ import java.util.*;
 @ApplicationScoped
 public class AccountingUtil {
     private static final Logger log = Logger.getLogger(AccountingUtil.class);
-    private static final String CLASS_NAME = "AccountingUtil";
+    private static final String CLASS_NAME = AccountingUtil.class.getSimpleName();
     private static final ThreadLocal<LocalDateTime> CACHED_NOW = new ThreadLocal<>();
     private static final ThreadLocal<LocalDate> CACHED_TODAY = new ThreadLocal<>();
     public static final String ERROR_UPDATING_CACHE_FOR_USER_S = "Error updating cache for user: %s";

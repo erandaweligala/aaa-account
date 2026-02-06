@@ -25,7 +25,7 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_MESSAGE_TEM
 public class MessageTemplateRepository {
 
     private static final Logger LOG = Logger.getLogger(MessageTemplateRepository.class);
-    private static final String CLASS_NAME = "MessageTemplateRepository";
+    private static final String CLASS_NAME = MessageTemplateRepository.class.getSimpleName();
 
     // Column name constants for MESSAGE_TEMPLATE table
     private static final String COL_TEMPLATE_ID = "ID";
