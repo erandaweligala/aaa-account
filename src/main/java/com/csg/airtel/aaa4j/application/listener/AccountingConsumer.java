@@ -1,6 +1,6 @@
 package com.csg.airtel.aaa4j.application.listener;
 
-
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
@@ -11,17 +11,14 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.reactive.messaging.Acknowledgment;
 import org.eclipse.microprofile.reactive.messaging.Incoming;
-
-
-
 import org.eclipse.microprofile.reactive.messaging.Message;
 import org.jboss.logging.Logger;
-
-
+import org.slf4j.MDC;
 
 @ApplicationScoped
 public class AccountingConsumer {
     private static final Logger LOG = Logger.getLogger(AccountingConsumer.class);
+    private static final String METHOD_CONSUME = "consumeAccountingEvent";
 
     final AccountProducer accountingProdEvent;
     final AccountingHandlerFactory accountingHandlerFactory;
@@ -36,32 +33,42 @@ public class AccountingConsumer {
     @Acknowledgment(Acknowledgment.Strategy.MANUAL)
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Message received - will acknowledge immediately");
-
         AccountingRequestDto request = message.getPayload();
+
+        // Set MDC once on event loop thread — covers all synchronous logs
+        setMdcContext(request);
+        LoggingUtil.logInfo(LOG, METHOD_CONSUME, "Message received - will acknowledge immediately");
 
         if (LOG.isDebugEnabled()) {
             message.getMetadata(IncomingKafkaRecordMetadata.class)
-                    .ifPresent(metadata -> LOG.debugf("Partition: %d, Offset: %d",
-                            metadata.getPartition(), metadata.getOffset()));
+                    .ifPresent(metadata -> LoggingUtil.logDebug(LOG, METHOD_CONSUME,
+                            "Partition: %d, Offset: %d", metadata.getPartition(), metadata.getOffset()));
         }
 
         // Acknowledge immediately, then process asynchronously
         return Uni.createFrom().completionStage(message.ack())
                 .onItem().transformToUni(v -> {
-                    LOG.infof("Message acknowledged for session: %s, starting async processing",
+                    // Ack callback runs on same event loop thread — MDC already set
+                    LoggingUtil.logInfo(LOG, METHOD_CONSUME,
+                            "Message acknowledged for session: %s, starting async processing",
                             request.sessionId());
 
-                    // Process in background - don't wait for completion
+                    // Process in background on worker pool
                     accountingHandlerFactory.getHandler(request, request.eventId())
                             .onItem().invoke(success -> {
+                                // Worker thread — set MDC once for this thread
+                                setMdcContext(request);
                                 long duration = System.currentTimeMillis() - startTime;
-                                LOG.infof("Complete consumeAccountingEvent process in %d ms for session: %s",
+                                LoggingUtil.logInfo(LOG, METHOD_CONSUME,
+                                        "Complete consumeAccountingEvent process in %d ms for session: %s",
                                         duration, request.sessionId());
                             })
                             .onFailure().invoke(failure -> {
+                                // Worker thread — set MDC once for this thread
+                                setMdcContext(request);
                                 long duration = System.currentTimeMillis() - startTime;
-                                LOG.errorf(failure, "Failed processing session: %s after %d ms",
+                                LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
+                                        "Failed processing session: %s after %d ms",
                                         request.sessionId(), duration);
                             })
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
@@ -69,6 +76,12 @@ public class AccountingConsumer {
 
                     return Uni.createFrom().voidItem();
                 });
+    }
+
+    private void setMdcContext(AccountingRequestDto request) {
+        MDC.put(LoggingUtil.TRACE_ID, request.eventId());
+        MDC.put("userName", request.username());
+        MDC.put("sessionId", request.sessionId());
     }
 }
 
