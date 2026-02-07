@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.response.ApiResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
@@ -21,6 +22,10 @@ import java.util.Objects;
 @ApplicationScoped
 public class BucketService {
     private static final Logger log = Logger.getLogger(BucketService.class);
+    private static final String M_ADD = "addBucketBalance";
+    private static final String M_UPDATE = "updateBucketBalance";
+    private static final String M_TERMINATE = "terminateSessions";
+    private static final String M_STATUS = "updateUserStatus";
     public static final String USER_NOT_FOUND = "User not found";
     public static final String USERNAME_IS_REQUIRED = "Username is required";
     private final CacheClient cacheClient;
@@ -52,14 +57,14 @@ public class BucketService {
             // Check serviceExpiry
             if (balance.getServiceExpiry() != null && balance.getServiceExpiry().isBefore(now)) {
                 isExpired = true;
-                log.infof("Removing expired balance: bucketId=%s, serviceExpiry=%s",
+                LoggingUtil.logInfo(log, "removeExpiredBalances", "Removing expired balance: bucketId=%s, serviceExpiry=%s",
                         balance.getBucketId(), balance.getServiceExpiry());
             }
 
             // Check bucketExpiryDate
             if (!isExpired && balance.getBucketExpiryDate() != null && balance.getBucketExpiryDate().isBefore(now)) {
                 isExpired = true;
-                log.infof("Removing expired balance: bucketId=%s, bucketExpiryDate=%s",
+                LoggingUtil.logInfo(log, "removeExpiredBalances", "Removing expired balance: bucketId=%s, bucketExpiryDate=%s",
                         balance.getBucketId(), balance.getBucketExpiryDate());
             }
 
@@ -87,7 +92,7 @@ public class BucketService {
 
                     if (userData == null ) {
                         // Create new entry without session section, only with balance details
-                        log.infof("User data not found for user %s, creating new entry with balance", userName);
+                        LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance", userName);
                         List<Balance> newBalances = new ArrayList<>();
                         newBalances.add(balance.getBalance());
                         String groupId = null;
@@ -123,8 +128,8 @@ public class BucketService {
                             .onItem().transform(result -> createSuccessResponse(balance.getBalance(),"Bucket Added Successfully"));
                 })
                 .onFailure().recoverWithItem(throwable -> {
-                    log.errorf("Failed to add balance for user {}: {}",
-                            userName, throwable.getMessage(), throwable);
+                    LoggingUtil.logError(log, M_ADD, throwable, "Failed to add balance for user %s: %s",
+                            userName, throwable.getMessage());
                     return createErrorResponse(
                             "Failed to add balance: " + throwable.getMessage()
                     );
@@ -133,7 +138,7 @@ public class BucketService {
 
 
     public Uni<ApiResponse<Balance>> updateBucketBalance(String userName, Balance balance, String serviceId) {
-        log.infof("Updating bucket Balance for user %s", userName);
+        LoggingUtil.logInfo(log, M_UPDATE, "Updating bucket Balance for user %s", userName);
         // Input validation
         if (userName == null || userName.isBlank()) {
             return Uni.createFrom().item(createErrorResponse(USERNAME_IS_REQUIRED));
@@ -172,14 +177,14 @@ public class BucketService {
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData,userName)
                             .onItem().transform(result -> {
-                                log.infof("Successfully updated balance for user %s, serviceId %s",
+                                LoggingUtil.logInfo(log, M_UPDATE, "Successfully updated balance for user %s, serviceId %s",
                                         userName, serviceId);
                                 return createSuccessResponse(balance,"Updated balance Successfully");
                             });
                 })
                 .onFailure().recoverWithItem(throwable -> {
-                    log.errorf("Failed to update balance for user %s: %s",
-                            userName, throwable.getMessage(), throwable);
+                    LoggingUtil.logError(log, M_UPDATE, throwable, "Failed to update balance for user %s: %s",
+                            userName, throwable.getMessage());
                     return createErrorResponse(
                             "Failed to update balance: " + throwable.getMessage()
                     );
@@ -214,7 +219,7 @@ public class BucketService {
                     }
                    return coaService.clearAllSessionsAndSendCOA(userData,userName,sessionId)
                            .onItem().transform(updatedUserData -> {
-                               log.infof("Sessions Terminated successfully for user %s, updated session count: %d",
+                               LoggingUtil.logInfo(log, M_TERMINATE, "Sessions Terminated successfully for user %s, updated session count: %d",
                                        userName, updatedUserData != null && updatedUserData.getSessions() != null ?
                                        updatedUserData.getSessions().size() : 0);
                                return createSuccessResponse(null,"Terminated successfully");
@@ -222,8 +227,8 @@ public class BucketService {
 
                 })
                 .onFailure().recoverWithItem(throwable -> {
-                    log.errorf("Failed to send Disconnection COA for user %s: %s",
-                            userName, throwable.getMessage(), throwable);
+                    LoggingUtil.logError(log, M_TERMINATE, throwable, "Failed to send Disconnection COA for user %s: %s",
+                            userName, throwable.getMessage());
                     return createErrorResponse(
                             "Failed to send Disconnection COA: " + throwable.getMessage()
                     );
@@ -240,7 +245,7 @@ public class BucketService {
      * @return ApiResponse with operation result
      */
     public Uni<ApiResponse<Balance>> terminateSessionsViaHttp(String userName, String sessionId) {
-        log.infof("Terminating sessions via HTTP for user %s, sessionId: %s", userName, sessionId);
+        LoggingUtil.logInfo(log, M_TERMINATE, "Terminating sessions via HTTP for user %s, sessionId: %s", userName, sessionId);
 
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
@@ -251,15 +256,15 @@ public class BucketService {
                     // Send HTTP CoA disconnect (non-blocking, cache cleared after ACK)
                     return coaService.clearAllSessionsAndSendCOA(userData, userName, sessionId)
                             .onItem().transform(updatedUserData -> {
-                                log.infof("HTTP CoA disconnect sent successfully for user %s, updated session count: %d",
+                                LoggingUtil.logInfo(log, M_TERMINATE, "HTTP CoA disconnect sent successfully for user %s, updated session count: %d",
                                         userName, updatedUserData != null && updatedUserData.getSessions() != null ?
                                         updatedUserData.getSessions().size() : 0);
                                 return createSuccessResponse(null, "HTTP CoA disconnect sent successfully");
                             });
                 })
                 .onFailure().recoverWithItem(throwable -> {
-                    log.errorf("Failed to send HTTP CoA disconnect for user %s: %s",
-                            userName, throwable.getMessage(), throwable);
+                    LoggingUtil.logError(log, M_TERMINATE, throwable, "Failed to send HTTP CoA disconnect for user %s: %s",
+                            userName, throwable.getMessage());
                     return createErrorResponse(
                             "Failed to send HTTP CoA disconnect: " + throwable.getMessage()
                     );
@@ -270,7 +275,7 @@ public class BucketService {
 
 
     public Uni<ApiResponse<String>> updateUserStatus(String userName, String status) {
-        log.infof("Updating user status for user %s to %s", userName, status);
+        LoggingUtil.logInfo(log, M_STATUS, "Updating user status for user %s to %s", userName, status);
 
         // Input validation
         if (userName == null || userName.isBlank()) {
@@ -292,7 +297,7 @@ public class BucketService {
                     }
 
                     String oldStatus = userData.getUserStatus();
-                    log.infof("Changing user status for user %s from %s to %s", userName, oldStatus, status);
+                    LoggingUtil.logInfo(log, M_STATUS, "Changing user status for user %s from %s to %s", userName, oldStatus, status);
 
                     // Update userStatus in UserSessionData
                     UserSessionData updatedUserData = userData.toBuilder()
@@ -304,7 +309,7 @@ public class BucketService {
                             .call(() -> {
                                 // Send COA to notify NAS about status update for all active sessions
                                 if (userData.getSessions() != null && !userData.getSessions().isEmpty()) {
-                                    log.infof("User status changed from %s to %s, sending COA to update %d active sessions for user %s",
+                                    LoggingUtil.logInfo(log, M_STATUS, "User status changed from %s to %s, sending COA to update %d active sessions for user %s",
                                             oldStatus, status, userData.getSessions().size(), userName);
                                     return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
                                             .replaceWithVoid();
@@ -312,15 +317,15 @@ public class BucketService {
                                 return Uni.createFrom().voidItem();
                             })
                             .onItem().transform(result -> {
-                                log.infof("Successfully updated user status for user %s to %s", userName, status);
+                                LoggingUtil.logInfo(log, M_STATUS, "Successfully updated user status for user %s to %s", userName, status);
                                 return createSuccessResponseString(
                                         String.format("User status updated successfully from %s to %s", oldStatus, status)
                                 );
                             });
                 })
                 .onFailure().recoverWithItem(throwable -> {
-                    log.errorf("Failed to update user status for user %s: %s",
-                            userName, throwable.getMessage(), throwable);
+                    LoggingUtil.logError(log, M_STATUS, throwable, "Failed to update user status for user %s: %s",
+                            userName, throwable.getMessage());
                     return createErrorResponseString(
                             "Failed to update user status: " + throwable.getMessage()
                     );

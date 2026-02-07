@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.config.IdleSessionConfig;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.external.clients.SessionExpiryIndex;
@@ -28,6 +29,9 @@ import java.time.ZoneId;
 @ApplicationScoped
 public class SessionLifecycleManager {
     private static final Logger log = Logger.getLogger(SessionLifecycleManager.class);
+    private static final String M_CREATE = "onSessionCreated";
+    private static final String M_ACTIVITY = "onSessionActivity";
+    private static final String M_TERMINATE = "onSessionTerminated";
 
     private final SessionExpiryIndex sessionExpiryIndex;
     private final IdleSessionConfig config;
@@ -60,12 +64,12 @@ public class SessionLifecycleManager {
 
         long expiryTimeMillis = calculateExpiryTime(session.getSessionInitiatedTime());
 
-        log.debugf("Registering new session in expiry index: userId=%s, sessionId=%s, expiryTime=%d",
+        LoggingUtil.logDebug(log, M_CREATE, "Registering new session in expiry index: userId=%s, sessionId=%s, expiryTime=%d",
                 userId, session.getSessionId(), expiryTimeMillis);
 
         return sessionExpiryIndex.registerSession(userId, session.getSessionId(), expiryTimeMillis)
                 .onFailure().invoke(e ->
-                        log.warnf("Failed to register session in expiry index: %s", e.getMessage()))
+                        LoggingUtil.logWarn(log, M_CREATE, "Failed to register session in expiry index: %s", e.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
     }
@@ -88,12 +92,12 @@ public class SessionLifecycleManager {
                 .plus(Duration.ofMinutes(config.timeoutMinutes()))
                 .toEpochMilli();
 
-        log.debugf("Updating session expiry on activity: userId=%s, sessionId=%s, newExpiryTime=%d",
+        LoggingUtil.logDebug(log, M_ACTIVITY, "Updating session expiry on activity: userId=%s, sessionId=%s, newExpiryTime=%d",
                 userId, sessionId, newExpiryTimeMillis);
 
         return sessionExpiryIndex.updateSessionExpiry(userId, sessionId, newExpiryTimeMillis)
                 .onFailure().invoke(e ->
-                        log.warnf("Failed to update session expiry: %s", e.getMessage()))
+                        LoggingUtil.logWarn(log, M_ACTIVITY, "Failed to update session expiry: %s", e.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
     }
@@ -114,12 +118,12 @@ public class SessionLifecycleManager {
         // Record session termination metric
         monitoringService.recordSessionTerminated();
 
-        log.debugf("Removing terminated session from expiry index: userId=%s, sessionId=%s",
+        LoggingUtil.logDebug(log, M_TERMINATE, "Removing terminated session from expiry index: userId=%s, sessionId=%s",
                 userId, sessionId);
 
         return sessionExpiryIndex.removeSession(userId, sessionId)
                 .onFailure().invoke(e ->
-                        log.warnf("Failed to remove session from expiry index: %s", e.getMessage()))
+                        LoggingUtil.logWarn(log, M_TERMINATE, "Failed to remove session from expiry index: %s", e.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
     }

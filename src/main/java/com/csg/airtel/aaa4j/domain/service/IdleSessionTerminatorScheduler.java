@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.config.IdleSessionConfig;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.EventType;
@@ -34,6 +35,8 @@ import java.util.stream.Collectors;
 public class IdleSessionTerminatorScheduler {
 
     private static final Logger log = Logger.getLogger(IdleSessionTerminatorScheduler.class);
+    private static final String M_TERMINATE = "terminateIdleSessions";
+    private static final String M_PROCESS = "processExpiredSessions";
 
     private final CacheClient cacheClient;
     private final SessionExpiryIndex sessionExpiryIndex;
@@ -65,7 +68,7 @@ public class IdleSessionTerminatorScheduler {
                concurrentExecution = Scheduled.ConcurrentExecution.SKIP)
     public void terminateIdleSessions() {
         if (!config.enabled()) {
-            log.debug("Idle session terminator is disabled, skipping execution");
+            LoggingUtil.logDebug(log, M_TERMINATE, "Idle session terminator is disabled, skipping execution");
             return;
         }
 
@@ -78,7 +81,7 @@ public class IdleSessionTerminatorScheduler {
                 .minus(Duration.ofMinutes(timeoutMinutes))
                 .toEpochMilli();
 
-        log.infof("Starting optimized idle session termination with timeout: %d minutes, threshold: %d",
+        LoggingUtil.logInfo(log, M_TERMINATE, "Starting optimized idle session termination with timeout: %d minutes, threshold: %d",
                 timeoutMinutes, expiryThresholdMillis);
 
         // First, log index stats for monitoring
@@ -97,7 +100,7 @@ public class IdleSessionTerminatorScheduler {
                             // Record idle session termination metrics
                             monitoringService.recordIdleSessionsTerminated(terminatedCount);
 
-                            log.infof(
+                            LoggingUtil.logInfo(log, M_TERMINATE,
                                     "Idle session termination completed. " +
                                     "Batches: %d, Users: %d, Sessions terminated: %d, Duration: %d ms",
                                     totalBatchesProcessed.get(),
@@ -105,7 +108,7 @@ public class IdleSessionTerminatorScheduler {
                                     terminatedCount,
                                     System.currentTimeMillis() - startTime);
                         },
-                        error -> log.errorf(error, "Error during idle session termination")
+                        error -> LoggingUtil.logError(log, M_TERMINATE, error, "Error during idle session termination")
                 );
     }
 
@@ -122,7 +125,7 @@ public class IdleSessionTerminatorScheduler {
                 .onItem().transformToUni(processedCount -> {
                     if (processedCount > 0 && processedCount >= batchSize) {
                         // More sessions may exist, process next batch
-                        log.debugf("Batch complete with %d sessions, checking for more", processedCount);
+                        LoggingUtil.logDebug(log, M_PROCESS, "Batch complete with %d sessions, checking for more", processedCount);
                         return processExpiredSessionsBatched(expiryThresholdMillis, batchSize,
                                 totalSessionsTerminated, totalUsersProcessed, totalBatchesProcessed);
                     }
@@ -145,12 +148,12 @@ public class IdleSessionTerminatorScheduler {
                 .collect().asList()
                 .onItem().transformToUni(expiredEntries -> {
                     if (expiredEntries.isEmpty()) {
-                        log.debug("No expired sessions found in this batch");
+                        LoggingUtil.logDebug(log, M_PROCESS, "No expired sessions found in this batch");
                         return Uni.createFrom().item(0);
                     }
 
                     totalBatchesProcessed.incrementAndGet();
-                    log.infof("Processing batch of %d expired sessions", expiredEntries.size());
+                    LoggingUtil.logInfo(log, M_PROCESS, "Processing batch of %d expired sessions", expiredEntries.size());
 
                     // Group by userId for efficient batch processing
                     Map<String, List<SessionExpiryEntry>> sessionsByUser = expiredEntries.stream()
@@ -191,7 +194,7 @@ public class IdleSessionTerminatorScheduler {
 
             if (userData == null) {
 
-                log.debugf("User data not found for userId: %s, will clean up index entries", userId);
+                LoggingUtil.logDebug(log, M_PROCESS, "User data not found for userId: %s, will clean up index entries", userId);
                 continue;
             }
 
@@ -203,7 +206,7 @@ public class IdleSessionTerminatorScheduler {
         // Remove processed entries from index in batch
         Uni<Integer> indexCleanup = sessionExpiryIndex.removeSessions(membersToRemove)
                 .onItem().invoke(removed ->
-                        log.debugf("Removed %d entries from session expiry index", removed));
+                        LoggingUtil.logDebug(log, M_PROCESS, "Removed %d entries from session expiry index", removed));
 
         // Execute all user updates and index cleanup in parallel
         if (userUpdates.isEmpty()) {
@@ -212,7 +215,7 @@ public class IdleSessionTerminatorScheduler {
 
         return Uni.join().all(userUpdates).andCollectFailures()
                 .onItem().transformToUni(results -> indexCleanup.replaceWithVoid())
-                .onFailure().invoke(e -> log.errorf(e, "Error processing user updates"));
+                .onFailure().invoke(e -> LoggingUtil.logError(log, M_PROCESS, e, "Error processing user updates"));
     }
 
     /**
@@ -251,11 +254,11 @@ public class IdleSessionTerminatorScheduler {
 
         if (sessionsToTerminate.isEmpty()) {
             // Sessions may have been terminated by other means
-            log.debugf("No matching sessions found for user %s, may have been terminated already", userName);
+            LoggingUtil.logDebug(log, M_PROCESS, "No matching sessions found for user %s, may have been terminated already", userName);
             return Uni.createFrom().voidItem();
         }
 
-        log.infof("Terminating %d idle sessions for user: %s", sessionsToTerminate.size(), userName);
+        LoggingUtil.logInfo(log, M_PROCESS, "Terminating %d idle sessions for user: %s", sessionsToTerminate.size(), userName);
 
         // Remove terminated sessions
         List<Session> activeSessions = new ArrayList<>(sessions);
@@ -270,7 +273,7 @@ public class IdleSessionTerminatorScheduler {
                         // Update cache after DB write is initiated
                         cacheClient.updateUserAndRelatedCaches(userName, userData,userName)
                                 .onFailure().invoke(error ->
-                                        log.errorf(error, "Failed to update cache for user: %s", userName))
+                                        LoggingUtil.logError(log, M_PROCESS, error, "Failed to update cache for user: %s", userName))
                                 .onFailure().recoverWithNull()
                                 .replaceWithVoid()
                 );
@@ -311,14 +314,12 @@ public class IdleSessionTerminatorScheduler {
                 EventType.UPDATE_EVENT
         );
 
-        if (log.isDebugEnabled()) {
-            log.debugf("Triggered DB write for terminated session: %s, bucketId: %s",
-                    session.getSessionId(), balance.getBucketId());
-        }
+        LoggingUtil.logDebug(log, M_PROCESS, "Triggered DB write for terminated session: %s, bucketId: %s",
+                session.getSessionId(), balance.getBucketId());
 
         return accountProducer.produceDBWriteEvent(dbWriteRequest)
                 .onFailure().invoke(error ->
-                        log.errorf(error, "Failed to produce DB write event for session: %s",
+                        LoggingUtil.logError(log, M_PROCESS, error, "Failed to produce DB write event for session: %s",
                                 session.getSessionId()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
@@ -378,7 +379,7 @@ public class IdleSessionTerminatorScheduler {
 
         return Uni.join().all(dbWriteOperations).andCollectFailures()
                 .replaceWithVoid()
-                .onFailure().invoke(e -> log.errorf(e, "Error producing DB write events for terminated sessions"));
+                .onFailure().invoke(e -> LoggingUtil.logError(log, M_PROCESS, e, "Error producing DB write events for terminated sessions"));
     }
 
     /**
@@ -387,18 +388,18 @@ public class IdleSessionTerminatorScheduler {
     private void logIndexStats(long expiryThresholdMillis) {
         sessionExpiryIndex.getTotalIndexedSessions()
                 .onItem().invoke(total ->
-                        log.infof("Session expiry index stats - Total indexed: %d", total))
+                        LoggingUtil.logInfo(log, M_TERMINATE, "Session expiry index stats - Total indexed: %d", total))
                 .subscribe().with(
                         v -> {},
-                        e -> log.warnf("Failed to get index stats: %s", e.getMessage())
+                        e -> LoggingUtil.logWarn(log, M_TERMINATE, "Failed to get index stats: %s", e.getMessage())
                 );
 
         sessionExpiryIndex.getExpiredSessionCount(expiryThresholdMillis)
                 .onItem().invoke(expired ->
-                        log.infof("Session expiry index stats - Expired sessions: %d", expired))
+                        LoggingUtil.logInfo(log, M_TERMINATE, "Session expiry index stats - Expired sessions: %d", expired))
                 .subscribe().with(
                         v -> {},
-                        e -> log.warnf("Failed to get expired count: %s", e.getMessage())
+                        e -> LoggingUtil.logWarn(log, M_TERMINATE, "Failed to get expired count: %s", e.getMessage())
                 );
     }
 
@@ -425,13 +426,13 @@ public class IdleSessionTerminatorScheduler {
             boolean isExpired = currentTime.isAfter(sessionExpiryTime);
 
             if (isExpired) {
-                log.infof("Absolute timeout exceeded for session: %s, initiated: %s, timeout: %d minutes, expiry: %s",
+                LoggingUtil.logInfo(log, M_PROCESS, "Absolute timeout exceeded for session: %s, initiated: %s, timeout: %d minutes, expiry: %s",
                         session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes, sessionExpiryTime);
             }
 
             return isExpired;
         } catch (NumberFormatException e) {
-            log.warnf("Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
+            LoggingUtil.logWarn(log, M_PROCESS, "Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
                     session.getAbsoluteTimeOut().trim(), e.getMessage());
             return false;
         }
