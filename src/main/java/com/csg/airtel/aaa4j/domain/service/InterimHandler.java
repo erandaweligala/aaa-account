@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -16,6 +17,8 @@ import java.time.LocalDateTime;
 @ApplicationScoped
 public class InterimHandler {
     private static final Logger log = Logger.getLogger(InterimHandler.class);
+    private static final String M_INTERIM = "handleInterim";
+    private static final String M_PROCESS = "processAccountingRequest";
 
     private final AbstractAccountingHandler accountingHandler;
     private final CacheClient cacheUtil;
@@ -40,32 +43,30 @@ public class InterimHandler {
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
         long startTime = System.currentTimeMillis();
-        log.infof("[traceId: %s] Processing interim accounting request Start for user: %s, sessionId: %s",traceId,
+        LoggingUtil.logInfo(log, M_INTERIM, "Processing interim accounting request Start for user: %s, sessionId: %s",
                 request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
                 .onItem().invoke(() -> {
-                    if (log.isDebugEnabled()) {
-                        log.debugf("User data retrieved for user: %s", request.username());
-                    }
+                    LoggingUtil.logDebug(log, M_INTERIM, "User data retrieved for user: %s", request.username());
                 })
                 .onItem().transformToUni(userSessionData ->
                         userSessionData == null
                                 ? accountingHandler.handleNewSessionUsage(request, traceId, this::processAccountingRequest, this::createSession)
-                                        .invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for new session for  %s ms",traceId,System.currentTimeMillis()-startTime))
-                                : processAccountingRequest(userSessionData, request,traceId).invoke(() -> log.infof("[traceId: %s] Completed processing interim accounting for existing session for  %s ms",traceId, System.currentTimeMillis()-startTime))
+                                        .invoke(() -> LoggingUtil.logInfo(log, M_INTERIM, "Completed processing interim accounting for new session for  %s ms", System.currentTimeMillis()-startTime))
+                                : processAccountingRequest(userSessionData, request,traceId).invoke(() -> LoggingUtil.logInfo(log, M_INTERIM, "Completed processing interim accounting for existing session for  %s ms", System.currentTimeMillis()-startTime))
 
                 )
                 .onFailure().recoverWithUni(throwable -> {
                     // Handle circuit breaker open specifically - cache service temporarily unavailable
                     if (throwable instanceof CircuitBreakerOpenException) {
-                        log.errorf("traceId: %s Cache service circuit breaker is OPEN for user: %s. " +
+                        LoggingUtil.logError(log, M_INTERIM, null, "Cache service circuit breaker is OPEN for user: %s. " +
                                         "Service temporarily unavailable due to high tps or Redis connectivity issues.",
-                                traceId, request.username());
+                                request.username());
                         return Uni.createFrom().voidItem();
                     }
                     // Handle other errors
-                    log.errorf(throwable, "[traceId: %s] Error processing accounting for user: %s",
-                            traceId, request.username());
+                    LoggingUtil.logError(log, M_INTERIM, throwable, "Error processing accounting for user: %s",
+                            request.username());
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -73,7 +74,7 @@ public class InterimHandler {
     private Uni<Void> processAccountingRequest(
             UserSessionData userData, AccountingRequestDto request, String cachedGroupData) {
         long startTime = System.currentTimeMillis();
-        log.infof("Processing interim accounting request for user: %s, sessionId: %s",
+        LoggingUtil.logInfo(log, M_PROCESS, "Processing interim accounting request for user: %s, sessionId: %s",
                 request.username(), request.sessionId());
         Session session = accountingHandler.findSessionById(userData.getSessions(), request.sessionId());
 
@@ -100,13 +101,13 @@ public class InterimHandler {
         }
 
         if("BARRED".equalsIgnoreCase(userData.getUserStatus())){
-            log.warnf("User status is BARRED for user: %s", request.username());
+            LoggingUtil.logWarn(log, M_PROCESS, "User status is BARRED for user: %s", request.username());
             generateAndSendCDR(request, session, session.getServiceId(), session.getPreviousUsageBucketId());
             return Uni.createFrom().voidItem();
         }
         // Early return if session time hasn't increased
         if (request.sessionTime() <= session.getSessionTime()) {
-            log.warnf("Duplicate Session time unchanged for sessionId: %s", request.sessionId());
+            LoggingUtil.logWarn(log, M_PROCESS, "Duplicate Session time unchanged for sessionId: %s", request.sessionId());
             return Uni.createFrom().voidItem();
 
         } else {
@@ -115,9 +116,9 @@ public class InterimHandler {
                     .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {
-                            log.warnf("update failed for sessionId: %s error :", request.sessionId(),updateResult.errorMessage());
+                            LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s error :", request.sessionId(),updateResult.errorMessage());
                         }
-                        log.infof("Interim accounting processing time ms : %d",
+                        LoggingUtil.logInfo(log, M_PROCESS, "Interim accounting processing time ms : %d",
                                 System.currentTimeMillis() - startTime);
                         Session updatedSessions  = updateResult.sessionData() != null ? updateResult.sessionData():finalSession;
                         generateAndSendCDR(request, updatedSessions, updatedSessions.getServiceId(), updatedSessions.getPreviousUsageBucketId());

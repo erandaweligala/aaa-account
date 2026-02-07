@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.external.clients;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.exception.BaseException;
@@ -29,6 +30,11 @@ import java.util.stream.Collectors;
 public class CacheClient {
 
     private static final Logger log = Logger.getLogger(CacheClient.class);
+    private static final String M_GET = "getUserData";
+    private static final String M_STORE = "storeUserData";
+    private static final String M_UPDATE = "updateCache";
+    private static final String M_BATCH = "batchGet";
+
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;
     private static final String KEY_PREFIX = "user:";
@@ -57,9 +63,7 @@ public class CacheClient {
     @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
     public Uni<String> getGroupId(String userId) {
 
-        if (log.isDebugEnabled()) {
-            log.debugf("Retrieving Group id for cache userId: %s", userId);
-        }
+        LoggingUtil.logDebug(log, M_GET, "Retrieving Group id for cache userId: %s", userId);
         String key = GROUP_KEY_PREFIX + userId;
 
         // Use cached valueCommands for better performance at high TPS
@@ -67,14 +71,12 @@ public class CacheClient {
                 .onItem().ifNotNull().transform(Unchecked.function(groupId -> {
                     try {
 
-                        if (log.isDebugEnabled()) {
-                            log.debugf("User data retrieved for userId: %s",
-                                    userId);
-                        }
+                        LoggingUtil.logDebug(log, M_GET, "User data retrieved for userId: %s",
+                                userId);
 
                         return groupId;
                     } catch (Exception e) {
-                        log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
+                        LoggingUtil.logError(log, M_GET, null, "Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
                         throw new BaseException(
                                 "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -84,7 +86,7 @@ public class CacheClient {
                         );
                     }
                 }))
-                .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
+                .onFailure().invoke(e -> LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId));
     }
 /*
     @Retry(
@@ -137,9 +139,7 @@ public class CacheClient {
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)
     public Uni<Void> storeUserData(String userId, UserSessionData userData, String userName) {
 
-        if (log.isDebugEnabled()) {
-            log.debugf("Storing user data for cache userId: %s", userId);
-        }
+        LoggingUtil.logDebug(log, M_STORE, "Storing user data for cache userId: %s", userId);
 
         String key = KEY_PREFIX + userId;
 
@@ -179,7 +179,7 @@ public class CacheClient {
                                 });
 
                     } catch (Exception e) {
-                        log.errorf("Failed to serialize user data for userId: %s - %s",
+                        LoggingUtil.logError(log, M_STORE, null, "Failed to serialize user data for userId: %s - %s",
                                 userId, e.getMessage());
 
                         return Uni.createFrom().failure(new BaseException(
@@ -205,9 +205,7 @@ public class CacheClient {
     @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
-        if (log.isDebugEnabled()) {
-            log.debugf("Retrieving user data for cache userId: %s", userId);
-        }
+        LoggingUtil.logDebug(log, M_GET, "Retrieving user data for cache userId: %s", userId);
         String key = KEY_PREFIX + userId;
 
         // Use cached valueCommands for better performance at high TPS
@@ -216,14 +214,12 @@ public class CacheClient {
                     try {
                         UserSessionData userData = objectMapper.readValue(json, UserSessionData.class);
 
-                        if (log.isDebugEnabled()) {
-                            log.debugf("User data retrieved for userId: %s in %d ms",
-                                    userId, (System.currentTimeMillis() - startTime));
-                        }
+                        LoggingUtil.logDebug(log, M_GET, "User data retrieved for userId: %s in %d ms",
+                                userId, (System.currentTimeMillis() - startTime));
 
                         return userData;
                     } catch (Exception e) {
-                        log.errorf("Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
+                        LoggingUtil.logError(log, M_GET, null, "Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
                         throw new BaseException(
                                 "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -233,7 +229,7 @@ public class CacheClient {
                         );
                     }
                 }))
-                .onFailure().invoke(e -> log.errorf("Failed to get user data for userId: %s", userId, e));
+                .onFailure().invoke(e -> LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId));
     }
 
 
@@ -247,9 +243,7 @@ public class CacheClient {
     )
     @Timeout(value = 8, unit = ChronoUnit.SECONDS)
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData,String userName) {
-        if (log.isDebugEnabled()) {
-            log.debugf("Updating user data and related caches for userId: %s", userId);
-        }
+        LoggingUtil.logDebug(log, M_UPDATE, "Updating user data and related caches for userId: %s", userId);
         String userKey = KEY_PREFIX + userId;
 
         try {
@@ -266,15 +260,15 @@ public class CacheClient {
                         valueCommands.set(groupKey, groupValues),
                         valueCommands.set(userKey, jsonValue)
                 ).discardItems()
-                        .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err));
+                        .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId));
             }
 
             // If no groupId, only update user data
             return valueCommands.set(userKey, jsonValue)
-                    .onFailure().invoke(err -> log.errorf("Failed to update cache for user %s", userId, err))
+                    .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId))
                     .replaceWithVoid();
         } catch (Exception e) {
-            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
+            LoggingUtil.logError(log, M_UPDATE, null, "Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
             return Uni.createFrom().failure(new BaseException(
                     "Failed to serialize user data",
                     ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -317,9 +311,7 @@ public class CacheClient {
         }
 
         final int size = userIds.size();
-        if (log.isDebugEnabled()) {
-            log.debugf("Retrieving batch user data as map for %d users using MGET", size);
-        }
+        LoggingUtil.logDebug(log, M_BATCH, "Retrieving batch user data as map for %d users using MGET", size);
 
         // Build keys with prefix - optimized with pre-sized array
         String[] keys = new String[size];
@@ -342,7 +334,7 @@ public class CacheClient {
                                 UserSessionData userData = objectMapper.readValue(value, UserSessionData.class);
                                 userDataMap.put(userId, userData);
                             } catch (Exception e) {
-                                log.errorf("Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
+                                LoggingUtil.logError(log, M_BATCH, null, "Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
                             }
                         }
                     }
@@ -368,18 +360,14 @@ public class CacheClient {
     @Timeout(value = 8000)
     public Uni<ExpiredSessionsWithData> getExpiredSessionsWithData(long expiryThresholdMillis, int limit) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
-        if (log.isDebugEnabled()) {
-            log.debugf("Retrieving expired sessions with data, threshold: %d, limit: %d",
-                    expiryThresholdMillis, limit);
-        }
+        LoggingUtil.logDebug(log, M_BATCH, "Retrieving expired sessions with data, threshold: %d, limit: %d",
+                expiryThresholdMillis, limit);
 
         return sessionExpiryIndex.getExpiredSessions(expiryThresholdMillis, limit)
                 .collect().asList()
                 .onItem().transformToUni(expiredEntries -> {
                     if (expiredEntries.isEmpty()) {
-                        if (log.isDebugEnabled()) {
-                            log.debug("No expired sessions found");
-                        }
+                        LoggingUtil.logDebug(log, M_BATCH, "No expired sessions found");
                         return Uni.createFrom().item(
                                 new ExpiredSessionsWithData(expiredEntries, Map.of()));
                     }
@@ -392,18 +380,14 @@ public class CacheClient {
                     }
                     List<String> userIds = new java.util.ArrayList<>(uniqueUserIds);
 
-                    if (log.isDebugEnabled()) {
-                        log.debugf("Found %d expired sessions for %d users",
-                                entryCount, userIds.size());
-                    }
+                    LoggingUtil.logDebug(log, M_BATCH, "Found %d expired sessions for %d users",
+                            entryCount, userIds.size());
 
                     // Batch fetch user data using MGET
                     return getUserDataBatchAsMap(userIds)
                             .onItem().transform(userDataMap -> {
-                                if (log.isDebugEnabled()) {
-                                    log.debugf("Retrieved expired sessions with data in %d ms",
-                                            System.currentTimeMillis() - startTime);
-                                }
+                                LoggingUtil.logDebug(log, M_BATCH, "Retrieved expired sessions with data in %d ms",
+                                        System.currentTimeMillis() - startTime);
                                 return new ExpiredSessionsWithData(expiredEntries, userDataMap);
                             });
                 });
