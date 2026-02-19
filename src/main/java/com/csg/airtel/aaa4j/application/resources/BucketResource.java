@@ -21,6 +21,7 @@ public class BucketResource {
     private static final String M_UPDATE = "updateBucket";
     private static final String M_TERMINATE = "terminateViaHttp";
     private static final String M_STATUS = "userStatusUpdate";
+    private static final String M_SVC_STATUS = "serviceStatusUpdate";
     private final BucketService bucketService;
 
     public BucketResource(BucketService bucketService) {
@@ -119,5 +120,20 @@ public class BucketResource {
                 });
     }
 
-    //todo need to write method update service  status (balance.serviceStatus ) then after send coa request
+    @PATCH
+    @Path("/patchServiceStatus/{userName}/{serviceId}/{status}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<Response> serviceStatusUpdate(@PathParam("userName") String userName,
+                                              @PathParam("serviceId") String serviceId,
+                                              @PathParam("status") String status) {
+        LoggingUtil.logInfo(log, M_SVC_STATUS, "Update Service Status Start user: %s, serviceId: %s, status: %s", userName, serviceId, status);
+        return bucketService.updateServiceStatus(userName, serviceId, status)
+                .onItem().transform(apiResponse -> {
+                    LoggingUtil.logInfo(log, M_SVC_STATUS, "Update Service Status Completed user: %s, serviceId: %s", userName, serviceId);
+                    return Response.status(apiResponse.getStatus())
+                            .entity(apiResponse)
+                            .build();
+                });
+    }
 }
