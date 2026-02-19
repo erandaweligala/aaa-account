@@ -2,10 +2,10 @@ quarkus:
   http:
     root-path: /api/v1
     port: 9905
-    io-threads: 8
+    io-threads: 2                    # 2x CPU cores (1-core pod)
     limits:
       max-body-size: 10M
-      max-connections: 2000
+      max-connections: 500           # Right-sized for 300 TPS/pod
     idle-timeout: 10M
     read-timeout: 30S
 
@@ -27,11 +27,11 @@ quarkus:
     reactive:
       url: oracle:thin:@172.24.0.203:1908/AAA
 
-  # Vertx Configuration - HIGH TPS OPTIMIZED for 2500 TPS
+  # Vertx Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
   vertx:
-    event-loops-pool-size: 32
-    worker-pool-size: 64
-    internal-blocking-pool-size: 100
+    event-loops-pool-size: 2         # 2x CPU cores (1 core per pod)
+    worker-pool-size: 8              # Limited blocking ops on 1-core pod
+    internal-blocking-pool-size: 8   # Internal Quarkus blocking calls
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -39,9 +39,9 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 100
-    max-threads: 500
-    queue-size: 5000
+    core-threads: 10                 # Right-sized for 1-core pod
+    max-threads: 20                  # Prevent context switching thrash
+    queue-size: 2000                 # Buffer for burst traffic
     growth-resistance: 0
     shutdown-timeout: 30s
 
@@ -106,9 +106,9 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 600
-    max-waiting-handlers: 12000
-    max-pool-waiting: 3000
+    max-pool-size: 150               # Right-sized: 300 TPS x ~5ms = ~1.5 concurrent + headroom
+    max-waiting-handlers: 3000
+    max-pool-waiting: 1000
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
@@ -122,20 +122,22 @@ coa:
     port: 8088
 
 webclient:
-  max-pool-size: 50
+  max-pool-size: 20                  # Right-sized for 300 TPS/pod HTTP/1.1
   connect-timeout: 5000
   idle-timeout: 60000
   keep-alive: true
   pipelining: true
   pipelining-limit: 10
-  http2-max-pool-size: 250
+  http2-max-pool-size: 20            # Right-sized for 300 TPS/pod HTTP/2
   http2-multiplexing-limit: 100
   http2-keep-alive-timeout: 60
 
 
-# Pool Configuration
+# Pool Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
+# DB: 32 cores, 12GB RAM → max ~160 total connections safe
+# Per pod: 20 connections x 5 pods = 100 total DB connections
 pool:
-  max-size: 32                      # Max connections
+  max-size: 20                      # 5 pods x 20 = 100 total (safe for 32-core DB)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -143,7 +145,7 @@ pool:
   prepared-statement-cache-max-size: 256  # Cache prepared statements
   pipelining-enabled: true          # Enable query pipelining
   pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 32               # Match vertx event-loops-pool-size
+  event-loop-size: 2                # Match vertx event-loops-pool-size (2x CPU cores)
   tcp-keep-alive: true              # Detect dead connections
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
@@ -161,7 +163,7 @@ kafka:
   bootstrap:
     servers: kafka-headless.csg-aaa-query-cache.svc.cluster.local:9092
 
-# Kafka Producer/Consumer Configuration - HIGH TPS OPTIMIZED for 2500 TPS
+# Kafka Producer/Consumer Configuration - Optimized for 1500 TPS (5 pods x 1 core, 12 partitions)
 mp:
   messaging:
     outgoing:
@@ -171,13 +173,13 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 10
+        retries: 5
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768
+        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
         linger.ms: 5
-        buffer.memory: 67108864
+        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -191,13 +193,13 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 10
+        retries: 5
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384
-        linger.ms: 10
-        buffer.memory: 67108864
+        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
+        linger.ms: 5
+        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -211,13 +213,13 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 10
+        retries: 5
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384
-        linger.ms: 10
-        buffer.memory: 67108864
+        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
+        linger.ms: 5
+        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -231,13 +233,13 @@ mp:
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
-        retries: 10
+        retries: 5
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384
-        linger.ms: 10
-        buffer.memory: 67108864
+        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
+        linger.ms: 5
+        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -254,12 +256,12 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 1000
+        max.poll.records: 500          # ~1-2s of messages at 300 TPS/pod (12 partitions / 5 pods)
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
-        fetch.min.bytes: 128
+        fetch.min.bytes: 1             # Reduce latency - don't wait for min bytes
         fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 10485760
+        max.partition.fetch.bytes: 5242880  # 5MB per partition (2-3 partitions/pod)
         receive.buffer.bytes: 131072
         failure-strategy: ignore
 
