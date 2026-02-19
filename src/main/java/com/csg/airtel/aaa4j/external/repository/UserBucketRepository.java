@@ -80,12 +80,11 @@ public class UserBucketRepository {
                 .preparedQuery(QUERY_BALANCE)
                 .execute(Tuple.of(userName))
                     .onItem().transform(this::mapRowsToServiceBuckets)
-                .onFailure().invoke(error -> {
-                    LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s", userName);
-                })
-                .onItem().invoke(results -> {
-                    LoggingUtil.logDebug(log, M_QUERY, "Fetched %d service buckets for user: %s", results.size(), userName);
-                });
+                .onFailure().invoke(error ->
+                    LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s", userName))
+                .onItem().invoke(results ->
+                    LoggingUtil.logDebug(log, M_QUERY, "Fetched %d service buckets for user: %s", results.size(), userName)
+                );
     }
 
     /**

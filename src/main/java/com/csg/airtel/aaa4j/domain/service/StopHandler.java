@@ -49,7 +49,7 @@ public class StopHandler {
                 .onItem().invoke(() -> LoggingUtil.logInfo(log, M_STOP, "User data retrieved for user: %s", request.username()))
                 .onItem().transformToUni(userSessionData ->
                         userSessionData != null ?
-                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> LoggingUtil.logInfo(log, M_STOP, "Completed processing for eventType=%s, action=%s, bucketId=%s", bucketId))
+                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> LoggingUtil.logInfo(log, M_STOP, "Completed processing for bucketId=%s", bucketId))
                                  : accountingHandler.handleNewSessionUsage(request, traceId, this::processAccountingStop, this::createSession)
                 )
                 .onFailure().recoverWithUni(throwable -> {

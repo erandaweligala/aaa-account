@@ -60,7 +60,7 @@ public class CacheClient {
             delay = 100,
             jitter = 50
     )
-    @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
     public Uni<String> getGroupId(String userId) {
 
         LoggingUtil.logDebug(log, M_GET, "Retrieving Group id for cache userId: %s", userId);
@@ -88,47 +88,6 @@ public class CacheClient {
                 }))
                 .onFailure().invoke(e -> LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId));
     }
-/*
-    @Retry(
-            maxRetries = 1,
-            delay = 30,
-            maxDuration = 1500
-    )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
-    public Uni<Void> storeUserData(String userId, UserSessionData userData,String userName) {
-        if (log.isDebugEnabled()) {
-            log.debugf("Storing user data for cache userId: %s", userId);
-        }
-        String key = KEY_PREFIX + userId;
-
-        try {
-            String jsonValue = objectMapper.writeValueAsString(userData);
-
-            if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
-                String groupValues = userData.getGroupId()+","+userData.getConcurrency()+","+userData.getUserStatus()+","+userData.getSessionTimeOut();
-                String groupKey = GROUP_KEY_PREFIX + userName;
-                // Combine both SET operations in parallel - reduces RTT by executing concurrently
-                return Uni.combine().all().unis(
-                        valueCommands.set(groupKey, groupValues),
-                        valueCommands.set(key, jsonValue)
-                ).discardItems();
-            }
-
-            // If no groupId, only store user data
-            return valueCommands.set(key, jsonValue);
-        } catch (Exception e) {
-            log.errorf("Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
-            return Uni.createFrom().failure(new BaseException(
-                    "Failed to serialize user data",
-                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
-                    Response.Status.INTERNAL_SERVER_ERROR,
-                    ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.code(),
-                    null
-            ));
-        }
-    }
-
- */
 
 
     @Retry(
@@ -202,7 +161,7 @@ public class CacheClient {
             delay = 100,
             jitter = 50
     )
-    @Timeout(value = 5, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         LoggingUtil.logDebug(log, M_GET, "Retrieving user data for cache userId: %s", userId);

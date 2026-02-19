@@ -41,6 +41,7 @@ RUN yum -y update-minimal --security --advisory=ALAS2-2025-3034 || \
     yum -y update openssl openssl-libs && \
     yum -y install shadow-utils tzdata && \
     yum install -y tcpdump && \
+    yum install -y tar && \
     yum install -y iproute procps-ng net-tools util-linux lsof && \
     yum -y clean all && rm -rf /var/cache/yum
 

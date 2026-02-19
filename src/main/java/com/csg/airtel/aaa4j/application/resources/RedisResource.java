@@ -7,6 +7,7 @@ import com.csg.airtel.aaa4j.domain.service.NotificationTrackingService;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -65,7 +66,7 @@ public class RedisResource {
                     Map<String, Object> res = new HashMap<>();
                     res.put("accounting_result", result);
                     return res;
-                });
+                }).runSubscriptionOn(Infrastructure.getDefaultWorkerPool());
     }
 
 

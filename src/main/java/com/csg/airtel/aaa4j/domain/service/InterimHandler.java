@@ -46,14 +46,13 @@ public class InterimHandler {
         LoggingUtil.logInfo(log, M_INTERIM, "Processing interim accounting request Start for user: %s, sessionId: %s",
                 request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
-                .onItem().invoke(() -> {
-                    LoggingUtil.logDebug(log, M_INTERIM, "User data retrieved for user: %s", request.username());
-                })
+                .onItem().invoke(() ->
+                    LoggingUtil.logDebug(log, M_INTERIM, "User data retrieved for user: %s", request.username()))
                 .onItem().transformToUni(userSessionData ->
                         userSessionData == null
                                 ? accountingHandler.handleNewSessionUsage(request, traceId, this::processAccountingRequest, this::createSession)
                                         .invoke(() -> LoggingUtil.logInfo(log, M_INTERIM, "Completed processing interim accounting for new session for  %s ms", System.currentTimeMillis()-startTime))
-                                : processAccountingRequest(userSessionData, request,traceId).invoke(() -> LoggingUtil.logInfo(log, M_INTERIM, "Completed processing interim accounting for existing session for  %s ms", System.currentTimeMillis()-startTime))
+                                : processAccountingRequest(userSessionData, request,null).invoke(() -> LoggingUtil.logInfo(log, M_INTERIM, "Completed processing interim accounting for existing session for  %s ms", System.currentTimeMillis()-startTime))
 
                 )
                 .onFailure().recoverWithUni(throwable -> {
@@ -70,7 +69,6 @@ public class InterimHandler {
                     return Uni.createFrom().voidItem();
                 });
     }
-
     private Uni<Void> processAccountingRequest(
             UserSessionData userData, AccountingRequestDto request, String cachedGroupData) {
         long startTime = System.currentTimeMillis();

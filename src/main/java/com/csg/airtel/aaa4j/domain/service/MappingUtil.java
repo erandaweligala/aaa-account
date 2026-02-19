@@ -34,6 +34,8 @@ public class MappingUtil {
                 : Map.of();
 
         return new AccountingResponseEvent(
+                request.eventId(),
+                request.username(),
                 eventType,
                 LocalDateTime.now(),
                 request.sessionId(),
@@ -59,6 +61,8 @@ public class MappingUtil {
         );
 
         return new AccountingResponseEvent(
+                sessionId,
+                userName,
                 AccountingResponseEvent.EventType.COA,
                 LocalDateTime.now(),
                 sessionId,

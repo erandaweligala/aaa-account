@@ -19,6 +19,6 @@ public class COA {
     @JsonProperty("destinationPort")
     private Integer destinationPort;
 
-    @JsonProperty("coaResponseStatus")
+    @JsonProperty("status")
     private String coaResponseStatus;
 }

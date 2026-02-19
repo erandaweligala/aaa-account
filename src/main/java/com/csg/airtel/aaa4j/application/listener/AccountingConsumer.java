@@ -62,6 +62,7 @@ public class AccountingConsumer {
                                 LoggingUtil.logInfo(LOG, METHOD_CONSUME,
                                         "Complete consumeAccountingEvent process in %d ms for session: %s",
                                         duration, request.sessionId());
+                                MDC.clear();
                             })
                             .onFailure().invoke(failure -> {
                                 // Worker thread — set MDC once for this thread
@@ -70,6 +71,7 @@ public class AccountingConsumer {
                                 LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
                                         "Failed processing session: %s after %d ms",
                                         request.sessionId(), duration);
+                                MDC.clear();
                             })
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                             .subscribe().asCompletionStage();
@@ -77,6 +79,7 @@ public class AccountingConsumer {
                     return Uni.createFrom().voidItem();
                 });
     }
+
 
     private void setMdcContext(AccountingRequestDto request) {
         MDC.put(LoggingUtil.TRACE_ID, request.eventId());

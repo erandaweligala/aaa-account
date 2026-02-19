@@ -6,6 +6,8 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 public record AccountingResponseEvent(
+        @JsonProperty("traceId")  String traceId,
+        @JsonProperty("userName")   String userName,
         @JsonProperty("eventType") EventType eventType,
         @JsonProperty("eventTime") LocalDateTime eventTime,
         @JsonProperty("sessionId") String sessionId,

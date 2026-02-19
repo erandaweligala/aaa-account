@@ -70,7 +70,7 @@ public class AccountingUtil {
             LocalDateTime cachedNow = CACHED_NOW.get();
             LocalDate cachedToday = CACHED_TODAY.get();
             if (cachedNow != null || cachedToday != null) {
-                LoggingUtil.logTrace(log, M_CACHE, "Clearing temporal cache - cached now: %s, cached today: %s",
+                LoggingUtil.logDebug(log, M_CACHE, "Clearing temporal cache - cached now: %s, cached today: %s",
                         cachedNow, cachedToday);
             }
         }
@@ -87,7 +87,7 @@ public class AccountingUtil {
      */
     public Uni<Balance> findBalanceWithHighestPriority(List<Balance> balances, String bucketId) {
 
-        LoggingUtil.logTrace(log, M_BALANCE, "Finding balance with highest priority from %d balances", balances.size());
+        LoggingUtil.logDebug(log, M_BALANCE, "Finding balance with highest priority from %d balances", balances.size());
         return Uni.createFrom().item(() -> computeHighestPriority(balances, bucketId));
     }
 
@@ -361,7 +361,7 @@ public class AccountingUtil {
         // Calculate which window we're in (1-indexed)
         int windowPeriod = (int) (daysSinceStart / consumptionLimitWindow) + 1;
 
-        LoggingUtil.logTrace(log, M_CONSUMPTION, "Current window period: %d (days since start: %d, window size: %d days)",
+        LoggingUtil.logDebug(log, M_CONSUMPTION, "Current window period: %d (days since start: %d, window size: %d days)",
                 windowPeriod, daysSinceStart, consumptionLimitWindow);
 
         return windowPeriod;
@@ -383,7 +383,7 @@ public class AccountingUtil {
         // Calculate the end date of the current window (inclusive)
         LocalDate windowEndDate = serviceStartDate.plusDays(currentPeriod * consumptionLimitWindow - 1);
 
-        LoggingUtil.logTrace(log, M_CONSUMPTION, "Fixed window bounds: period=%d, start=%s, end=%s",
+        LoggingUtil.logDebug(log, M_CONSUMPTION, "Fixed window bounds: period=%d, start=%s, end=%s",
                 currentPeriod, windowStartDate, windowEndDate);
 
         return new LocalDate[]{windowStartDate, windowEndDate};
@@ -643,7 +643,7 @@ public class AccountingUtil {
             combined.addAll(groupSessions);
         }
 
-        LoggingUtil.logTrace(log, M_UPDATE, "Combined sessions: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
+        LoggingUtil.logDebug(log, M_UPDATE, "Combined sessions: user=%d, group=%d, total=%d", userSize, groupSize, combined.size());
 
         return combined;
     }
@@ -685,7 +685,7 @@ public class AccountingUtil {
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                     sessionData, request.username()).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded",sessionData));
         }
-        LoggingUtil.logTrace(log, M_UPDATE, "Processing balance update with combined data - balances: %d, sessions: %d",
+        LoggingUtil.logDebug(log, M_UPDATE, "Processing balance update with combined data - balances: %d, sessions: %d",
                 combinedBalances.size(), combinedSessions.size());
 
         BalanceUpdateContext context = prepareBalanceUpdateContext(

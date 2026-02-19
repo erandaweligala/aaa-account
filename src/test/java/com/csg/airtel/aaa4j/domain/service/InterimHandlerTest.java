@@ -207,12 +207,6 @@ class InterimHandlerTest {
         verify(accountingUtil).updateSessionAndBalance(any(), any(), any(), any());
     }
 
-    @Test
-    void testParseLongFast() {
-        String test = "abc,12345,def";
-        long result = InterimHandler.parseLongFast(test, 4, 9);
-        assert result == 12345L;
-    }
 
     private UserSessionData createMockUserData(String status) {
         UserSessionData data = new UserSessionData();

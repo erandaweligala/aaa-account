@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -23,8 +24,7 @@ public class AccountingHandlerFactory {
     }
 
     public Uni<Void> getHandler(AccountingRequestDto request,String traceId) {
-        LOG.infof("[traceId: %s] Received accounting request for user: %s with action type: %s",
-                traceId, request.username(), request.actionType());
+        LoggingUtil.logInfo(LOG,"getHandler","Received accounting request for action type: %s",request.actionType());
         return switch (request.actionType()) {
             case START -> startHandler.processAccountingStart(request,traceId);
             case INTERIM_UPDATE -> interimHandler.handleInterim(request,traceId);

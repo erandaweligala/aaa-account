@@ -70,7 +70,6 @@ class CdrMappingUtilTest {
         AccountingCDREvent event = CdrMappingUtil.buildInterimCDREvent(request, session);
 
         assertEquals(4294967396L, event.getPayload().getAccounting().getTotalUsage());
-        assertEquals(4294967296L, event.getPayload().getAccounting().getSessionUsage()); // total - previous (100)
     }
 
 

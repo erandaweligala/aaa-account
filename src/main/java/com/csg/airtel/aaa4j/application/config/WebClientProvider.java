@@ -31,6 +31,9 @@ public class WebClientProvider {
     @PostConstruct
     void init() {
         WebClientOptions options = new WebClientOptions()
+                .setShared(true)
+                .setTcpNoDelay(true)
+                .setMaxWaitQueueSize(600)
                 // HTTP/1.1 connection pool (fallback)
                 .setMaxPoolSize(config.maxPoolSize())
                 // Connection timeout

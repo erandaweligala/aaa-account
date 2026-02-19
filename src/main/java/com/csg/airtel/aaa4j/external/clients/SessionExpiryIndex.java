@@ -58,9 +58,9 @@ public class SessionExpiryIndex {
         double score = expiryTimeMillis;
 
         return sortedSetCommands.zadd(EXPIRY_INDEX_KEY, score, member)
-                .onItem().invoke(added -> {
-                    LoggingUtil.logDebug(log, M_INDEX, "Registered session in expiry index: %s -> %d", member, expiryTimeMillis);
-                })
+                .onItem().invoke(added ->
+                    LoggingUtil.logDebug(log, M_INDEX, "Registered session in expiry index: %s -> %d", member, expiryTimeMillis)
+                )
                 .replaceWithVoid();
     }
 
@@ -79,9 +79,8 @@ public class SessionExpiryIndex {
 
         // ZADD with default behavior updates score if member exists
         return sortedSetCommands.zadd(EXPIRY_INDEX_KEY, score, member)
-                .onItem().invoke(result -> {
-                    LoggingUtil.logDebug(log, M_INDEX, "Updated session expiry: %s -> %d", member, newExpiryTimeMillis);
-                })
+                .onItem().invoke(result ->
+                    LoggingUtil.logDebug(log, M_INDEX, "Updated session expiry: %s -> %d", member, newExpiryTimeMillis))
                 .replaceWithVoid();
     }
 
@@ -97,9 +96,9 @@ public class SessionExpiryIndex {
         String member = buildMember(userId, sessionId);
 
         return sortedSetCommands.zrem(EXPIRY_INDEX_KEY, member)
-                .onItem().invoke(removed -> {
-                    LoggingUtil.logDebug(log, M_INDEX, "Removed session from expiry index: %s, removed: %d", member, removed);
-                })
+                .onItem().invoke(removed ->
+                    LoggingUtil.logDebug(log, M_INDEX, "Removed session from expiry index: %s, removed: %d", member, removed)
+                )
                 .replaceWithVoid();
     }
 

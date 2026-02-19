@@ -126,19 +126,6 @@ class QuotaNotificationServiceTest {
         verify(accountProducer, never()).produceQuotaNotificationEvent(any());
     }
 
-    @Test
-    void testFormatMessage_WithNoParams() {
-        ThresholdGlobalTemplates template = new ThresholdGlobalTemplates();
-        template.setMassage("Simple Message");
-        template.setParams(new String[]{});
-
-        UserSessionData userData = new UserSessionData();
-        userData.setUserName("user1");
-
-        // Use reflection or a public wrapper if you want to test private methods directly,
-        // but here we test it via the main flow or by making it package-private.
-        // For this example, we assume we test the output via the Event produced.
-    }
 
     @Test
     void testRefreshTemplateCache() {
