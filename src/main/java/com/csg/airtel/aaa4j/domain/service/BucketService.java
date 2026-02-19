@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.response.ApiResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
+import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
@@ -27,6 +28,7 @@ public class BucketService {
     private static final String M_TERMINATE = "terminateSessions";
     private static final String M_STATUS = "updateUserStatus";
     private static final String M_SVC_STATUS = "updateServiceStatus";
+    private static final String M_DELETE_SVC = "deleteService";
     public static final String USER_NOT_FOUND = "User not found";
     public static final String USERNAME_IS_REQUIRED = "Username is required";
     private final CacheClient cacheClient;
@@ -419,6 +421,91 @@ public class BucketService {
                             userName, serviceId, throwable.getMessage());
                     return createErrorResponseString(
                             "Failed to update service status: " + throwable.getMessage());
+                });
+    }
+
+    /**
+     * Delete a specific service (balance) identified by serviceId from the user's cache,
+     * after sending CoA disconnect to all active sessions linked to that service.
+     *
+     * @param userName  the username
+     * @param serviceId the serviceId of the balance to delete
+     * @return ApiResponse with operation result
+     */
+    public Uni<ApiResponse<String>> deleteService(String userName, String serviceId) {
+        LoggingUtil.logInfo(log, M_DELETE_SVC, "Deleting service for user %s, serviceId %s", userName, serviceId);
+
+        // Input validation
+        if (userName == null || userName.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseString(USERNAME_IS_REQUIRED));
+        }
+        if (serviceId == null || serviceId.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseString("Service ID is required"));
+        }
+
+        return cacheClient.getUserData(userName)
+                .onItem().transformToUni(userData -> {
+                    if (userData == null) {
+                        return Uni.createFrom().item(createErrorResponseString(USER_NOT_FOUND));
+                    }
+
+                    List<Balance> existingBalances = userData.getBalance();
+                    if (existingBalances == null || existingBalances.isEmpty()) {
+                        return Uni.createFrom().item(createErrorResponseString("No balances found for user"));
+                    }
+
+                    // Check if balance with the given serviceId exists
+                    boolean serviceExists = existingBalances.stream()
+                            .anyMatch(b -> serviceId.equals(b.getServiceId()));
+
+                    if (!serviceExists) {
+                        return Uni.createFrom().item(createErrorResponseString(
+                                String.format("Balance with serviceId %s not found", serviceId)));
+                    }
+
+                    // Remove the balance with the matching serviceId
+                    List<Balance> updatedBalances = new ArrayList<>(existingBalances);
+                    updatedBalances.removeIf(b -> serviceId.equals(b.getServiceId()));
+
+                    UserSessionData updatedUserData = userData.toBuilder()
+                            .balance(Collections.unmodifiableList(updatedBalances))
+                            .build();
+
+                    // Send CoA disconnect for active sessions associated with this serviceId, then update cache
+                    Uni<Void> coaUni;
+                    List<Session> sessions = userData.getSessions();
+                    if (sessions != null && !sessions.isEmpty()) {
+                        // Filter sessions linked to the serviceId being deleted
+                        List<Session> matchingSessions = sessions.stream()
+                                .filter(s -> serviceId.equals(s.getServiceId()))
+                                .toList();
+
+                        if (!matchingSessions.isEmpty()) {
+                            LoggingUtil.logInfo(log, M_DELETE_SVC,
+                                    "Sending CoA disconnect for %d sessions linked to serviceId %s for user %s",
+                                    matchingSessions.size(), serviceId, userName);
+                            coaUni = coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    .replaceWithVoid();
+                        } else {
+                            coaUni = Uni.createFrom().voidItem();
+                        }
+                    } else {
+                        coaUni = Uni.createFrom().voidItem();
+                    }
+
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
+                            .call(() -> coaUni)
+                            .onItem().transform(result -> {
+                                LoggingUtil.logInfo(log, M_DELETE_SVC, "Successfully deleted service for user %s, serviceId %s", userName, serviceId);
+                                return createSuccessResponseString(
+                                        String.format("Service with serviceId %s deleted successfully", serviceId));
+                            });
+                })
+                .onFailure().recoverWithItem(throwable -> {
+                    LoggingUtil.logError(log, M_DELETE_SVC, throwable, "Failed to delete service for user %s, serviceId %s: %s",
+                            userName, serviceId, throwable.getMessage());
+                    return createErrorResponseString(
+                            "Failed to delete service: " + throwable.getMessage());
                 });
     }
 
