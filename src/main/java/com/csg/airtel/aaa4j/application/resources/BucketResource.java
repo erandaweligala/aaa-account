@@ -22,6 +22,7 @@ public class BucketResource {
     private static final String M_TERMINATE = "terminateViaHttp";
     private static final String M_STATUS = "userStatusUpdate";
     private static final String M_SVC_STATUS = "serviceStatusUpdate";
+    private static final String M_DELETE_SVC = "deleteService";
     private final BucketService bucketService;
 
     public BucketResource(BucketService bucketService) {
@@ -137,5 +138,18 @@ public class BucketResource {
                 });
     }
 
-    //todo need write method  delete service specfic service id (balance) after send coa
+    @DELETE
+    @Path("/deleteService/{userName}/{serviceId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Uni<Response> deleteService(@PathParam("userName") String userName,
+                                       @PathParam("serviceId") String serviceId) {
+        LoggingUtil.logInfo(log, M_DELETE_SVC, "Delete service Start user: %s, serviceId: %s", userName, serviceId);
+        return bucketService.deleteService(userName, serviceId)
+                .onItem().transform(apiResponse -> {
+                    LoggingUtil.logInfo(log, M_DELETE_SVC, "Delete service Completed user: %s, serviceId: %s", userName, serviceId);
+                    return Response.status(apiResponse.getStatus())
+                            .entity(apiResponse)
+                            .build();
+                });
+    }
 }
