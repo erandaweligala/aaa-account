@@ -49,7 +49,7 @@ public class OraclePoolCustomizer implements OraclePoolCreator {
                 .setPoolCleanerPeriod(poolConfig.poolCleanerInterval())
                 .setEventLoopSize(poolConfig.eventLoopSize())
                 .setShared(true)
-                .setName("oracle-pool-1000tps");
+                .setName("oracle-pool-1500tps");
 
 
         connectOptions

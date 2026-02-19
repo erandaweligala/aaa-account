@@ -5,17 +5,19 @@ import io.smallrye.config.WithDefault;
 
 /**
  * Configuration for Oracle database connection pool.
- * Optimized for 1000 TPS handling with configurable pool parameters.
+ * Optimized for 1500 TPS across 5 pods (300 TPS/pod, 1 core each).
+ * DB spec: 32 cores, 12GB RAM. Total connections: 5 pods x 20 = 100.
  */
 @ConfigMapping(prefix = "pool")
 public interface PoolConfig {
 
     /**
-     * Maximum number of connections in the pool.
-     * For 1000 TPS with average query time of 50ms, need ~50 connections.
-     * Default: 50
+     * Maximum number of connections in the pool per pod.
+     * For 300 TPS/pod with avg query time ~10ms: 300 * 0.01 = 3 concurrent + headroom.
+     * 5 pods x 20 = 100 total connections (safe for 32-core DB).
+     * Default: 20
      */
-    @WithDefault("50")
+    @WithDefault("20")
     int maxSize();
 
     /**
@@ -71,10 +73,11 @@ public interface PoolConfig {
 
     /**
      * Event loop size for async operations.
-     * Should match vertx event-loops-pool-size for optimal performance.
-     * Default: 32
+     * Should match vertx event-loops-pool-size (2x CPU cores).
+     * For 1-core pods: 2 event loops.
+     * Default: 2
      */
-    @WithDefault("32")
+    @WithDefault("2")
     int eventLoopSize();
 
     /**
