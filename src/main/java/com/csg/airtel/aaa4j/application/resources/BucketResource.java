@@ -118,4 +118,6 @@ public class BucketResource {
                             .build();
                 });
     }
+
+    //todo need to write method update service  status (balance.serviceStatus ) then after send coa request
 }
