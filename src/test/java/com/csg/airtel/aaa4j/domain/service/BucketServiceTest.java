@@ -382,4 +382,167 @@ class BucketServiceTest {
         assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
         assertTrue(response.getMessage().contains("Connection Timeout"));
     }
+
+    // --- updateServiceStatus tests ---
+
+    @Test
+    @DisplayName("updateServiceStatus - Success with COA")
+    void testUpdateServiceStatus_Success() {
+        // 1. Arrange
+        Balance balance = new Balance();
+        balance.setServiceId(SERVICE_ID);
+        balance.setServiceStatus("Active");
+
+        UserSessionData userData = UserSessionData.builder()
+                .userName(USER_NAME)
+                .balance(new ArrayList<>(List.of(balance)))
+                .sessions(List.of(new com.csg.airtel.aaa4j.domain.model.session.Session()))
+                .build();
+
+        doReturn(Uni.createFrom().item(userData))
+                .when(cacheClient).getUserData(USER_NAME);
+
+        doReturn(Uni.createFrom().voidItem())
+                .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
+
+        doReturn(Uni.createFrom().item(userData))
+                .when(coaService).clearAllSessionsAndSendCOA(any(), anyString(), any());
+
+        // 2. Act
+        ApiResponse<String> response = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "Barred")
+                .await().indefinitely();
+
+        // 3. Assert
+        assertEquals(Response.Status.OK, response.getStatus());
+        assertTrue(response.getMessage().contains("Service status updated successfully"));
+        assertTrue(response.getMessage().contains("Active"));
+        assertTrue(response.getMessage().contains("Barred"));
+
+        // Verify cache was updated with the new service status
+        verify(cacheClient).updateUserAndRelatedCaches(eq(USER_NAME), argThat(data -> {
+            Balance updatedBalance = data.getBalance().stream()
+                    .filter(b -> SERVICE_ID.equals(b.getServiceId()))
+                    .findFirst().orElse(null);
+            return updatedBalance != null && "Barred".equals(updatedBalance.getServiceStatus());
+        }), eq(USER_NAME));
+
+        // Verify COA was sent
+        verify(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), isNull());
+    }
+
+    @Test
+    @DisplayName("updateServiceStatus - Success without COA (No Sessions)")
+    void testUpdateServiceStatus_NoSessions() {
+        // 1. Arrange
+        Balance balance = new Balance();
+        balance.setServiceId(SERVICE_ID);
+        balance.setServiceStatus("Active");
+
+        UserSessionData userData = UserSessionData.builder()
+                .userName(USER_NAME)
+                .balance(new ArrayList<>(List.of(balance)))
+                .sessions(Collections.emptyList())
+                .build();
+
+        doReturn(Uni.createFrom().item(userData))
+                .when(cacheClient).getUserData(USER_NAME);
+
+        doReturn(Uni.createFrom().voidItem())
+                .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
+
+        // 2. Act
+        ApiResponse<String> response = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "Suspended")
+                .await().indefinitely();
+
+        // 3. Assert
+        assertEquals(Response.Status.OK, response.getStatus());
+        verify(coaService, never()).clearAllSessionsAndSendCOA(any(), anyString(), any());
+    }
+
+    @Test
+    @DisplayName("updateServiceStatus - Validation Failures")
+    void testUpdateServiceStatus_Validation() {
+        // Null username
+        ApiResponse<String> res1 = bucketService.updateServiceStatus(null, SERVICE_ID, "Active").await().indefinitely();
+        assertEquals("Username is required", res1.getMessage());
+
+        // Blank username
+        ApiResponse<String> res2 = bucketService.updateServiceStatus("", SERVICE_ID, "Active").await().indefinitely();
+        assertEquals("Username is required", res2.getMessage());
+
+        // Null serviceId
+        ApiResponse<String> res3 = bucketService.updateServiceStatus(USER_NAME, null, "Active").await().indefinitely();
+        assertEquals("Service ID is required", res3.getMessage());
+
+        // Blank status
+        ApiResponse<String> res4 = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "").await().indefinitely();
+        assertEquals("Status is required", res4.getMessage());
+    }
+
+    @Test
+    @DisplayName("updateServiceStatus - User Not Found")
+    void testUpdateServiceStatus_UserNotFound() {
+        doReturn(Uni.createFrom().nullItem())
+                .when(cacheClient).getUserData(USER_NAME);
+
+        ApiResponse<String> response = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "Active")
+                .await().indefinitely();
+
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+        assertEquals("User not found", response.getMessage());
+    }
+
+    @Test
+    @DisplayName("updateServiceStatus - No Balances Found")
+    void testUpdateServiceStatus_NoBalances() {
+        UserSessionData userData = UserSessionData.builder()
+                .userName(USER_NAME)
+                .balance(Collections.emptyList())
+                .build();
+
+        doReturn(Uni.createFrom().item(userData))
+                .when(cacheClient).getUserData(USER_NAME);
+
+        ApiResponse<String> response = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "Active")
+                .await().indefinitely();
+
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+        assertEquals("No balances found for user", response.getMessage());
+    }
+
+    @Test
+    @DisplayName("updateServiceStatus - ServiceId Not Found in Balances")
+    void testUpdateServiceStatus_ServiceIdNotFound() {
+        Balance balance = new Balance();
+        balance.setServiceId("other-service");
+        balance.setServiceStatus("Active");
+
+        UserSessionData userData = UserSessionData.builder()
+                .userName(USER_NAME)
+                .balance(new ArrayList<>(List.of(balance)))
+                .build();
+
+        doReturn(Uni.createFrom().item(userData))
+                .when(cacheClient).getUserData(USER_NAME);
+
+        ApiResponse<String> response = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "Barred")
+                .await().indefinitely();
+
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+        assertTrue(response.getMessage().contains(SERVICE_ID));
+        assertTrue(response.getMessage().contains("not found"));
+    }
+
+    @Test
+    @DisplayName("updateServiceStatus - Failure Recovery")
+    void testUpdateServiceStatus_Failure() {
+        doReturn(Uni.createFrom().failure(new RuntimeException("Redis Timeout")))
+                .when(cacheClient).getUserData(USER_NAME);
+
+        ApiResponse<String> response = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "Active")
+                .await().indefinitely();
+
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+        assertTrue(response.getMessage().contains("Redis Timeout"));
+    }
 }

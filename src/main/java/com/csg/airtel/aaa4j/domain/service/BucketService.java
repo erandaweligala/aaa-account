@@ -26,6 +26,7 @@ public class BucketService {
     private static final String M_UPDATE = "updateBucketBalance";
     private static final String M_TERMINATE = "terminateSessions";
     private static final String M_STATUS = "updateUserStatus";
+    private static final String M_SVC_STATUS = "updateServiceStatus";
     public static final String USER_NOT_FOUND = "User not found";
     public static final String USERNAME_IS_REQUIRED = "Username is required";
     private final CacheClient cacheClient;
@@ -329,6 +330,95 @@ public class BucketService {
                     return createErrorResponseString(
                             "Failed to update user status: " + throwable.getMessage()
                     );
+                });
+    }
+
+    /**
+     * Update the serviceStatus of a specific balance (identified by serviceId) in cache,
+     * then send a COA request to all active sessions to notify NAS about the change.
+     *
+     * @param userName  the username
+     * @param serviceId the serviceId of the balance to update
+     * @param status    the new service status (e.g. "Active", "Barred", "Suspended")
+     * @return ApiResponse with operation result
+     */
+    public Uni<ApiResponse<String>> updateServiceStatus(String userName, String serviceId, String status) {
+        LoggingUtil.logInfo(log, M_SVC_STATUS, "Updating service status for user %s, serviceId %s to %s", userName, serviceId, status);
+
+        // Input validation
+        if (userName == null || userName.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseString(USERNAME_IS_REQUIRED));
+        }
+        if (serviceId == null || serviceId.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseString("Service ID is required"));
+        }
+        if (status == null || status.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseString("Status is required"));
+        }
+
+        return cacheClient.getUserData(userName)
+                .onItem().transformToUni(userData -> {
+                    if (userData == null) {
+                        return Uni.createFrom().item(createErrorResponseString(USER_NOT_FOUND));
+                    }
+
+                    List<Balance> existingBalances = userData.getBalance();
+                    if (existingBalances == null || existingBalances.isEmpty()) {
+                        return Uni.createFrom().item(createErrorResponseString("No balances found for user"));
+                    }
+
+                    // Find and update the balance with the matching serviceId
+                    boolean found = false;
+                    String oldStatus = null;
+                    List<Balance> updatedBalances = new ArrayList<>(existingBalances);
+                    for (Balance balance : updatedBalances) {
+                        if (serviceId.equals(balance.getServiceId())) {
+                            oldStatus = balance.getServiceStatus();
+                            balance.setServiceStatus(status);
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (!found) {
+                        return Uni.createFrom().item(createErrorResponseString(
+                                String.format("Balance with serviceId %s not found", serviceId)));
+                    }
+
+                    String previousStatus = oldStatus;
+                    LoggingUtil.logInfo(log, M_SVC_STATUS, "Changing service status for user %s, serviceId %s from %s to %s",
+                            userName, serviceId, previousStatus, status);
+
+                    UserSessionData updatedUserData = userData.toBuilder()
+                            .balance(Collections.unmodifiableList(updatedBalances))
+                            .build();
+
+                    // Update cache and then send COA for active sessions
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
+                            .call(() -> {
+                                // Send COA to notify NAS about service status change for all active sessions
+                                if (userData.getSessions() != null && !userData.getSessions().isEmpty()) {
+                                    LoggingUtil.logInfo(log, M_SVC_STATUS,
+                                            "Service status changed from %s to %s for serviceId %s, sending COA to update %d active sessions for user %s",
+                                            previousStatus, status, serviceId, userData.getSessions().size(), userName);
+                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                            .replaceWithVoid();
+                                }
+                                return Uni.createFrom().voidItem();
+                            })
+                            .onItem().transform(result -> {
+                                LoggingUtil.logInfo(log, M_SVC_STATUS, "Successfully updated service status for user %s, serviceId %s to %s",
+                                        userName, serviceId, status);
+                                return createSuccessResponseString(
+                                        String.format("Service status updated successfully from %s to %s for serviceId %s",
+                                                previousStatus, status, serviceId));
+                            });
+                })
+                .onFailure().recoverWithItem(throwable -> {
+                    LoggingUtil.logError(log, M_SVC_STATUS, throwable, "Failed to update service status for user %s, serviceId %s: %s",
+                            userName, serviceId, throwable.getMessage());
+                    return createErrorResponseString(
+                            "Failed to update service status: " + throwable.getMessage());
                 });
     }
 
