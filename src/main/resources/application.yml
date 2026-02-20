@@ -27,8 +27,8 @@ quarkus:
   # Vertx Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
   vertx:
     event-loops-pool-size: 2         # 2x CPU cores (1 core per pod)
-    worker-pool-size: 8              # Limited blocking ops on 1-core pod
-    internal-blocking-pool-size: 8   # Internal Quarkus blocking calls
+    worker-pool-size: 32             # Increased from 8 - consumer offloads to worker pool; 8 threads saturated at 300 TPS
+    internal-blocking-pool-size: 16  # Increased from 8 - supports higher concurrent blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -36,8 +36,8 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 10                 # Right-sized for 1-core pod
-    max-threads: 20                  # Prevent context switching thrash
+    core-threads: 20                 # Increased from 10 - match higher worker pool concurrency
+    max-threads: 40                  # Increased from 20 - headroom for burst traffic with larger worker pool
     queue-size: 2000                 # Buffer for burst traffic
     growth-resistance: 0
     shutdown-timeout: 30s
@@ -255,7 +255,7 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500          # ~1-2s of messages at 300 TPS/pod (12 partitions / 5 pods)
+        max.poll.records: 200           # Reduced from 500 - smaller batches for faster offset commits and less backlog
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         fetch.min.bytes: 1             # Reduce latency - don't wait for min bytes
@@ -263,5 +263,6 @@ mp:
         max.partition.fetch.bytes: 5242880  # 5MB per partition (2-3 partitions/pod)
         receive.buffer.bytes: 131072
         failure-strategy: ignore
+        concurrency: 8                  # Process messages from multiple partitions concurrently
 
 

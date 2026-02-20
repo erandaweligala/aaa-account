@@ -60,7 +60,7 @@ public class CacheClient {
             delay = 100,
             jitter = 50
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)                  // Reduced from 8s - free worker threads faster on Redis slowdowns
     public Uni<String> getGroupId(String userId) {
 
         LoggingUtil.logDebug(log, M_GET, "Retrieving Group id for cache userId: %s", userId);
@@ -95,7 +95,7 @@ public class CacheClient {
             delay = 30,
             maxDuration = 1500
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)                  // Reduced from 8s - free worker threads faster on Redis slowdowns
     public Uni<Void> storeUserData(String userId, UserSessionData userData, String userName) {
 
         LoggingUtil.logDebug(log, M_STORE, "Storing user data for cache userId: %s", userId);
@@ -161,7 +161,7 @@ public class CacheClient {
             delay = 100,
             jitter = 50
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)                  // Reduced from 2000ms - faster timeout
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)                  // Reduced from 8s - free worker threads faster on Redis slowdowns
     public Uni<UserSessionData> getUserData(String userId) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         LoggingUtil.logDebug(log, M_GET, "Retrieving user data for cache userId: %s", userId);
@@ -200,7 +200,7 @@ public class CacheClient {
             delay = 30,                     // Reduced from 50ms - faster retry
             maxDuration = 1500              // Reduced from 2000ms - fail faster
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)                  // Reduced from 8s - free worker threads faster on Redis slowdowns
     public Uni<Void> updateUserAndRelatedCaches(String userId, UserSessionData userData,String userName) {
         LoggingUtil.logDebug(log, M_UPDATE, "Updating user data and related caches for userId: %s", userId);
         String userKey = KEY_PREFIX + userId;
@@ -263,7 +263,7 @@ public class CacheClient {
             delay = 50,                     // Reduced from 100ms - faster retry
             maxDuration = 3000
     )
-    @Timeout(value = 8, unit = ChronoUnit.SECONDS)
+    @Timeout(value = 3, unit = ChronoUnit.SECONDS)                  // Reduced from 8s - free worker threads faster on Redis slowdowns
     public Uni<Map<String, UserSessionData>> getUserDataBatchAsMap(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) {
             return Uni.createFrom().item(Map.of());
@@ -316,7 +316,7 @@ public class CacheClient {
             delay = 50,                     // Reduced from 100ms - faster retry
             maxDuration = 4000
     )
-    @Timeout(value = 8000)
+    @Timeout(value = 3000)                                          // Reduced from 8s - free worker threads faster on Redis slowdowns
     public Uni<ExpiredSessionsWithData> getExpiredSessionsWithData(long expiryThresholdMillis, int limit) {
         final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         LoggingUtil.logDebug(log, M_BATCH, "Retrieving expired sessions with data, threshold: %d, limit: %d",
