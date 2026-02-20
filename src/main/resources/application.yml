@@ -24,10 +24,10 @@ quarkus:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
 
-  # Vertx Configuration - Optimized for 1500 TPS (5 pods x 1 core / 2GB, 300 TPS/pod)
+  # Vertx Configuration - Optimized for 2400 TPS (8 pods x 1 core / 2GB, 300 TPS/pod)
   vertx:
     event-loops-pool-size: 4         # 2x CPU cores (1 core per pod)
-    internal-blocking-pool-size: 24  # Match consumer concurrency (20) + headroom
+    internal-blocking-pool-size: 28  # Match consumer concurrency (24) + headroom for other blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,7 +35,7 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 30                 # 20 consumer + 10 for HTTP/scheduled/other ops (right-sized for 1 core)
+    core-threads: 32                 # 24 consumer + 8 for HTTP/scheduled/other ops (right-sized for 1 core)
     max-threads: 50                  # Modest burst headroom - avoids excessive context switching on 1 core
     queue-size: 3000                 # Buffer for TPS bursts without excessive memory overhead
     growth-resistance: 0
@@ -145,11 +145,11 @@ webclient:
   http2-keep-alive-timeout: 60
 
 
-# Pool Configuration - Optimized for 1500 TPS (5 pods x 1 core / 2GB, 300 TPS/pod)
+# Pool Configuration - Optimized for 2400 TPS (8 pods x 1 core / 2GB, 300 TPS/pod)
 # DB: 32 cores, 12GB RAM → max ~160 total connections safe
-# Per pod: 25 connections x 5 pods = 125 total DB connections
+# Per pod: 20 connections x 8 pods = 160 total DB connections
 pool:
-  max-size: 25                      # 5 pods x 25 = 125 total (safe for 32-core DB, fits 2GB memory)
+  max-size: 20                      # 8 pods x 20 = 160 total (max safe for 32-core DB, fits 2GB memory)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -176,7 +176,7 @@ kafka:
     servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 
-# Kafka Producer/Consumer Configuration - Optimized for 1500 TPS (5 pods x 1 core / 2GB, 8 partitions, concurrency=20/pod)
+# Kafka Producer/Consumer Configuration - Optimized for 2400 TPS (8 pods x 1 core / 2GB, 16 partitions, concurrency=24/pod)
 mp:
   messaging:
     outgoing:
@@ -190,21 +190,14 @@ mp:
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
-        linger.ms: 5
-        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
+        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
+        linger.ms: 10                  # 10ms batching window - accumulate more msgs per batch
+        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
         reconnect.backoff.ms: 1000
         reconnect.backoff.max.ms: 5000
-
-      #        retries: 3
-#        max.in.flight.requests.per.connection: 5
-#        compression.type: snappy
-#        batch.size: 32768
-#        linger.ms: 5
-#        buffer.memory: 67108864
 
       accounting-resp-events:
         connector: smallrye-kafka
@@ -215,9 +208,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
-        linger.ms: 5
-        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
+        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
+        linger.ms: 10                  # 10ms batching window
+        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
 
       accounting-cdr-events:
         connector: smallrye-kafka
@@ -228,9 +221,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
-        linger.ms: 5
-        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
+        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
+        linger.ms: 10                  # 10ms batching window
+        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
 
       quota-notification-events:
         connector: smallrye-kafka
@@ -241,9 +234,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384              # 16KB - right-sized for 300 TPS/pod
-        linger.ms: 5
-        buffer.memory: 33554432        # 32MB - reduced for 1-core pod memory
+        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
+        linger.ms: 10                  # 10ms batching window
+        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
 
     incoming:
       accounting-events:
@@ -260,10 +253,10 @@ mp:
         heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
         fetch.min.bytes: 1             # Reduce latency - don't wait for min bytes
         fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 2GB memory (8 partitions × 5MB = 40MB max)
+        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 2GB memory (2 partitions/pod × 5MB = 10MB)
         receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 20                 # Optimal for 1-core I/O-bound: CPU × (1 + Wait/Compute) ≈ 20
+        concurrency: 24                 # 16 partitions / 8 pods = 2 per pod; 24 concurrent for zero-lag at P95
 
 

@@ -5,19 +5,19 @@ import io.smallrye.config.WithDefault;
 
 /**
  * Configuration for Oracle database connection pool.
- * Optimized for 1500 TPS across 5 pods (300 TPS/pod, 1 core / 2GB each).
- * DB spec: 32 cores, 12GB RAM. Total connections: 5 pods x 25 = 125.
+ * Optimized for 2400 TPS across 8 pods (300 TPS/pod, 1 core / 2GB each).
+ * DB spec: 32 cores, 12GB RAM. Total connections: 8 pods x 20 = 160.
  */
 @ConfigMapping(prefix = "pool")
 public interface PoolConfig {
 
     /**
      * Maximum number of connections in the pool per pod.
-     * For 300 TPS/pod with concurrency=20: needs headroom for concurrent DB queries.
-     * 5 pods x 25 = 125 total connections (safe for 32-core DB, fits 2GB memory).
-     * Default: 25
+     * For 300 TPS/pod with concurrency=24: needs headroom for concurrent DB queries.
+     * 8 pods x 20 = 160 total connections (max safe for 32-core DB, fits 2GB memory).
+     * Default: 20
      */
-    @WithDefault("25")
+    @WithDefault("20")
     int maxSize();
 
     /**
