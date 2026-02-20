@@ -15,10 +15,16 @@ import org.eclipse.microprofile.reactive.messaging.Message;
 import org.jboss.logging.Logger;
 import org.slf4j.MDC;
 
+import java.util.concurrent.Semaphore;
+
 @ApplicationScoped
 public class AccountingConsumer {
     private static final Logger LOG = Logger.getLogger(AccountingConsumer.class);
     private static final String METHOD_CONSUME = "consumeAccountingEvent";
+
+    // Backpressure: limit concurrent in-flight async processing to prevent unbounded queue growth
+    private static final int MAX_CONCURRENT_PROCESSING = 64;
+    private final Semaphore processingLimiter = new Semaphore(MAX_CONCURRENT_PROCESSING);
 
     final AccountProducer accountingProdEvent;
     final AccountingHandlerFactory accountingHandlerFactory;
@@ -45,6 +51,16 @@ public class AccountingConsumer {
                             "Partition: %d, Offset: %d", metadata.getPartition(), metadata.getOffset()));
         }
 
+        // Acquire permit for backpressure — blocks if too many in-flight messages
+        try {
+            processingLimiter.acquire();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            LoggingUtil.logError(LOG, METHOD_CONSUME, e,
+                    "Interrupted while acquiring processing permit for session: %s", request.sessionId());
+            return Uni.createFrom().completionStage(message.ack());
+        }
+
         // Acknowledge immediately, then process asynchronously
         return Uni.createFrom().completionStage(message.ack())
                 .onItem().transformToUni(v -> {
@@ -53,7 +69,7 @@ public class AccountingConsumer {
                             "Message acknowledged for session: %s, starting async processing",
                             request.sessionId());
 
-                    // Process in background on worker pool
+                    // Process in background on worker pool with bounded concurrency
                     accountingHandlerFactory.getHandler(request, request.eventId())
                             .onItem().invoke(success -> {
                                 // Worker thread — set MDC once for this thread
@@ -73,6 +89,7 @@ public class AccountingConsumer {
                                         request.sessionId(), duration);
                                 MDC.clear();
                             })
+                            .onTermination().invoke(() -> processingLimiter.release())
                             .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                             .subscribe().asCompletionStage();
 
