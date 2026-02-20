@@ -27,7 +27,7 @@ quarkus:
   # Vertx Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
   vertx:
     event-loops-pool-size: 4         # 2x CPU cores (1 core per pod)
-    internal-blocking-pool-size: 16  # Increased from 8 - supports higher concurrent blocking ops
+    internal-blocking-pool-size: 32  # Supports 24 concurrent consumer handlers + headroom
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,9 +35,9 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 20                 # Increased from 10 - match higher worker pool concurrency
-    max-threads: 40                  # Increased from 20 - headroom for burst traffic with larger worker pool
-    queue-size: 2000                 # Buffer for burst traffic
+    core-threads: 40                 # Match consumer concurrency (24) + headroom for other ops
+    max-threads: 80                  # 2x core for burst traffic and latency spikes
+    queue-size: 5000                 # Larger buffer to absorb TPS bursts without rejection
     growth-resistance: 0
     shutdown-timeout: 30s
 
@@ -147,9 +147,9 @@ webclient:
 
 # Pool Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
 # DB: 32 cores, 12GB RAM → max ~160 total connections safe
-# Per pod: 20 connections x 5 pods = 100 total DB connections
+# Per pod: 30 connections x 5 pods = 150 total DB connections
 pool:
-  max-size: 20                      # 5 pods x 20 = 100 total (safe for 32-core DB)
+  max-size: 30                      # 5 pods x 30 = 150 total (safe for 32-core DB, supports concurrency=24)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -157,7 +157,7 @@ pool:
   prepared-statement-cache-max-size: 256  # Cache prepared statements
   pipelining-enabled: true          # Enable query pipelining
   pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 2                # Match vertx event-loops-pool-size (2x CPU cores)
+  event-loop-size: 4                # Match vertx event-loops-pool-size
   tcp-keep-alive: true              # Detect dead connections
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
@@ -176,7 +176,7 @@ kafka:
     servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 
-# Kafka Producer/Consumer Configuration - Optimized for 1500 TPS (5 pods x 1 core, 12 partitions)
+# Kafka Producer/Consumer Configuration - Optimized for 1500 TPS (5 pods x 1 core, 8 partitions, concurrency=24/pod)
 mp:
   messaging:
     outgoing:
@@ -254,14 +254,16 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 200           # Reduced from 500 - smaller batches for faster offset commits and less backlog
+        max.poll.records: 500           # Larger batches for higher throughput during backlog catch-up
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
         fetch.min.bytes: 1             # Reduce latency - don't wait for min bytes
         fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition (2-3 partitions/pod)
-        receive.buffer.bytes: 131072
+        max.partition.fetch.bytes: 10485760  # 10MB per partition - support larger batch fetches
+        receive.buffer.bytes: 262144    # 256KB socket buffer for faster data transfer
+        connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 8
+        concurrency: 24                 # 3x partition count - allows 24 msgs processed concurrently per pod
 
 
