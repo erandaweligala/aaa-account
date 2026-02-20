@@ -250,7 +250,7 @@ mp:
     incoming:
       accounting-events:
         connector: smallrye-kafka
-        topic: accounting-dc
+        topic: accounting-dc-1
         group.id: accounting-consumer-group
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
