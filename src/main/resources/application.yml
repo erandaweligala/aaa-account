@@ -3,31 +3,30 @@ quarkus:
     http2: true
     root-path: /api/v1
     port: 9905
-    io-threads: 2                    # 2x CPU cores (1-core pod)
+    io-threads: 4                    # 2x CPU cores (1-core pod)
     limits:
       max-body-size: 10M
       max-connections: 500           # Right-sized for 300 TPS/pod
-
-  datasource:
-    db-kind: oracle
-    username: aaa
-    password: Aaa!89nky78D
-    reactive:
-      #url: oracle:thin:@localhost:1521/FREEPDB1
-      url: oracle:thin:@localhost:1522/ORCL
 
 #  datasource:
 #    db-kind: oracle
 #    username: aaa
 #    password: Aaa!89nky78D
 #    reactive:
-#      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+#      #url: oracle:thin:@localhost:1521/FREEPDB1
+#      url: oracle:thin:@localhost:1522/ORCL
+
+  datasource:
+    db-kind: oracle
+    username: aaa
+    password: Aaa!89nky78D
+    reactive:
+      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
 
   # Vertx Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
   vertx:
-    event-loops-pool-size: 2         # 2x CPU cores (1 core per pod)
-    worker-pool-size: 32             # Increased from 8 - consumer offloads to worker pool; 8 threads saturated at 300 TPS
+    event-loops-pool-size: 4         # 2x CPU cores (1 core per pod)
     internal-blocking-pool-size: 16  # Increased from 8 - supports higher concurrent blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
@@ -95,32 +94,32 @@ quarkus:
         path: /q/metrics
 
 
-  redis:
-    hosts: redis://localhost:6379
-    max-pool-size: 150               # Right-sized: 300 TPS x ~5ms = ~1.5 concurrent + headroom
-    max-waiting-handlers: 3000
-    max-pool-waiting: 1000
-    pool-recycle-timeout: 240000
-    reconnect-attempts: 3
-    reconnect-interval: 500
-    pool-cleaner-interval: 20000
-    response-timeout: 3000
-    connection-timeout: 2000
-
 #  redis:
-#    client-type: sentinel
-#    hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
-#    master-name: mymaster
-#    role: master
-#    password: S3cure_Redis_Pass_w0rd!
-#    max-pool-size: 150
+#    hosts: redis://localhost:6379
+#    max-pool-size: 150               # Right-sized: 300 TPS x ~5ms = ~1.5 concurrent + headroom
 #    max-waiting-handlers: 3000
 #    max-pool-waiting: 1000
 #    pool-recycle-timeout: 240000
 #    reconnect-attempts: 3
 #    reconnect-interval: 500
 #    pool-cleaner-interval: 20000
-#    timeout: 120000
+#    response-timeout: 3000
+#    connection-timeout: 2000
+
+  redis:
+    client-type: sentinel
+    hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
+    master-name: mymaster
+    role: master
+    password: S3cure_Redis_Pass_w0rd!
+    max-pool-size: 150
+    max-waiting-handlers: 3000
+    max-pool-waiting: 1000
+    pool-recycle-timeout: 240000
+    reconnect-attempts: 3
+    reconnect-interval: 500
+    pool-cleaner-interval: 20000
+    timeout: 120000
 
   # CoA HTTP Client Configuration (Vert.x WebClient)
 #coa:
@@ -172,9 +171,9 @@ idle-session:
   batch-size: 1000
 
   # Process 1000 sessions per batch (increased for scale)
-#kafka:
-#  bootstrap:
-#    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
+kafka:
+  bootstrap:
+    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 
 # Kafka Producer/Consumer Configuration - Optimized for 1500 TPS (5 pods x 1 core, 12 partitions)
@@ -183,7 +182,7 @@ mp:
     outgoing:
       db-write-events:
         connector: smallrye-kafka
-        topic: DC-DR
+        topic: dctodr-dc
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
@@ -209,7 +208,7 @@ mp:
 
       accounting-resp-events:
         connector: smallrye-kafka
-        topic: accounting-response
+        topic: accounting-response-dc
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
@@ -222,7 +221,7 @@ mp:
 
       accounting-cdr-events:
         connector: smallrye-kafka
-        topic: cdr-event
+        topic: cdr-event-dc
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
@@ -235,7 +234,7 @@ mp:
 
       quota-notification-events:
         connector: smallrye-kafka
-        topic: quota-notifications
+        topic: quota-notifications-dc
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all
@@ -263,6 +262,6 @@ mp:
         max.partition.fetch.bytes: 5242880  # 5MB per partition (2-3 partitions/pod)
         receive.buffer.bytes: 131072
         failure-strategy: ignore
-        concurrency: 32                 # Uni now represents full processing duration; need more slots for 300 TPS/pod with reactive I/O
+        concurrency: 8
 
 

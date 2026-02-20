@@ -41,10 +41,7 @@ public class AccountingConsumer {
                             "Partition: %d, Offset: %d, session: %s",
                             metadata.getPartition(), metadata.getOffset(), request.sessionId()));
         }
-
-        // Acknowledge immediately for at-most-once semantics, then process reactively.
-        // The returned Uni completes only after processing finishes, giving SmallRye
-        // natural backpressure via the concurrency setting — no blocking semaphore needed.
+        
         return Uni.createFrom().completionStage(message.ack())
                 .onItem().transformToUni(v ->
                     accountingHandlerFactory.getHandler(request, request.eventId())

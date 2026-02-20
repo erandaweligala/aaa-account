@@ -2,7 +2,7 @@ quarkus:
   http:
     root-path: /api/v1
     port: 9905
-    io-threads: 2                    # 2x CPU cores (1-core pod)
+    io-threads: 4                    # 2x CPU cores (1-core pod)
     limits:
       max-body-size: 10M
       max-connections: 500           # Right-sized for 300 TPS/pod
@@ -29,9 +29,9 @@ quarkus:
 
   # Vertx Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
   vertx:
-    event-loops-pool-size: 2         # 2x CPU cores (1 core per pod)
-    worker-pool-size: 8              # Limited blocking ops on 1-core pod
-    internal-blocking-pool-size: 8   # Internal Quarkus blocking calls
+    event-loops-pool-size: 4         # 2x CPU cores (1 core per pod)
+    worker-pool-size: 16              # Limited blocking ops on 1-core pod
+    internal-blocking-pool-size: 16   # Internal Quarkus blocking calls
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -39,8 +39,8 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 10                 # Right-sized for 1-core pod
-    max-threads: 20                  # Prevent context switching thrash
+    core-threads: 20                 # Right-sized for 1-core pod
+    max-threads: 40                  # Prevent context switching thrash
     queue-size: 2000                 # Buffer for burst traffic
     growth-resistance: 0
     shutdown-timeout: 30s
@@ -145,7 +145,7 @@ pool:
   prepared-statement-cache-max-size: 256  # Cache prepared statements
   pipelining-enabled: true          # Enable query pipelining
   pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 2                # Match vertx event-loops-pool-size (2x CPU cores)
+  event-loop-size: 4                # Match vertx event-loops-pool-size (2x CPU cores)
   tcp-keep-alive: true              # Detect dead connections
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
