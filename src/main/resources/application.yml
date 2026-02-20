@@ -263,6 +263,6 @@ mp:
         max.partition.fetch.bytes: 5242880  # 5MB per partition (2-3 partitions/pod)
         receive.buffer.bytes: 131072
         failure-strategy: ignore
-        concurrency: 8                  # Process messages from multiple partitions concurrently
+        concurrency: 32                 # Uni now represents full processing duration; need more slots for 300 TPS/pod with reactive I/O
 
 

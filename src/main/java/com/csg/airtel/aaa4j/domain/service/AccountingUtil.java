@@ -1114,12 +1114,6 @@ public class AccountingUtil {
             if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
                 updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
             }
-            if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
-                updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
-            }
-            if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
-                updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
-            }
 
         LoggingUtil.logTrace(log, M_CACHE, "Successfully cleared all sessions for user: %s, remaining sessions: %d",
                 username, updatedUserData.getSessions() != null ?
