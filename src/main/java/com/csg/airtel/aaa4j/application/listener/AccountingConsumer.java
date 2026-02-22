@@ -30,7 +30,7 @@ public class AccountingConsumer {
     }
 
     @Incoming("accounting-events")
-    @Acknowledgment(Acknowledgment.Strategy.MANUAL)
+    @Acknowledgment(Acknowledgment.Strategy.PRE_PROCESSING)
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         long startTime = System.currentTimeMillis();
         AccountingRequestDto request = message.getPayload();
