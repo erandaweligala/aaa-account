@@ -28,7 +28,6 @@ public class AccountingConsumer {
 
     /**
      * Consumes accounting events with backpressure-aware processing.
-     *
      * Flow: process message → ack on completion → SmallRye commits offset.
      * SmallRye's concurrency setting (16) controls how many messages are in-flight,
      * naturally throttling poll rate when processing is slower than ingestion.
@@ -53,8 +52,7 @@ public class AccountingConsumer {
                     LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
                             "Failed processing session: %s", request.sessionId());
                     return Uni.createFrom().voidItem();
-                })
-                .chain(() -> Uni.createFrom().completionStage(message.ack()));
+                });
     }
 
     private void setMdcContext(AccountingRequestDto request) {
