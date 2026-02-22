@@ -181,12 +181,15 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500          # ~1-2s of messages at 300 TPS/pod (12 partitions / 5 pods)
+        max.poll.records: 500          # ~1-2s of messages at 300 TPS/pod
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000   # Prevent consumer rebalancing under sustained high load
         fetch.min.bytes: 1             # Reduce latency - don't wait for min bytes
         fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition (2-3 partitions/pod)
+        max.partition.fetch.bytes: 5242880  # 5MB per partition
         receive.buffer.bytes: 131072
+        connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
+        concurrency: 24                # CRITICAL: without this, default is 1 message at a time per pod
 
