@@ -3,7 +3,7 @@ quarkus:
     http2: true
     root-path: /api/v1
     port: 9905
-    io-threads: 4                    # 2x CPU cores (1-core pod)
+    io-threads: 2                    # Match event-loops-pool-size (1-core pod)
     limits:
       max-body-size: 10M
       max-connections: 500           # Right-sized for 300 TPS/pod
@@ -26,8 +26,8 @@ quarkus:
 
   # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
   vertx:
-    event-loops-pool-size: 4         # 2x CPU cores (1 core per pod)
-    internal-blocking-pool-size: 28  # Match consumer concurrency (24) + headroom for other blocking ops
+    event-loops-pool-size: 2         # 1 core pod → 2 event loops sufficient (Kafka + Redis/HTTP I/O)
+    internal-blocking-pool-size: 20  # Match consumer concurrency (16) + 4 headroom for other blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,9 +35,9 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 32                 # 24 consumer + 8 for HTTP/scheduled/other ops
-    max-threads: 50                  # Modest burst headroom - avoids excessive context switching on 1 core
-    queue-size: 3000                 # Buffer for TPS bursts without excessive memory overhead
+    core-threads: 20                 # 16 consumer + 4 for HTTP/scheduled/other ops
+    max-threads: 32                  # Modest burst headroom - avoids excessive context switching on 1 core
+    queue-size: 1000                 # Backpressure-aware consumer prevents unbounded queue buildup
     growth-resistance: 0
     shutdown-timeout: 30s
 
@@ -112,9 +112,9 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 150
-    max-waiting-handlers: 3000
-    max-pool-waiting: 1000
+    max-pool-size: 64               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
+    max-waiting-handlers: 1000      # Reduced - backpressure prevents unbounded waiting
+    max-pool-waiting: 500
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
@@ -157,7 +157,7 @@ pool:
   prepared-statement-cache-max-size: 256  # Cache prepared statements
   pipelining-enabled: true          # Enable query pipelining
   pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 4                # Match vertx event-loops-pool-size
+  event-loop-size: 2                # Match vertx event-loops-pool-size (1 core pod)
   tcp-keep-alive: true              # Detect dead connections
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
@@ -257,6 +257,6 @@ mp:
         receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 24                 # 24 concurrent processing slots per pod for zero-lag at P95
+        concurrency: 16                 # 16 concurrent slots with backpressure: max ~640 TPS/pod at 25ms avg
 
 
