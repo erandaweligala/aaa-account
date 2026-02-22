@@ -190,10 +190,12 @@ public class StartHandler {
         }
 
         return updateCachesForSession(request, userSessionData, newSession, isGroupBalance)
-                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
-                .invoke(() ->
-                    generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId())
-                )
+                .invoke(() -> {
+                    // Fire-and-forget: session expiry registration is independent of cache update
+                    sessionLifecycleManager.onSessionCreated(request.username(), newSession)
+                            .subscribe().with(v -> {}, e -> {});
+                    generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId());
+                })
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_PROCESS_SESSION, throwable, "Failed to update cache for user: %s", request.username());
                     return Uni.createFrom().voidItem();
@@ -406,10 +408,12 @@ public class StartHandler {
 
         final Session finalSession = session;
         return userStorageUni
-                .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
-                .onItem().invoke(unused ->
-                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId())
-                );
+                .invoke(() -> {
+                    // Fire-and-forget: session expiry registration is independent of user storage
+                    sessionLifecycleManager.onSessionCreated(request.username(), finalSession)
+                            .subscribe().with(v -> {}, e -> {});
+                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
+                });
     }
 
     private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {

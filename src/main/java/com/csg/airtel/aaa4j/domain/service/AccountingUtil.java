@@ -1366,7 +1366,7 @@ public class AccountingUtil {
 
         LocalTime startTime = parseHourOnly(times[0].trim());
         LocalTime endTime = parseHourOnly(times[1].trim());
-        LocalTime currentTime = LocalTime.now();
+        LocalTime currentTime = getNow().toLocalTime();
 
         if (startTime.isAfter(endTime)) {
 

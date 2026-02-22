@@ -4,7 +4,6 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.infrastructure.Infrastructure;
 import io.smallrye.reactive.messaging.kafka.api.IncomingKafkaRecordMetadata;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -28,10 +27,10 @@ public class AccountingConsumer {
 
     /**
      * Consumes accounting events with backpressure-aware processing.
-     * Flow: process message → ack on completion → SmallRye commits offset.
      * SmallRye's concurrency setting (16) controls how many messages are in-flight,
      * naturally throttling poll rate when processing is slower than ingestion.
-     * This prevents unbounded queue buildup and OOM on 2GB pods.
+     * All downstream operations (Redis, Kafka) are non-blocking reactive I/O,
+     * so no worker pool offload is needed - avoiding thread context switch overhead.
      */
     @Incoming("accounting-events")
     @Acknowledgment(Acknowledgment.Strategy.PRE_PROCESSING)
@@ -47,7 +46,6 @@ public class AccountingConsumer {
         }
 
         return accountingHandlerFactory.getHandler(request, request.eventId())
-                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
                 .onFailure().recoverWithUni(failure -> {
                     LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
                             "Failed processing session: %s", request.sessionId());

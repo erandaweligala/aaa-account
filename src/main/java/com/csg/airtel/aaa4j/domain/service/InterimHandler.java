@@ -101,15 +101,16 @@ public class InterimHandler {
         } else {
             Session finalSession = session;
             return accountingUtil.updateSessionAndBalance(userData, session, request,null)
-                    .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
+                        // Fire-and-forget: session expiry update is independent of balance processing
+                        sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId())
+                                .subscribe().with(v -> {}, e -> {});
                         if (!updateResult.success()) {
                             LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s reason: %s", request.sessionId(),updateResult.errorMessage());
                         }
                         Session updatedSessions  = updateResult.sessionData() != null ? updateResult.sessionData():finalSession;
                         generateAndSendCDR(request, updatedSessions, updatedSessions.getServiceId(), updatedSessions.getPreviousUsageBucketId());
                         return Uni.createFrom().voidItem();
-
                     });
         }
     }

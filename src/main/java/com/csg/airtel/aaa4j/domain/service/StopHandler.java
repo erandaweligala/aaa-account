@@ -88,12 +88,13 @@ public class StopHandler {
                         return Uni.createFrom().voidItem();
                     }
                 })
-                .call(() -> sessionLifecycleManager.onSessionTerminated(request.username(), request.sessionId()))
-                .invoke(() ->
-                    //send CDR event asynchronously
-                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId())
-                )
-                .invoke(() -> LoggingUtil.logDebug(log, M_PROCESS, "Session and balance cleaned for session: %s", request.sessionId()))
+                .invoke(() -> {
+                    // Fire-and-forget: session expiry removal is independent of stop processing
+                    sessionLifecycleManager.onSessionTerminated(request.username(), request.sessionId())
+                            .subscribe().with(v -> {}, e -> {});
+                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
+                    LoggingUtil.logDebug(log, M_PROCESS, "Session and balance cleaned for session: %s", request.sessionId());
+                })
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_PROCESS, throwable, "Failed to process accounting stop for session: %s",
                             request.sessionId());
