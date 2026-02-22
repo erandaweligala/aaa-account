@@ -104,7 +104,7 @@ public class InterimHandler {
                     .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {
-                            LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s error: %s", request.sessionId(),updateResult.errorMessage());
+                            LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s reason: %s", request.sessionId(),updateResult.errorMessage());
                         }
                         Session updatedSessions  = updateResult.sessionData() != null ? updateResult.sessionData():finalSession;
                         generateAndSendCDR(request, updatedSessions, updatedSessions.getServiceId(), updatedSessions.getPreviousUsageBucketId());
