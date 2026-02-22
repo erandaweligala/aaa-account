@@ -24,7 +24,7 @@ quarkus:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
 
-  # Vertx Configuration - Optimized for 2400 TPS (8 pods x 1 core / 2GB, 300 TPS/pod)
+  # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
   vertx:
     event-loops-pool-size: 4         # 2x CPU cores (1 core per pod)
     internal-blocking-pool-size: 28  # Match consumer concurrency (24) + headroom for other blocking ops
@@ -35,7 +35,7 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 32                 # 24 consumer + 8 for HTTP/scheduled/other ops (right-sized for 1 core)
+    core-threads: 32                 # 24 consumer + 8 for HTTP/scheduled/other ops
     max-threads: 50                  # Modest burst headroom - avoids excessive context switching on 1 core
     queue-size: 3000                 # Buffer for TPS bursts without excessive memory overhead
     growth-resistance: 0
@@ -176,7 +176,7 @@ kafka:
     servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 
-# Kafka Producer/Consumer Configuration - Optimized for 2400 TPS (8 pods x 1 core / 2GB, 16 partitions, concurrency=24/pod)
+# Kafka Producer/Consumer Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
 mp:
   messaging:
     outgoing:
@@ -241,7 +241,7 @@ mp:
     incoming:
       accounting-events:
         connector: smallrye-kafka
-        topic: accounting-dc-1
+        topic: accounting-dc-2
         group.id: accounting-consumer-group
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -251,12 +251,12 @@ mp:
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
-        fetch.min.bytes: 1             # Reduce latency - don't wait for min bytes
+        fetch.min.bytes: 1              # Reduce latency - don't wait for min bytes
         fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 2GB memory (2 partitions/pod × 5MB = 10MB)
+        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 2GB memory
         receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 24                 # 16 partitions / 8 pods = 2 per pod; 24 concurrent for zero-lag at P95
+        concurrency: 24                 # 24 concurrent processing slots per pod for zero-lag at P95
 
 

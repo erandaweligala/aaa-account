@@ -27,11 +27,11 @@ quarkus:
     reactive:
       url: oracle:thin:@172.24.0.203:1908/AAA
 
-  # Vertx Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
+  # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core, ~360 TPS/pod)
   vertx:
     event-loops-pool-size: 4         # 2x CPU cores (1 core per pod)
-    worker-pool-size: 16              # Limited blocking ops on 1-core pod
-    internal-blocking-pool-size: 16   # Internal Quarkus blocking calls
+    worker-pool-size: 28             # Support 24 concurrent consumer processing + headroom
+    internal-blocking-pool-size: 28  # Match consumer concurrency (24) + headroom for other blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -39,9 +39,9 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 20                 # Right-sized for 1-core pod
-    max-threads: 40                  # Prevent context switching thrash
-    queue-size: 2000                 # Buffer for burst traffic
+    core-threads: 32                 # 24 consumer + 8 for HTTP/scheduled/other ops
+    max-threads: 50                  # Modest burst headroom - avoids excessive context switching on 1 core
+    queue-size: 3000                 # Buffer for TPS bursts without excessive memory overhead
     growth-resistance: 0
     shutdown-timeout: 30s
 
@@ -133,9 +133,9 @@ webclient:
   http2-keep-alive-timeout: 60
 
 
-# Pool Configuration - Optimized for 1500 TPS (5 pods x 1 core, 300 TPS/pod)
+# Pool Configuration - Optimized for 2500 TPS (7 pods x 1 core, ~360 TPS/pod)
 # DB: 32 cores, 12GB RAM → max ~160 total connections safe
-# Per pod: 20 connections x 5 pods = 100 total DB connections
+# Per pod: 20 connections x 7 pods = 140 total DB connections
 pool:
   max-size: 20                      # 5 pods x 20 = 100 total (safe for 32-core DB)
   connection-timeout: 5000          # 5 seconds to acquire connection
@@ -163,7 +163,7 @@ kafka:
   bootstrap:
     servers: kafka-headless.csg-aaa-query-cache.svc.cluster.local:9092
 
-# Kafka Producer/Consumer Configuration - Optimized for 1500 TPS (5 pods x 1 core, 12 partitions)
+# Kafka Producer/Consumer Configuration - Optimized for 2500 TPS (7 pods x 1 core, ~360 TPS/pod)
 mp:
   messaging:
     outgoing:
@@ -250,19 +250,22 @@ mp:
     incoming:
       accounting-events:
         connector: smallrye-kafka
-        topic: accounting-dc-1
+        topic: accounting-dc-2
         group.id: accounting-consumer-group
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500          # ~1-2s of messages at 300 TPS/pod (12 partitions / 5 pods)
+        max.poll.records: 500           # Larger batches for higher throughput during backlog catch-up
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
-        fetch.min.bytes: 1             # Reduce latency - don't wait for min bytes
+        heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
+        fetch.min.bytes: 1              # Reduce latency - don't wait for min bytes
         fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition (2-3 partitions/pod)
-        receive.buffer.bytes: 131072
+        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 2GB memory
+        receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
+        connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
+        concurrency: 24                 # CRITICAL: without this, default is 1 message at a time per pod
 
 

@@ -41,29 +41,34 @@ public class AccountingConsumer {
                             "Partition: %d, Offset: %d, session: %s",
                             metadata.getPartition(), metadata.getOffset(), request.sessionId()));
         }
-        
-        return Uni.createFrom().completionStage(message.ack())
-                .onItem().transformToUni(v ->
-                    accountingHandlerFactory.getHandler(request, request.eventId())
-                            .onItem().invoke(success -> {
-                                setMdcContext(request);
-                                long duration = System.currentTimeMillis() - startTime;
-                                LoggingUtil.logInfo(LOG, METHOD_CONSUME,
-                                        "Complete consumeAccountingEvent process in %d ms for session: %s",
-                                        duration, request.sessionId());
-                                MDC.clear();
-                            })
-                            .onFailure().recoverWithUni(failure -> {
-                                setMdcContext(request);
-                                long duration = System.currentTimeMillis() - startTime;
-                                LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
-                                        "Failed processing session: %s after %d ms",
-                                        request.sessionId(), duration);
-                                MDC.clear();
-                                return Uni.createFrom().voidItem();
-                            })
-                            .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+
+        // Fire-and-forget: dispatch processing to worker pool without blocking the consumer slot.
+        // This decouples message consumption from processing, allowing the consumer to poll
+        // and ack at full speed while processing runs asynchronously on the worker pool.
+        accountingHandlerFactory.getHandler(request, request.eventId())
+                .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
+                .subscribe().with(
+                        success -> {
+                            setMdcContext(request);
+                            long duration = System.currentTimeMillis() - startTime;
+                            LoggingUtil.logInfo(LOG, METHOD_CONSUME,
+                                    "Complete consumeAccountingEvent process in %d ms for session: %s",
+                                    duration, request.sessionId());
+                            MDC.clear();
+                        },
+                        failure -> {
+                            setMdcContext(request);
+                            long duration = System.currentTimeMillis() - startTime;
+                            LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
+                                    "Failed processing session: %s after %d ms",
+                                    request.sessionId(), duration);
+                            MDC.clear();
+                        }
                 );
+
+        // Ack immediately - frees the consumer concurrency slot so the next message can be polled.
+        // Processing continues in the background on the worker pool.
+        return Uni.createFrom().completionStage(message.ack());
     }
 
 
