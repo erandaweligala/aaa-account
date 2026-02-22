@@ -43,13 +43,10 @@ public class StopHandler {
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
-        LoggingUtil.logInfo(log, M_STOP, "Processing accounting stop for user: %s, sessionId: %s",
-                request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
-                .onItem().invoke(() -> LoggingUtil.logInfo(log, M_STOP, "User data retrieved for user: %s", request.username()))
                 .onItem().transformToUni(userSessionData ->
                         userSessionData != null ?
-                                 processAccountingStop(userSessionData, request,bucketId).invoke(() -> LoggingUtil.logInfo(log, M_STOP, "Completed processing for bucketId=%s", bucketId))
+                                 processAccountingStop(userSessionData, request,bucketId)
                                  : accountingHandler.handleNewSessionUsage(request, traceId, this::processAccountingStop, this::createSession)
                 )
                 .onFailure().recoverWithUni(throwable -> {

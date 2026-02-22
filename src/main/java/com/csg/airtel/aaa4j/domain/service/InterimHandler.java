@@ -42,18 +42,11 @@ public class InterimHandler {
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
-        long startTime = System.currentTimeMillis();
-        LoggingUtil.logInfo(log, M_INTERIM, "Processing interim accounting request Start for user: %s, sessionId: %s",
-                request.username(), request.sessionId());
         return cacheUtil.getUserData(request.username())
-                .onItem().invoke(() ->
-                    LoggingUtil.logDebug(log, M_INTERIM, "User data retrieved for user: %s", request.username()))
                 .onItem().transformToUni(userSessionData ->
                         userSessionData == null
                                 ? accountingHandler.handleNewSessionUsage(request, traceId, this::processAccountingRequest, this::createSession)
-                                        .invoke(() -> LoggingUtil.logInfo(log, M_INTERIM, "Completed processing interim accounting for new session for  %s ms", System.currentTimeMillis()-startTime))
-                                : processAccountingRequest(userSessionData, request,null).invoke(() -> LoggingUtil.logInfo(log, M_INTERIM, "Completed processing interim accounting for existing session for  %s ms", System.currentTimeMillis()-startTime))
-
+                                : processAccountingRequest(userSessionData, request,null)
                 )
                 .onFailure().recoverWithUni(throwable -> {
                     // Handle circuit breaker open specifically - cache service temporarily unavailable
@@ -71,9 +64,6 @@ public class InterimHandler {
     }
     private Uni<Void> processAccountingRequest(
             UserSessionData userData, AccountingRequestDto request, String cachedGroupData) {
-        long startTime = System.currentTimeMillis();
-        LoggingUtil.logInfo(log, M_PROCESS, "Processing interim accounting request for user: %s, sessionId: %s",
-                request.username(), request.sessionId());
         Session session = accountingHandler.findSessionById(userData.getSessions(), request.sessionId());
 
         if (session == null) {
@@ -114,10 +104,8 @@ public class InterimHandler {
                     .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {
-                            LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s error :", request.sessionId(),updateResult.errorMessage());
+                            LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s error: %s", request.sessionId(),updateResult.errorMessage());
                         }
-                        LoggingUtil.logInfo(log, M_PROCESS, "Interim accounting processing time ms : %d",
-                                System.currentTimeMillis() - startTime);
                         Session updatedSessions  = updateResult.sessionData() != null ? updateResult.sessionData():finalSession;
                         generateAndSendCDR(request, updatedSessions, updatedSessions.getServiceId(), updatedSessions.getPreviousUsageBucketId());
                         return Uni.createFrom().voidItem();

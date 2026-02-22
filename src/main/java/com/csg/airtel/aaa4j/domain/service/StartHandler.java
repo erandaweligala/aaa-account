@@ -61,29 +61,16 @@ public class StartHandler {
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
-        long startTime = System.currentTimeMillis();
-        LoggingUtil.logInfo(log, M_START, "Processing accounting start for user: %s, sessionId: %s",
+        LoggingUtil.logDebug(log, M_START, "Processing accounting start for user: %s, sessionId: %s",
                 request.username(), request.sessionId());
 
         return utilCache.getUserData(request.username())
-                .onItem().invoke(userData ->
-                        LoggingUtil.logInfo(log, M_START, "User data retrieved for user: %s", request.username()))
                 .onItem().transformToUni(userSessionData -> {
                     if (userSessionData == null) {
-                        LoggingUtil.logInfo(log, M_START, "No cache entry found for user: %s", request.username());
-                        Uni<Void> accountingResponseEventUni = handleNewUserSession(request);
-
-                        long duration = System.currentTimeMillis() - startTime;
-                        LoggingUtil.logInfo(log, M_START, "Completed processing accounting start for user: %s in %d ms",
-                                request.username(), duration);
-                        return accountingResponseEventUni;
+                        LoggingUtil.logDebug(log, M_START, "No cache entry for user: %s", request.username());
+                        return handleNewUserSession(request);
                     } else {
-                        LoggingUtil.logInfo(log, M_START, "Existing session found for user: %s", request.username());
-                        Uni<Void> accountingResponseEventUni = handleExistingUserSession(request, userSessionData);
-                        long duration = System.currentTimeMillis() - startTime;
-                        LoggingUtil.logInfo(log, M_START, "Completed processing accounting start for user: %s in %d ms",
-                                request.username(), duration);
-                        return accountingResponseEventUni;
+                        return handleExistingUserSession(request, userSessionData);
                     }
                 })
                 .onFailure().recoverWithUni(throwable -> {
@@ -204,10 +191,9 @@ public class StartHandler {
 
         return updateCachesForSession(request, userSessionData, newSession, isGroupBalance)
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
-                .invoke(() -> {
-                    LoggingUtil.logInfo(log, M_PROCESS_SESSION, "cdr write event started for user: %s", request.username());
-                    generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId());
-                })
+                .invoke(() ->
+                    generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId())
+                )
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_PROCESS_SESSION, throwable, "Failed to update cache for user: %s", request.username());
                     return Uni.createFrom().voidItem();
@@ -255,7 +241,7 @@ public class StartHandler {
             Session newSession,
             String groupId) {
 
-        LoggingUtil.logInfo(log, M_UPDATE_USER_GROUP, "Highest priority balance is a group balance. Adding session to group data for groupId: %s", groupId);
+        LoggingUtil.logDebug(log, M_UPDATE_USER_GROUP, "Group balance for groupId: %s", groupId);
 
 
 
@@ -308,23 +294,17 @@ public class StartHandler {
                         utilCache.updateUserAndRelatedCaches(groupId, groupSessionData,groupId)
                 ).discardItems()
                 .onItem().invoke(unused ->
-                        LoggingUtil.logInfo(log, M_UPDATE_BOTH, "Session added to both user: %s and group: %s", username, groupId));
+                        LoggingUtil.logDebug(log, M_UPDATE_BOTH, "Session added to both user: %s and group: %s", username, groupId));
     }
 
     private Uni<Void> updateUserCacheOnly(AccountingRequestDto request, UserSessionData userSessionData) {
         return utilCache.updateUserAndRelatedCaches(request.username(), userSessionData,request.username())
-                .onItem().invoke(unused ->
-                        LoggingUtil.logInfo(log, M_UPDATE_USER_ONLY, "New session added for user: %s, sessionId: %s",
-                                request.username(), request.sessionId()))
                 .replaceWithVoid();
     }
 
 
 
     private Uni<Void> handleNewUserSession(AccountingRequestDto request) {
-        LoggingUtil.logInfo(log, M_HANDLE_NEW_SESSION, "No existing session data found for user: %s. Creating new session data.",
-                request.username());
-
         return userRepository.getServiceBucketsByUserName(request.username())
                 .onItem().transformToUni(serviceBuckets ->
                         processServiceBuckets(request, serviceBuckets))
@@ -427,10 +407,9 @@ public class StartHandler {
         final Session finalSession = session;
         return userStorageUni
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
-                .onItem().invoke(unused -> {
-                    LoggingUtil.logInfo(log, M_CREATE_STORE_SESSION, "CDR write event started for user: %s", request.username());
-                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId());
-                });
+                .onItem().invoke(unused ->
+                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId())
+                );
     }
 
     private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {
@@ -469,8 +448,6 @@ public class StartHandler {
 
     private Uni<Void> storeUserSessionData(String username, UserSessionData sessionData) {
         return utilCache.storeUserData(username, sessionData,username)
-                .onItem().invoke(unused ->
-                        LoggingUtil.logInfo(log, M_STORE_USER_DATA, "New user session data created and stored for user: %s", username))
                 .replaceWithVoid();
     }
 
@@ -516,13 +493,11 @@ public class StartHandler {
             groupSessionData.setGroupId(groupId);
         if (isHighestPriorityGroupBalance) {
             groupSessionData.setSessions(new ArrayList<>(List.of(session)));
-            LoggingUtil.logInfo(log, M_STORE_NEW_GROUP, "Adding session to new group data for groupId: %s (highest priority balance is group balance)", groupId);
         } else {
             groupSessionData.setSessions(new ArrayList<>());
         }
 
         return utilCache.storeUserData(groupId, groupSessionData,session.getUserName())
-                .onItem().invoke(unused -> LoggingUtil.logInfo(log, M_STORE_NEW_GROUP, "Group session data stored for groupId: %s", groupId))
                 .onFailure().invoke(failure -> LoggingUtil.logError(log, M_STORE_NEW_GROUP, failure, "Failed to store group data for groupId: %s", groupId));
     }
 
@@ -537,12 +512,9 @@ public class StartHandler {
                 existingData.setSessions(new ArrayList<>());
             }
             existingData.getSessions().add(session);
-            LoggingUtil.logInfo(log, M_UPDATE_EXISTING_GROUP, "Adding session to existing group data for groupId: %s (highest priority balance is group balance)", groupId);
         }
 
-        LoggingUtil.logInfo(log, M_UPDATE_EXISTING_GROUP, "Group session data already exists for groupId: %s", groupId);
-        return utilCache.updateUserAndRelatedCaches(groupId, existingData,session.getUserName())
-                .onItem().invoke(unused -> LoggingUtil.logInfo(log, M_UPDATE_EXISTING_GROUP, "Existing group session data updated for groupId: %s", groupId));
+        return utilCache.updateUserAndRelatedCaches(groupId, existingData,session.getUserName());
     }
 
     private record BucketProcessingResult(
