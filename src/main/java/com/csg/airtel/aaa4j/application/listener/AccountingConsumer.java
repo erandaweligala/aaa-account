@@ -38,13 +38,14 @@ public class AccountingConsumer {
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         AccountingRequestDto request = message.getPayload();
 
-        setMdcContext(request);
-        if (LOG.isDebugEnabled()) {
-            message.getMetadata(IncomingKafkaRecordMetadata.class)
-                    .ifPresent(metadata -> LoggingUtil.logDebug(LOG, METHOD_CONSUME,
-                            "Partition: %d, Offset: %d, session: %s",
-                            metadata.getPartition(), metadata.getOffset(), request.sessionId()));
-        }
+       // setMdcContext(request);
+
+//        if (LOG.isDebugEnabled()) {
+//            message.getMetadata(IncomingKafkaRecordMetadata.class)
+//                    .ifPresent(metadata -> LoggingUtil.logDebug(LOG, METHOD_CONSUME,
+//                            "Partition: %d, Offset: %d, session: %s",
+//                            metadata.getPartition(), metadata.getOffset(), request.sessionId()));
+//        }
 
         return accountingHandlerFactory.getHandler(request, request.eventId())
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())

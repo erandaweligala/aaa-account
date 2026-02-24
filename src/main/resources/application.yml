@@ -64,6 +64,7 @@ quarkus:
         max-backup-index: 15
         rotate-on-boot: true
       enabled: true
+      level: ERROR
 
     category:
       "org.apache.kafka":
@@ -171,9 +172,9 @@ idle-session:
   batch-size: 1000
 
   # Process 1000 sessions per batch (increased for scale)
-kafka:
-  bootstrap:
-    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
+#kafka:
+#  bootstrap:
+#    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 
 # Kafka Producer/Consumer Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
