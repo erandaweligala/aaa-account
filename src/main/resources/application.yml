@@ -3,10 +3,10 @@ quarkus:
     http2: true
     root-path: /api/v1
     port: 9905
-    io-threads: 2                    # Match event-loops-pool-size (1-core pod)
+    io-threads: 1                    # 0.6 core pod → 1 I/O thread sufficient
     limits:
       max-body-size: 10M
-      max-connections: 500           # Right-sized for 300 TPS/pod
+      max-connections: 200           # Right-sized for 107 TPS/pod
 
 #  datasource:
 #    db-kind: oracle
@@ -24,10 +24,10 @@ quarkus:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
 
-  # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
+  # Vertx Configuration - Optimized for 1500 TPS (14 pods x 0.6 core / 1GB, ~107 TPS/pod)
   vertx:
-    event-loops-pool-size: 2         # 1 core pod → 2 event loops sufficient (Kafka + Redis/HTTP I/O)
-    internal-blocking-pool-size: 40  # Match consumer concurrency (32) + 8 headroom for other blocking ops
+    event-loops-pool-size: 1         # 0.6 core pod → 1 event loop sufficient
+    internal-blocking-pool-size: 16  # Match consumer concurrency (12) + 4 headroom for other blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,9 +35,9 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 40                 # 32 consumer + 8 for HTTP/scheduled/other ops
-    max-threads: 56                  # Modest burst headroom - avoids excessive context switching on 1 core
-    queue-size: 1000                 # Backpressure-aware consumer prevents unbounded queue buildup
+    core-threads: 16                 # 12 consumer + 4 for HTTP/scheduled/other ops
+    max-threads: 24                  # Modest burst headroom - avoids context switching on 0.6 core
+    queue-size: 500                  # Conservative for 1GB memory, backpressure prevents buildup
     growth-resistance: 0
     shutdown-timeout: 30s
 
@@ -113,9 +113,9 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 128              # Right-sized for concurrency 32: max ~64 concurrent Redis ops + headroom
-    max-waiting-handlers: 2000      # Scaled for concurrency 32 - backpressure prevents unbounded waiting
-    max-pool-waiting: 1000
+    max-pool-size: 48               # Right-sized for concurrency 12: max ~24 concurrent Redis ops + headroom
+    max-waiting-handlers: 500       # Scaled for concurrency 12 - backpressure prevents unbounded waiting
+    max-pool-waiting: 250
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
@@ -135,22 +135,21 @@ coa:
     port: 8088
 
 webclient:
-  max-pool-size: 20                  # Right-sized for 300 TPS/pod HTTP/1.1
+  max-pool-size: 10                  # Right-sized for 107 TPS/pod HTTP/1.1
   connect-timeout: 5000
   idle-timeout: 60000
   keep-alive: true
   pipelining: true
   pipelining-limit: 10
-  http2-max-pool-size: 20            # Right-sized for 300 TPS/pod HTTP/2
+  http2-max-pool-size: 10            # Right-sized for 107 TPS/pod HTTP/2
   http2-multiplexing-limit: 100
   http2-keep-alive-timeout: 60
 
 
-# Pool Configuration - Optimized for 2400 TPS (8 pods x 1 core / 2GB, 300 TPS/pod)
-# DB: 32 cores, 12GB RAM → max ~160 total connections safe
-# Per pod: 20 connections x 8 pods = 160 total DB connections
+# Pool Configuration - Optimized for 1500 TPS (14 pods x 0.6 core / 1GB, ~107 TPS/pod)
+# Per pod: 12 connections x 14 pods = 168 total DB connections
 pool:
-  max-size: 25                      # 8 pods x 25 = 200 total (scaled for concurrency 32, fits 2GB memory)
+  max-size: 12                      # 14 pods x 12 = 168 total (right-sized for concurrency 12, fits 1GB memory)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -158,7 +157,7 @@ pool:
   prepared-statement-cache-max-size: 256  # Cache prepared statements
   pipelining-enabled: true          # Enable query pipelining
   pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 2                # Match vertx event-loops-pool-size (1 core pod)
+  event-loop-size: 1                # Match vertx event-loops-pool-size (0.6 core pod)
   tcp-keep-alive: true              # Detect dead connections
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
@@ -177,7 +176,7 @@ idle-session:
 #    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 
-# Kafka Producer/Consumer Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
+# Kafka Producer/Consumer Configuration - Optimized for 1500 TPS (14 pods x 0.6 core / 1GB, ~107 TPS/pod)
 mp:
   messaging:
     outgoing:
@@ -191,9 +190,9 @@ mp:
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window - accumulate more msgs per batch
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        batch.size: 16384              # 16KB - right-sized for ~107 TPS/pod
+        linger.ms: 5                   # 5ms batching window - lower TPS needs less accumulation
+        buffer.memory: 8388608         # 8MB - fits 1GB pod memory (4 producers × 8MB = 32MB max)
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -209,9 +208,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        batch.size: 16384              # 16KB - right-sized for ~107 TPS/pod
+        linger.ms: 5                   # 5ms batching window
+        buffer.memory: 8388608         # 8MB - fits 1GB pod memory
 
       accounting-cdr-events:
         connector: smallrye-kafka
@@ -222,9 +221,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        batch.size: 16384              # 16KB - right-sized for ~107 TPS/pod
+        linger.ms: 5                   # 5ms batching window
+        buffer.memory: 8388608         # 8MB - fits 1GB pod memory
 
       quota-notification-events:
         connector: smallrye-kafka
@@ -235,9 +234,9 @@ mp:
         retries: 3
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        batch.size: 16384              # 16KB - right-sized for ~107 TPS/pod
+        linger.ms: 5                   # 5ms batching window
+        buffer.memory: 8388608         # 8MB - fits 1GB pod memory
 
     incoming:
       accounting-events:
@@ -248,16 +247,16 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 1000          # Larger batches for higher throughput during backlog catch-up
+        max.poll.records: 500            # Right-sized for 107 TPS/pod
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
         fetch.min.bytes: 1              # Reduce latency - don't wait for min bytes
-        fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 2GB memory
-        receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
+        fetch.max.bytes: 10485760       # 10MB - right-sized for 1GB memory
+        max.partition.fetch.bytes: 1048576  # 1MB per partition - fits 1GB memory
+        receive.buffer.bytes: 65536     # 64KB socket buffer - right-sized for 1GB memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 32                 # 32 concurrent slots with backpressure: max ~1280 TPS/pod at 25ms avg
+        concurrency: 12                 # 12 concurrent slots with backpressure: max ~480 TPS/pod at 25ms avg
 
 
