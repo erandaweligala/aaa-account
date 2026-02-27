@@ -1,5 +1,6 @@
 package com.csg.airtel.aaa4j.external.repository;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.MessageTemplate;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
@@ -24,6 +25,7 @@ import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_MESSAGE_TEM
 public class MessageTemplateRepository {
 
     private static final Logger LOG = Logger.getLogger(MessageTemplateRepository.class);
+    private static final String M_QUERY = "getAllActiveTemplates";
 
     // Column name constants for MESSAGE_TEMPLATE table
     private static final String COL_TEMPLATE_ID = "ID";
@@ -59,16 +61,21 @@ public class MessageTemplateRepository {
             maxDuration = 15000
     )
     public Uni<List<MessageTemplate>> getAllActiveTemplates() {
-        LOG.debug("Fetching all active message templates");
+        LoggingUtil.logDebug(LOG, M_QUERY, "Fetching all active message templates");
+        long startTime = System.currentTimeMillis();
 
         return client
                 .preparedQuery(QUERY_MESSAGE_TEMPLATES)
                 .execute()
                 .onItem().transform(this::mapRowsToMessageTemplates)
-                .onFailure().invoke(error ->
-                        LOG.error("Error fetching message templates from database", error))
-                .onItem().invoke(results ->
-                        LOG.infof("Fetched %d active message templates from database", results.size()));
+                .onFailure().invoke(error -> {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    LoggingUtil.logError(LOG, M_QUERY, error, "Error fetching message templates from database, queryTime=%dms", elapsed);
+                })
+                .onItem().invoke(results -> {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    LoggingUtil.logDebug(LOG, M_QUERY, "Fetched %d active message templates from database, queryTime=%dms", results.size(), elapsed);
+                });
     }
 
     /**

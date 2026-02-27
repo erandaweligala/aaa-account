@@ -76,15 +76,19 @@ public class UserBucketRepository {
     )
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
         LoggingUtil.logDebug(log, M_QUERY, "Fetching service buckets for user: %s", userName);
+        long startTime = System.currentTimeMillis();
         return client
                 .preparedQuery(QUERY_BALANCE)
                 .execute(Tuple.of(userName))
                     .onItem().transform(this::mapRowsToServiceBuckets)
-                .onFailure().invoke(error ->
-                    LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s", userName))
-                .onItem().invoke(results ->
-                    LoggingUtil.logDebug(log, M_QUERY, "Fetched %d service buckets for user: %s", results.size(), userName)
-                );
+                .onFailure().invoke(error -> {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s, queryTime=%dms", userName, elapsed);
+                })
+                .onItem().invoke(results -> {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    LoggingUtil.logDebug(log, M_QUERY, "Fetched %d service buckets for user: %s, queryTime=%dms", results.size(), userName, elapsed);
+                });
     }
 
     /**

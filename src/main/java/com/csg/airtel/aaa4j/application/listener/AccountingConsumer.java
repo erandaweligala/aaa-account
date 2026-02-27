@@ -5,7 +5,7 @@ import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
-import io.smallrye.reactive.messaging.kafka.api.IncomingKafkaRecordMetadata;
+
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.reactive.messaging.Acknowledgment;
@@ -38,14 +38,7 @@ public class AccountingConsumer {
     public Uni<Void> consumeAccountingEvent(Message<AccountingRequestDto> message) {
         AccountingRequestDto request = message.getPayload();
 
-       // setMdcContext(request);
-
-//        if (LOG.isDebugEnabled()) {
-//            message.getMetadata(IncomingKafkaRecordMetadata.class)
-//                    .ifPresent(metadata -> LoggingUtil.logDebug(LOG, METHOD_CONSUME,
-//                            "Partition: %d, Offset: %d, session: %s",
-//                            metadata.getPartition(), metadata.getOffset(), request.sessionId()));
-//        }
+        setMdcContext(request);
 
         return accountingHandlerFactory.getHandler(request, request.eventId())
                 .runSubscriptionOn(Infrastructure.getDefaultWorkerPool())
@@ -53,7 +46,8 @@ public class AccountingConsumer {
                     LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
                             "Failed processing session: %s", request.sessionId());
                     return Uni.createFrom().voidItem();
-                });
+                })
+                .onTermination().invoke(this::clearMdcContext);
     }
 
     private void setMdcContext(AccountingRequestDto request) {
