@@ -27,7 +27,7 @@ quarkus:
   # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
   vertx:
     event-loops-pool-size: 2         # 1 core pod → 2 event loops sufficient (Kafka + Redis/HTTP I/O)
-    internal-blocking-pool-size: 20  # Match consumer concurrency (16) + 4 headroom for other blocking ops
+    internal-blocking-pool-size: 16  # Match consumer concurrency (16) + 4 headroom for other blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,7 +35,7 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 20                 # 16 consumer + 4 for HTTP/scheduled/other ops
+    core-threads: 16                 # 16 consumer + 4 for HTTP/scheduled/other ops
     max-threads: 32                  # Modest burst headroom - avoids excessive context switching on 1 core
     queue-size: 1000                 # Backpressure-aware consumer prevents unbounded queue buildup
     growth-resistance: 0
@@ -44,7 +44,7 @@ quarkus:
   console:
     color: true
   log:
-    level: INFO
+    level: R
     console:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
@@ -113,9 +113,9 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 64               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
-    max-waiting-handlers: 1000      # Reduced - backpressure prevents unbounded waiting
-    max-pool-waiting: 500
+    max-pool-size: 48               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
+    max-waiting-handlers: 500      # Reduced - backpressure prevents unbounded waiting
+    max-pool-waiting: 256
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
@@ -150,7 +150,7 @@ webclient:
 # DB: 32 cores, 12GB RAM → max ~160 total connections safe
 # Per pod: 20 connections x 8 pods = 160 total DB connections
 pool:
-  max-size: 20                      # 8 pods x 20 = 160 total (max safe for 32-core DB, fits 2GB memory)
+  max-size: 25                      # 8 pods x 20 = 160 total (max safe for 32-core DB, fits 2GB memory)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
