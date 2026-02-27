@@ -46,6 +46,7 @@ quarkus:
   log:
     level: R
     console:
+      level: ERROR
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
         queue-length: 4096
@@ -64,7 +65,7 @@ quarkus:
         max-backup-index: 15
         rotate-on-boot: true
       enabled: true
-      level: ERROR
+      level: INFO
 
     category:
       "org.apache.kafka":
