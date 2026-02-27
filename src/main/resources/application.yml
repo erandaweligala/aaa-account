@@ -48,8 +48,8 @@ quarkus:
     console:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
-        queue-length: 10000
-        overflow: discard # Fixed the "discard file not create" typo
+        queue-length: 4096
+        overflow: discard
 
     # File Configuration
     file:
@@ -57,7 +57,7 @@ quarkus:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
         enable: true
-        queue-length: 20000
+        queue-length: 8192
         overflow: discard
       rotation:
         max-file-size: 100M
@@ -193,7 +193,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window - accumulate more msgs per batch
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -211,7 +211,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
 
       accounting-cdr-events:
         connector: smallrye-kafka
@@ -224,7 +224,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
 
       quota-notification-events:
         connector: smallrye-kafka
@@ -237,7 +237,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window
-        buffer.memory: 33554432        # 32MB - fits 2GB pod memory
+        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
 
     incoming:
       accounting-events:

@@ -207,19 +207,19 @@ public class AccountingUtil {
             AccountingRequestDto request,
             String bucketId) {
 
-        long totalUsage = calculateTotalUsage(request);
-        String groupId = userData.getGroupId();
+        // Wrap in deferred Uni to ensure ThreadLocal cleanup runs even if synchronous code throws
+        return Uni.createFrom().deferred(() -> {
+            long totalUsage = calculateTotalUsage(request);
+            String groupId = userData.getGroupId();
 
+            if (groupId == null || AppConstant.DEFAULT_GROUP_ID.equals(groupId)) {
+                return processWithoutGroupData(userData, sessionData, request, bucketId, totalUsage);
+            }
 
-        if (groupId == null || AppConstant.DEFAULT_GROUP_ID.equals(groupId)) {
-            return processWithoutGroupData(userData, sessionData, request, bucketId, totalUsage)
-                    .eventually(this::cleanupTemporalCacheAsync);
-        }
-
-        return getGroupBucketData(groupId)
-                .chain(groupData -> processWithGroupData(
-                        userData,sessionData, request, bucketId, totalUsage, groupData))
-                .eventually(this::cleanupTemporalCacheAsync);
+            return getGroupBucketData(groupId)
+                    .chain(groupData -> processWithGroupData(
+                            userData, sessionData, request, bucketId, totalUsage, groupData));
+        }).eventually(this::cleanupTemporalCacheAsync);
     }
 
     /**
@@ -548,6 +548,10 @@ public class AccountingUtil {
         }
 
         if (todayRecord == null) {
+            // Evict oldest records if history exceeds max size to prevent unbounded growth
+            while (history.size() >= AppConstant.CONSUMPTION_HISTORY_MAX_SIZE) {
+                history.remove(0);
+            }
             // Create new daily record
             todayRecord = new ConsumptionRecord(today, bytesConsumed, 1);
             history.add(todayRecord);

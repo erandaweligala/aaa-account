@@ -24,6 +24,7 @@ public class AppConstant {
     public static final long WINDOW_12_HOURS = 12;
 
     public static final int CONSUMPTION_HISTORY_INITIAL_CAPACITY = 24;
+    public static final int CONSUMPTION_HISTORY_MAX_SIZE = 90;
 
 
 }
