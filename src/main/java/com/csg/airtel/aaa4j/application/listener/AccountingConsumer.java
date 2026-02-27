@@ -61,5 +61,11 @@ public class AccountingConsumer {
         MDC.put("userName", request.username());
         MDC.put("sessionId", request.sessionId());
     }
+
+    private void clearMdcContext() {
+        MDC.remove(LoggingUtil.TRACE_ID);
+        MDC.remove("userName");
+        MDC.remove("sessionId");
+    }
 }
 

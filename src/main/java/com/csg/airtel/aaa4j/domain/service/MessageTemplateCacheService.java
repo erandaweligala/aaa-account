@@ -17,6 +17,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 @ApplicationScoped
@@ -31,6 +32,8 @@ public class MessageTemplateCacheService {
 
     private final ReactiveKeyCommands<String> keyCommands;
 
+    private static final int MAX_CACHE_SIZE = 10_000;
+
     private final Map<Long, ThresholdGlobalTemplates> inMemoryCache;
 
     @Inject
@@ -40,7 +43,7 @@ public class MessageTemplateCacheService {
         this.templateRepository = templateRepository;
         this.valueCommands = reactiveRedisDataSource.value(String.class, ThresholdGlobalTemplates.class);
         this.keyCommands = reactiveRedisDataSource.key();
-        this.inMemoryCache = new HashMap<>();
+        this.inMemoryCache = new ConcurrentHashMap<>();
     }
 
     /**
@@ -108,8 +111,13 @@ public class MessageTemplateCacheService {
                                 template.getTemplateId(), error.getMessage())
                 );
 
-        // Cache in memory for fast access
-        inMemoryCache.put(template.getSuperTemplateId() + template.getTemplateId(), thresholdTemplate);
+        // Cache in memory for fast access (with size guard to prevent unbounded growth)
+        if (inMemoryCache.size() < MAX_CACHE_SIZE) {
+            inMemoryCache.put(template.getSuperTemplateId() + template.getTemplateId(), thresholdTemplate);
+        } else {
+            LOG.warnf("In-memory template cache reached max size (%d), skipping cache for template ID %d",
+                    MAX_CACHE_SIZE, template.getTemplateId());
+        }
 
         LOG.debugf("Cached template ID %d in-memory: %s (%d%%)",
                 template.getTemplateId(), template.getTemplateName(), template.getQuotaPercentage());
@@ -178,8 +186,8 @@ public class MessageTemplateCacheService {
                     List<Uni<ThresholdGlobalTemplates>> fetches = keys.stream()
                             .map(key -> valueCommands.get(key)
                                     .onItem().invoke(template -> {
-                                        if (template != null) {
-                                            // Cache in memory for future lookups
+                                        if (template != null && inMemoryCache.size() < MAX_CACHE_SIZE) {
+                                            // Cache in memory for future lookups (with size guard)
                                             Long compositeKey = extractCompositeKey(key);
                                             if (compositeKey != null) {
                                                 inMemoryCache.put(compositeKey, template);
