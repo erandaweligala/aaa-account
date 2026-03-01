@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.external.clients;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.config.WebClientProvider;
+import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
 import com.csg.airtel.aaa4j.exception.CoADisconnectException;
@@ -14,8 +15,11 @@ import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 
+import java.time.Duration;
+
 /**
  * HTTP Client for sending CoA (Change of Authorization) Disconnect requests to servers.
+ * Includes retry with exponential backoff for transient 5xx errors to handle 1500 TPS load.
  */
 @ApplicationScoped
 public class CoAHttpClient {
@@ -42,7 +46,7 @@ public class CoAHttpClient {
     private static final String SESSION_DISCONNECTED_MESSAGE = "Session already disconnected (404 from NAS)";
 
     /**
-     * Send CoA Disconnect request to  server via HTTP.
+     * Send CoA Disconnect request to server via HTTP with retry for transient 5xx errors.
      *
      * @param request CoA disconnect request with session details
      * @return Uni containing the disconnect response with ACK/NAK status
@@ -54,6 +58,21 @@ public class CoAHttpClient {
         io.vertx.core.buffer.Buffer buffer = io.vertx.core.buffer.Buffer.buffer(jsonBody);
         String sessionId = request.sessionId();
 
+        return executeHttpRequest(buffer, sessionId)
+                .onFailure(CoADisconnectException::isRetryable).retry()
+                .withBackOff(
+                        Duration.ofMillis(AppConstant.COA_HTTP_RETRY_INITIAL_BACKOFF_MS),
+                        Duration.ofSeconds(AppConstant.COA_HTTP_RETRY_MAX_BACKOFF_SECONDS))
+                .atMost(AppConstant.COA_HTTP_RETRY_MAX_ATTEMPTS)
+                .onFailure().invoke(failure ->
+                        LoggingUtil.logError(log, M_DISCONNECT, failure,
+                                "CoA disconnect failed after retries for session: %s", sessionId));
+    }
+
+    /**
+     * Execute a single HTTP request to the CoA endpoint.
+     */
+    private Uni<CoADisconnectResponse> executeHttpRequest(io.vertx.core.buffer.Buffer buffer, String sessionId) {
         return Uni.createFrom().emitter(emitter ->
             webClientProvider.getClient()
                     .post(port, host, COA_ENDPOINT)
@@ -78,7 +97,8 @@ public class CoAHttpClient {
                             emitter.fail(new CoADisconnectException(
                                 "HTTP request failed for session: " + sessionId,
                                 Response.Status.SERVICE_UNAVAILABLE,
-                                ar.cause()));
+                                ar.cause(),
+                                true)); // network failures are retryable
                         }
                     })
         );
@@ -129,12 +149,19 @@ public class CoAHttpClient {
     }
 
     /**
-     * Handle error responses with non-success status codes.
+     * Handle error responses - 5xx errors are marked retryable, 4xx are not.
      */
     private CoADisconnectResponse handleErrorResponse(io.vertx.ext.web.client.HttpResponse<io.vertx.core.buffer.Buffer> response,
                                                        int statusCode) {
+        boolean retryable = statusCode >= 500;
         String errorMsg = "CoA disconnect failed with status " + statusCode + ": " + response.bodyAsString();
-        LoggingUtil.logWarn(log, M_DISCONNECT, errorMsg);
-        throw new CoADisconnectException(errorMsg, Response.Status.fromStatusCode(statusCode));
+
+        if (retryable) {
+            LoggingUtil.logWarn(log, M_DISCONNECT, "%s (retryable)", errorMsg);
+        } else {
+            LoggingUtil.logWarn(log, M_DISCONNECT, errorMsg);
+        }
+
+        throw new CoADisconnectException(errorMsg, Response.Status.fromStatusCode(statusCode), retryable);
     }
 }

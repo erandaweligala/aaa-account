@@ -33,7 +33,7 @@ public class WebClientProvider {
         WebClientOptions options = new WebClientOptions()
                 .setShared(true)
                 .setTcpNoDelay(true)
-                .setMaxWaitQueueSize(600)
+                .setMaxWaitQueueSize(1000)  // Increased for 1500 TPS burst CoA disconnect handling
                 // HTTP/1.1 connection pool (fallback)
                 .setMaxPoolSize(config.maxPoolSize())
                 // Connection timeout

@@ -4,10 +4,10 @@ import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
 /**
- * Configuration for WebClient connection pool settings optimized for high throughput.
+ * Configuration for WebClient connection pool settings optimized for 1500 TPS.
  * Pool sizing rationale:
- * - HTTP/1.1 pool: 250 connections (fallback for non-HTTP/2 servers)
- * - HTTP/2 pool: 250 connections with 100 streams each = 25,000 concurrent requests
+ * - HTTP/1.1 pool: 30 connections per pod for burst CoA disconnect handling
+ * - HTTP/2 pool: 30 connections with 150 streams each = 4,500 concurrent requests per pod
  * - With HTTP/2 multiplexing, fewer connections needed for high throughput
  */
 @ConfigMapping(prefix = "webclient")
