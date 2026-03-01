@@ -63,8 +63,8 @@ public class AccountProducer {
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
-        long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
+        long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
+        LOG.debugf("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
         return Uni.createFrom().emitter(em -> {
             Message<DBWriteRequest> message = Message.of(request)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -72,7 +72,7 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
+                        LOG.debugf("Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
@@ -102,8 +102,8 @@ public class AccountProducer {
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
-        long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceAccountingResponseEvent process");
+        long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
+        LOG.debugf("Start produceAccountingResponseEvent process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -111,7 +111,7 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
+                        LOG.debugf("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
@@ -138,8 +138,8 @@ public class AccountProducer {
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceAccountingCDREvent")
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
-        long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Accounting CDR Event process");
+        long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
+        LOG.debugf("Start produce Accounting CDR Event process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingCDREvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -147,7 +147,7 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting CDR event for session: %s, %d ms", event.getPayload().getSession().getSessionId(),System.currentTimeMillis()-startTime);
+                        LOG.debugf("Successfully sent accounting CDR event for session: %s, %d ms", event.getPayload().getSession().getSessionId(),System.currentTimeMillis()-startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
@@ -268,8 +268,8 @@ public class AccountProducer {
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
     public Uni<Void> produceQuotaNotificationEvent(QuotaNotificationEvent event) {
-        long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
+        long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
+        LOG.debugf("Start produce Quota Notification Event for user: %s, threshold: %s",
                 event.username(), event.type());
         return Uni.createFrom().emitter(em -> {
             Message<QuotaNotificationEvent> message = Message.of(event)
@@ -278,7 +278,7 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent quota notification event for user: %s, %d ms",
+                        LOG.debugf("Successfully sent quota notification event for user: %s, %d ms",
                                 event.username(), System.currentTimeMillis() - startTime);
                         return CompletableFuture.completedFuture(null);
                     })

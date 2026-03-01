@@ -159,9 +159,13 @@ public class StartHandler {
     }
 
     private boolean sessionAlreadyExists(UserSessionData userSessionData, String sessionId) {
-        return userSessionData.getSessions()
-                .stream()
-                .anyMatch(session -> session.getSessionId().equals(sessionId));
+        List<Session> sessions = userSessionData.getSessions();
+        for (int i = 0, size = sessions.size(); i < size; i++) {
+            if (sessions.get(i).getSessionId().equals(sessionId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Uni<Void> processSessionWithHighestPriority(
@@ -544,9 +548,11 @@ public class StartHandler {
     }
 
     private double calculateAvailableBalance(List<Balance> balanceList) {
-        return balanceList.stream()
-                .mapToDouble(Balance::getQuota)
-                .sum();
+        double total = 0.0;
+        for (int i = 0, size = balanceList.size(); i < size; i++) {
+            total += balanceList.get(i).getQuota();
+        }
+        return total;
     }
 
     private Session createSession(AccountingRequestDto request) {

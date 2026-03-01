@@ -48,7 +48,7 @@ quarkus:
     console:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
-        queue-length: 4096
+        queue-length: 8192               # Increased from 4096 — handles ~5s burst at reduced log volume (1500 TPS)
         overflow: discard
 
     # File Configuration
@@ -57,7 +57,7 @@ quarkus:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
         enable: true
-        queue-length: 8192
+        queue-length: 16384              # Increased from 8192 — file I/O slower than stdout, needs larger buffer
         overflow: discard
       rotation:
         max-file-size: 100M
