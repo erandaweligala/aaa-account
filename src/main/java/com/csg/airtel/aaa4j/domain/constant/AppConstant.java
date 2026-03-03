@@ -9,6 +9,11 @@ public class AppConstant {
     public static final long COA_TIMEOUT_SECONDS = 45;
     public static final String DISCONNECT_ACTION = "Disconnect";
 
+    // CoA HTTP retry settings for handling transient 5xx errors at 1500 TPS
+    public static final int COA_HTTP_RETRY_MAX_ATTEMPTS = 3;
+    public static final long COA_HTTP_RETRY_INITIAL_BACKOFF_MS = 200;
+    public static final long COA_HTTP_RETRY_MAX_BACKOFF_SECONDS = 3;
+
 
     public static final String CURRENT_BALANCE = "CURRENT_BALANCE";
     public static final String USAGE = "USAGE";

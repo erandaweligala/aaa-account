@@ -168,6 +168,7 @@ public class COAService {
         // Generate CoA Request CDR before sending the disconnect request
         generateAndSendCoaRequestCDR(session, username);
         return coaHttpClient.sendDisconnect(event)
+                .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
                 .onItem().invoke(response -> {
                     if (response.isAck()) {
                         LoggingUtil.logInfo(log, M_COA, "CoA disconnect ACK received for rejected session: %s", session.getSessionId());
@@ -183,6 +184,7 @@ public class COAService {
                         LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
                         generateAndSendCoaResponseCDR(session, username, "FAILED");
                 })
+                .onFailure().recoverWithNull()
                 .replaceWithVoid();
     }
 
@@ -241,7 +243,7 @@ public class COAService {
                     // Generate CoA Request CDR before sending the HTTP disconnect
                     generateAndSendCoaRequestCDR(session, username);
 
-                    // Send HTTP request and track ACK/NAK result
+                    // Send HTTP request with retry for transient 5xx errors and track ACK/NAK result
                     return coaHttpClient.sendDisconnect(request)
                             .onItem().transform(response -> {
                                 if (response.isAck()) {
@@ -256,9 +258,11 @@ public class COAService {
                                     return new CoAResult(session.getSessionId(), false);
                                 }
                             })
-                            .onFailure().invoke(failure ->
-                                    LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId())
-                            )
+                            .ifNoItem().after(Duration.ofSeconds(AppConstant.COA_TIMEOUT_SECONDS)).fail()
+                            .onFailure().invoke(failure -> {
+                                    LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
+                                    generateAndSendCoaResponseCDR(session, username, "FAILED");
+                            })
                             .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // NAK on failure
                 })
                 .merge() // Parallel execution for all sessions

@@ -5,7 +5,7 @@ import io.smallrye.config.WithDefault;
 
 /**
  * Configuration for Oracle database connection pool.
- * Optimized for 2400 TPS across 8 pods (300 TPS/pod, 1 core / 2GB each).
+ * Optimized for 1500 TPS across 8 pods (~190 TPS/pod, 1 core / 2GB each).
  * DB spec: 32 cores, 12GB RAM. Total connections: 8 pods x 20 = 160.
  */
 @ConfigMapping(prefix = "pool")
