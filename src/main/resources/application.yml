@@ -6,7 +6,7 @@ quarkus:
     io-threads: 2                    # Match event-loops-pool-size (1-core pod)
     limits:
       max-body-size: 10M
-      max-connections: 500           # Right-sized for 300 TPS/pod
+      max-connections: 300           # Reduced for 750m CPU - fewer concurrent connections
 
 #  datasource:
 #    db-kind: oracle
@@ -24,10 +24,10 @@ quarkus:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
 
-  # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
+  # Vertx Configuration - Optimized for 750m CPU pods (0.75 cores)
   vertx:
-    event-loops-pool-size: 2         # 1 core pod → 2 event loops sufficient (Kafka + Redis/HTTP I/O)
-    internal-blocking-pool-size: 16  # Match consumer concurrency (16) + 4 headroom for other blocking ops
+    event-loops-pool-size: 2         # Keep 2 event loops for async I/O (lightweight, non-blocking)
+    internal-blocking-pool-size: 8   # Match consumer concurrency (8) for 750m CPU
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,8 +35,8 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 16                 # 16 consumer + 4 for HTTP/scheduled/other ops
-    max-threads: 32                  # Modest burst headroom - avoids excessive context switching on 1 core
+    core-threads: 8                  # Reduced for 750m CPU - avoids excessive context switching
+    max-threads: 16                  # Modest burst headroom for 0.75 cores
     queue-size: 1000                 # Backpressure-aware consumer prevents unbounded queue buildup
     growth-resistance: 0
     shutdown-timeout: 30s
@@ -113,9 +113,9 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 48               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
-    max-waiting-handlers: 500      # Reduced - backpressure prevents unbounded waiting
-    max-pool-waiting: 256
+    max-pool-size: 24               # Right-sized for concurrency 8: max ~16 concurrent Redis ops + headroom
+    max-waiting-handlers: 256      # Reduced to match lower concurrency
+    max-pool-waiting: 128
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
@@ -150,7 +150,7 @@ webclient:
 # DB: 32 cores, 12GB RAM → max ~160 total connections safe
 # Per pod: 20 connections x 8 pods = 160 total DB connections
 pool:
-  max-size: 25                      # 8 pods x 20 = 160 total (max safe for 32-core DB, fits 2GB memory)
+  max-size: 15                      # Reduced for concurrency 8: 8 pods x 15 = 120 total DB connections
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -258,6 +258,6 @@ mp:
         receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 16                 # 16 concurrent slots with backpressure: max ~640 TPS/pod at 25ms avg
+        concurrency: 8                  # Reduced from 16 for 750m CPU - avoids context switching on 0.75 cores
 
 
