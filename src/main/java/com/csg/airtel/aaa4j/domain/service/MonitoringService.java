@@ -131,10 +131,27 @@ public class MonitoringService {
      * Resets the counter if a new day has started (00:00).
      * Syncs the count with Redis for distributed tracking.
      */
-    private synchronized void updateDailyCoaCount() {
+    private void updateDailyCoaCount() {
         LocalDate today = LocalDate.now();
 
-        // Check if we've moved to a new day
+        // Lock-free day reset check — only synchronize on the rare day change
+        if (!today.equals(currentDay)) {
+            resetDailyCount(today);
+        }
+
+        // Increment daily count in memory (lock-free)
+        long newCount = dailyCoaRequestCount.incrementAndGet();
+
+        // Increment Redis cache (fire and forget for performance)
+        redisValueCommands.incr(COA_REQUEST_COUNT_CACHE_KEY)
+                .subscribe().with(
+                        redisCount -> LoggingUtil.logDebug(log, M_COA, "Redis COA count incremented (local: %d)", newCount),
+                        error -> LoggingUtil.logWarn(log, M_COA, "Failed to increment Redis COA count: %s", error.getMessage())
+                );
+    }
+
+    private synchronized void resetDailyCount(LocalDate today) {
+        // Double-check inside synchronized block to prevent duplicate resets
         if (!today.equals(currentDay)) {
             LoggingUtil.logInfo(log, M_COA, "New day detected. Resetting COA daily count. Previous day: %s, Count: %d",
                     currentDay, dailyCoaRequestCount.get());
@@ -148,16 +165,6 @@ public class MonitoringService {
                             error -> LoggingUtil.logWarn(log, M_COA, "Failed to reset Redis COA count: %s", error.getMessage())
                     );
         }
-
-        // Increment daily count in memory
-        long newCount = dailyCoaRequestCount.incrementAndGet();
-
-        // Increment Redis cache (fire and forget for performance)
-        redisValueCommands.incr(COA_REQUEST_COUNT_CACHE_KEY)
-                .subscribe().with(
-                        redisCount -> LoggingUtil.logDebug(log, M_COA, "Redis COA count incremented (local: %d)", newCount),
-                        error -> LoggingUtil.logWarn(log, M_COA, "Failed to increment Redis COA count: %s", error.getMessage())
-                );
     }
 
     /**

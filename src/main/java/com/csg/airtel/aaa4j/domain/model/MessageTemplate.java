@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.regex.Pattern;
 
 /**
  * Entity representing a message template from MESSAGE_TEMPLATE table.
@@ -12,6 +13,8 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 public class MessageTemplate {
+
+    private static final Pattern TEMPLATE_PARAM_PATTERN = Pattern.compile("\\{([^}]+)\\}");
 
     private Long superTemplateId;
     private Long templateId;
@@ -49,7 +52,7 @@ public class MessageTemplate {
             return new String[0];
         }
 
-        return java.util.regex.Pattern.compile("\\{([^}]+)\\}")
+        return TEMPLATE_PARAM_PATTERN
                 .matcher(content)
                 .results()
                 .map(match -> match.group(1))

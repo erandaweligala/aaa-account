@@ -123,7 +123,7 @@ public class CdrMappingUtil {
             Session session,
             AccountingMetrics metrics) {
 
-        LoggingUtil.logInfo(log, M_CDR, "starting CDREvent for request: %s", session.getSessionId());
+        LoggingUtil.logDebug(log, M_CDR, "starting CDREvent for request: %s", session.getSessionId());
 
         SessionCdr cdrSession = buildSessionCdr(request, metrics.getSessionTime(), metrics.getEventType());
         User cdrUser = buildUserCdr(request,session.getGroupId());
@@ -482,7 +482,7 @@ public class CdrMappingUtil {
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, M_CDR, "CDR event sent successfully for session: %s", request.sessionId()),
+                            success -> LoggingUtil.logDebug(log, M_CDR, "CDR event sent successfully for session: %s", request.sessionId()),
                             failure -> LoggingUtil.logError(log, M_CDR, failure, "Failed to send CDR event for session: %s", request.sessionId())
                     );
         } catch (Exception e) {
