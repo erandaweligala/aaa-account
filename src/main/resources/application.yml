@@ -6,7 +6,7 @@ quarkus:
     io-threads: 2                    # Match event-loops-pool-size (1-core pod)
     limits:
       max-body-size: 10M
-      max-connections: 300           # Reduced for 750m CPU - fewer concurrent connections
+      max-connections: 100           # 750m CPU can't handle 300 concurrent connections
 
 #  datasource:
 #    db-kind: oracle
@@ -27,7 +27,7 @@ quarkus:
   # Vertx Configuration - Optimized for 750m CPU pods (0.75 cores)
   vertx:
     event-loops-pool-size: 2         # Keep 2 event loops for async I/O (lightweight, non-blocking)
-    internal-blocking-pool-size: 8   # Match consumer concurrency (8) for 750m CPU
+    internal-blocking-pool-size: 4   # Match consumer concurrency (4) for 750m CPU
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,8 +35,8 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 8                  # Reduced for 750m CPU - avoids excessive context switching
-    max-threads: 16                  # Modest burst headroom for 0.75 cores
+    core-threads: 4                  # 750m CPU ≈ 0.75 cores - keep threads low
+    max-threads: 8                   # Modest burst headroom for 0.75 cores
     queue-size: 1000                 # Backpressure-aware consumer prevents unbounded queue buildup
     growth-resistance: 0
     shutdown-timeout: 30s
@@ -113,7 +113,7 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 24               # Right-sized for concurrency 8: max ~16 concurrent Redis ops + headroom
+    max-pool-size: 12               # Right-sized for concurrency 4: max ~8 concurrent Redis ops + headroom
     max-waiting-handlers: 256      # Reduced to match lower concurrency
     max-pool-waiting: 128
     pool-recycle-timeout: 240000
@@ -193,7 +193,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window - accumulate more msgs per batch
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
+        buffer.memory: 8388608         # 8MB per producer (4 x 8MB = 32MB total) - saves CPU on buffer management
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -211,7 +211,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
+        buffer.memory: 8388608         # 8MB per producer (4 x 8MB = 32MB total) - saves CPU on buffer management
 
       accounting-cdr-events:
         connector: smallrye-kafka
@@ -224,7 +224,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
+        buffer.memory: 8388608         # 8MB per producer (4 x 8MB = 32MB total) - saves CPU on buffer management
 
       quota-notification-events:
         connector: smallrye-kafka
@@ -237,7 +237,7 @@ mp:
         compression.type: lz4
         batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
         linger.ms: 10                  # 10ms batching window
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
+        buffer.memory: 8388608         # 8MB per producer (4 x 8MB = 32MB total) - saves CPU on buffer management
 
     incoming:
       accounting-events:
@@ -248,7 +248,7 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500           # Larger batches for higher throughput during backlog catch-up
+        max.poll.records: 100           # Smaller batches reduce per-poll CPU spike
         max.poll.interval.ms: 300000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
@@ -258,6 +258,6 @@ mp:
         receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 8                  # Reduced from 16 for 750m CPU - avoids context switching on 0.75 cores
+        concurrency: 4                  # 750m CPU can handle 4 concurrent consumers max without thrashing
 
 
