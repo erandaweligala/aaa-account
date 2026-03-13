@@ -3,7 +3,7 @@ quarkus:
     http2: true
     root-path: /api/v1
     port: 9905
-    io-threads: 2                    # Match event-loops-pool-size (1-core pod)
+    io-threads: 1                    # Match event-loops-pool-size (800m CPU pod)
     limits:
       max-body-size: 10M
       max-connections: 500           # Right-sized for 300 TPS/pod
@@ -24,10 +24,10 @@ quarkus:
       url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
 
-  # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
+  # Vertx Configuration - Optimized for 5 pods x 800m CPU / 1.2Gi, 14 partitions
   vertx:
-    event-loops-pool-size: 2         # 1 core pod → 2 event loops sufficient (Kafka + Redis/HTTP I/O)
-    internal-blocking-pool-size: 16  # Match consumer concurrency (16) + 4 headroom for other blocking ops
+    event-loops-pool-size: 1         # 800m CPU pod → 1 event loop sufficient
+    internal-blocking-pool-size: 6   # Match consumer concurrency (3) + headroom for blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
@@ -35,9 +35,9 @@ quarkus:
     caching: false
 
   thread-pool:
-    core-threads: 16                 # 16 consumer + 4 for HTTP/scheduled/other ops
-    max-threads: 32                  # Modest burst headroom - avoids excessive context switching on 1 core
-    queue-size: 1000                 # Backpressure-aware consumer prevents unbounded queue buildup
+    core-threads: 6                  # 3 consumer + 3 for HTTP/scheduled/other ops
+    max-threads: 10                  # Minimal burst headroom - avoids context switching on 800m CPU
+    queue-size: 500                  # Backpressure-aware consumer prevents unbounded queue buildup
     growth-resistance: 0
     shutdown-timeout: 30s
 
@@ -113,9 +113,9 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 48               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
-    max-waiting-handlers: 500      # Reduced - backpressure prevents unbounded waiting
-    max-pool-waiting: 256
+    max-pool-size: 12               # Right-sized for concurrency 3: max ~6 concurrent Redis ops + headroom
+    max-waiting-handlers: 128      # Reduced - backpressure prevents unbounded waiting
+    max-pool-waiting: 64
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
@@ -146,11 +146,11 @@ webclient:
   http2-keep-alive-timeout: 60
 
 
-# Pool Configuration - Optimized for 2400 TPS (8 pods x 1 core / 2GB, 300 TPS/pod)
+# Pool Configuration - Optimized for 5 pods x 800m CPU / 1.2Gi
 # DB: 32 cores, 12GB RAM → max ~160 total connections safe
-# Per pod: 20 connections x 8 pods = 160 total DB connections
+# Per pod: 8 connections x 5 pods = 40 total DB connections
 pool:
-  max-size: 25                      # 8 pods x 20 = 160 total (max safe for 32-core DB, fits 2GB memory)
+  max-size: 8                       # 5 pods x 8 = 40 total (conservative for 800m CPU, fits 1.2Gi memory)
   connection-timeout: 5000          # 5 seconds to acquire connection
   idle-timeout: 600000              # 10 minutes idle before closing
   max-lifetime: 1800000             # 30 minutes max connection lifetime
@@ -158,7 +158,7 @@ pool:
   prepared-statement-cache-max-size: 256  # Cache prepared statements
   pipelining-enabled: true          # Enable query pipelining
   pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 2                # Match vertx event-loops-pool-size (1 core pod)
+  event-loop-size: 1                # Match vertx event-loops-pool-size (800m CPU pod)
   tcp-keep-alive: true              # Detect dead connections
   tcp-no-delay: true                # Reduce latency
   pool-cleaner-enabled: true        # Clean idle connections
@@ -177,7 +177,7 @@ idle-session:
 #    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
 
 
-# Kafka Producer/Consumer Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
+# Kafka Producer/Consumer Configuration - Optimized for 5 pods x 800m CPU / 1.2Gi, 14 partitions
 mp:
   messaging:
     outgoing:
@@ -248,16 +248,16 @@ mp:
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500           # Larger batches for higher throughput during backlog catch-up
-        max.poll.interval.ms: 300000
+        max.poll.records: 100           # Smaller batches - fits 800m CPU, prevents poll timeout
+        max.poll.interval.ms: 120000    # 2 min - generous for 100-record batches on 800m CPU
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
         fetch.min.bytes: 1              # Reduce latency - don't wait for min bytes
         fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 2GB memory
-        receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
+        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 1.2Gi memory
+        receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 1.2Gi memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 16                 # 16 concurrent slots with backpressure: max ~640 TPS/pod at 25ms avg
+        concurrency: 3                  # 14 partitions / 5 pods = ~3 per pod - ensures even distribution
 
 
