@@ -7,7 +7,7 @@ quarkus:
     io-threads: 1                      # Match event-loops-pool-size (800m CPU pod)
     limits:
       max-body-size: 10M
-      max-connections: 300             # 200 TPS/pod with some headroom
+      max-connections: 200             # 200 TPS/pod - reduced for 800m CPU
   # =========================
   # Database Configuration
   # 7 pods x 200 TPS = 1400 TPS total
@@ -24,16 +24,16 @@ quarkus:
   # =========================
   vertx:
     event-loops-pool-size: 1           # 800m CPU → 1 event loop sufficient
-    internal-blocking-pool-size: 4     # concurrency(2) + 2 headroom for blocking ops
+    internal-blocking-pool-size: 2     # concurrency(1) + 1 headroom for blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
     prefer-native-transport: true
     caching: false
   thread-pool:
-    core-threads: 4                    # 2 consumers + 2 for HTTP/scheduled ops
-    max-threads: 8                     # Minimal burst - avoids context switching on 800m CPU
-    queue-size: 250
+    core-threads: 2                    # 1 consumer + 1 for HTTP/scheduled ops
+    max-threads: 4                     # Minimal burst - avoids context switching on 800m CPU
+    queue-size: 100
     growth-resistance: 0
     shutdown-timeout: 30s
   # =========================
@@ -260,7 +260,7 @@ mp:
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 200          # 200 TPS / 2 polls per sec = ~100 records/poll, 200 with headroom
+        max.poll.records: 50           # Small batches = less CPU spike per poll on 800m CPU
         max.poll.interval.ms: 120000   # 2 min - generous for 200 records on 800m CPU
         poll-timeout: 1000
         session.timeout.ms: 30000
@@ -271,4 +271,4 @@ mp:
         receive.buffer.bytes: 65336
         connections.max.idle.ms: 540000
         failure-strategy: ignore
-        concurrency: 2                 # 14 partitions / 7 pods = 2 per pod (exact match)
+        concurrency: 1                 # Single consumer thread - keeps CPU within 800m limit
