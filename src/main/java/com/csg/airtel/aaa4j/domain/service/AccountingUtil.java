@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 @ApplicationScoped
@@ -29,6 +30,8 @@ public class AccountingUtil {
     private static final String M_BALANCE = "findBalance";
     private static final String M_CACHE = "updateCache";
     private static final String M_CONSUMPTION = "consumption";
+    // Cache parsed time windows to avoid String.split() + Integer.parseInt() on every request
+    private static final ConcurrentHashMap<String, LocalTime[]> TIME_WINDOW_CACHE = new ConcurrentHashMap<>();
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
     private final COAService coaService;
@@ -1361,19 +1364,23 @@ public class AccountingUtil {
             throw new IllegalArgumentException("Time window string cannot be null or empty");
         }
 
-        String[] times = timeWindow.split("-");
-
-        if (times.length != 2) {
-            LoggingUtil.logError(log, M_BALANCE, null, "Invalid time window: %s", timeWindow);
-            throw new IllegalArgumentException("Invalid time window format. Expected format: 'HH-HH' (e.g., '00-24', '08-18', '0-12')");
+        // Cache parsed time windows - avoids split() + parseInt() on every request (200 TPS)
+        LocalTime[] cached = TIME_WINDOW_CACHE.get(timeWindow);
+        if (cached == null) {
+            String[] times = timeWindow.split("-");
+            if (times.length != 2) {
+                LoggingUtil.logError(log, M_BALANCE, null, "Invalid time window: %s", timeWindow);
+                throw new IllegalArgumentException("Invalid time window format. Expected format: 'HH-HH' (e.g., '00-24', '08-18', '0-12')");
+            }
+            cached = new LocalTime[]{parseHourOnly(times[0].trim()), parseHourOnly(times[1].trim())};
+            TIME_WINDOW_CACHE.put(timeWindow, cached);
         }
 
-        LocalTime startTime = parseHourOnly(times[0].trim());
-        LocalTime endTime = parseHourOnly(times[1].trim());
+        LocalTime startTime = cached[0];
+        LocalTime endTime = cached[1];
         LocalTime currentTime = LocalTime.now();
 
         if (startTime.isAfter(endTime)) {
-
             return !currentTime.isBefore(startTime) || !currentTime.isAfter(endTime);
         } else {
             return !currentTime.isBefore(startTime) && !currentTime.isAfter(endTime);

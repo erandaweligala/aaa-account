@@ -117,10 +117,11 @@ public class CacheClient {
                         }
 
                         String groupKey = GROUP_KEY_PREFIX + userName;
-                        String groupValues = data.getGroupId() + "," +
-                                data.getConcurrency() + "," +
-                                data.getUserStatus() + "," +
-                                data.getSessionTimeOut();
+                        String groupValues = new StringBuilder(32)
+                                .append(data.getGroupId()).append(',')
+                                .append(data.getConcurrency()).append(',')
+                                .append(data.getUserStatus()).append(',')
+                                .append(data.getSessionTimeOut()).toString();
 
                         // Check cache first
                         return valueCommands.get(groupKey)
@@ -212,7 +213,11 @@ public class CacheClient {
             // Run group and user SET operations in parallel for zero overhead
             if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
                 String groupKey = GROUP_KEY_PREFIX + userName;
-                String groupValues = userData.getGroupId()+","+userData.getConcurrency()+","+userData.getUserStatus()+","+userData.getSessionTimeOut();
+                String groupValues = new StringBuilder(32)
+                        .append(userData.getGroupId()).append(',')
+                        .append(userData.getConcurrency()).append(',')
+                        .append(userData.getUserStatus()).append(',')
+                        .append(userData.getSessionTimeOut()).toString();
 
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(

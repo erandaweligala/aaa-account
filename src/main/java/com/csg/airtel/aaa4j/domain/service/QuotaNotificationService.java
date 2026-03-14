@@ -220,13 +220,28 @@ public class QuotaNotificationService {
         paramValues.put("INITIAL_QUOTA", balance != null && balance.getInitialBalance() != null
                 ? balance.getInitialBalance().toString() : "");
 
-        // Dynamically replace each parameter in the template
-        for (String param : params) {
-            String value = paramValues.getOrDefault(param, "");
-            message = message.replace("{" + param + "}", value);
+        // Replace placeholders using StringBuilder - avoids creating new String per replace()
+        StringBuilder sb = new StringBuilder(message.length() + 32);
+        int pos = 0;
+        while (pos < message.length()) {
+            int braceStart = message.indexOf('{', pos);
+            if (braceStart == -1) {
+                sb.append(message, pos, message.length());
+                break;
+            }
+            int braceEnd = message.indexOf('}', braceStart + 1);
+            if (braceEnd == -1) {
+                sb.append(message, pos, message.length());
+                break;
+            }
+            sb.append(message, pos, braceStart);
+            String paramName = message.substring(braceStart + 1, braceEnd);
+            String value = paramValues.getOrDefault(paramName, "");
+            sb.append(value);
+            pos = braceEnd + 1;
         }
 
-        return message;
+        return sb.toString();
     }
 
     /**
