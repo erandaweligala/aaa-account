@@ -112,7 +112,7 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 6                   # 200 TPS × ~3 Redis calls × 2ms = ~1.2 concurrent + headroom
+    max-pool-size: 4                   # 200 TPS × ~3 Redis calls × 2ms = ~1.2 concurrent + 3x headroom
     max-waiting-handlers: 128
     max-pool-waiting: 64
     pool-recycle-timeout: 180000
@@ -143,7 +143,7 @@ webclient:
 # 7 pods × 6 = 42 total DB connections
 # =========================
 pool:
-  max-size: 6                          # 200 TPS × 10ms total DB time = ~2 concurrent + headroom
+  max-size: 4                          # 200 TPS × 10ms total DB time = ~2 concurrent + 2x headroom
   connection-timeout: 5000
   idle-timeout: 600000
   max-lifetime: 1800000
