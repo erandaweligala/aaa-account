@@ -13,6 +13,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
+import java.time.Duration;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -54,32 +55,36 @@ public class MessageTemplateCacheService {
     void initializeTemplateCache() {
         LOG.info("Initializing message template cache at application startup...");
 
-        templateRepository.getAllActiveTemplates()
-                .onItem().invoke(templates -> {
-                    if (templates == null || templates.isEmpty()) {
-                        LOG.warn("No active message templates found in database");
-                        return;
-                    }
-
-                    LOG.infof("Loading %d active message templates into cache", templates.size());
-
-                    for (MessageTemplate template : templates) {
-                        try {
-                            cacheTemplate(template);
-                        } catch (Exception e) {
-                            LOG.errorf(e, "Failed to cache template ID %d: %s",
-                                    template.getTemplateId(), template.getTemplateName());
+        try {
+            templateRepository.getAllActiveTemplates()
+                    .onItem().invoke(templates -> {
+                        if (templates == null || templates.isEmpty()) {
+                            LOG.warn("No active message templates found in database");
+                            return;
                         }
-                    }
 
-                    LOG.infof("Successfully loaded %d message templates into cache", templates.size());
-                })
-                .onFailure().invoke(error ->
-                        LOG.error("Failed to initialize message template cache from database. Using fallback.", error))
-                .subscribe().with(
-                        result -> LOG.debug("Template cache initialization completed"),
-                        error -> LOG.error("Template cache initialization failed", error)
-                );
+                        LOG.infof("Loading %d active message templates into cache", templates.size());
+
+                        for (MessageTemplate template : templates) {
+                            try {
+                                cacheTemplate(template);
+                            } catch (Exception e) {
+                                LOG.errorf(e, "Failed to cache template ID %d: %s",
+                                        template.getTemplateId(), template.getTemplateName());
+                            }
+                        }
+
+                        LOG.infof("Successfully loaded %d message templates into cache", templates.size());
+                    })
+                    .onFailure().invoke(error ->
+                            LOG.error("Failed to initialize message template cache from database. Using fallback.", error))
+                    .onFailure().recoverWithNull()
+                    .await().atMost(Duration.ofSeconds(30));
+
+            LOG.info("Template cache initialization completed");
+        } catch (Exception e) {
+            LOG.error("Template cache initialization failed - application will continue with empty cache", e);
+        }
     }
 
     /**
