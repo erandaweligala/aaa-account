@@ -1,263 +1,274 @@
+config_ordinal: 500
 quarkus:
   http:
     http2: true
     root-path: /api/v1
     port: 9905
-    io-threads: 1                    # Match event-loops-pool-size (800m CPU pod)
+    io-threads: 1                      # Match event-loops-pool-size (800m CPU pod)
     limits:
       max-body-size: 10M
-      max-connections: 500           # Right-sized for 300 TPS/pod
-
-#  datasource:
-#    db-kind: oracle
-#    username: aaa
-#    password: Aaa!89nky78D
-#    reactive:
-#      #url: oracle:thin:@localhost:1521/FREEPDB1
-#      url: oracle:thin:@localhost:1522/ORCL
-
+      max-connections: 300             # 200 TPS/pod with some headroom
+  # =========================
+  # Database Configuration
+  # 7 pods x 200 TPS = 1400 TPS total
+  # =========================
   datasource:
     db-kind: oracle
-    username: aaa
-    password: Aaa!89nky78D
+    username: CYA_AAA_OPS
+    password: UkkaNk8KnAPp19!
     reactive:
-      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
-
-
-  # Vertx Configuration - Optimized for 5 pods x 800m CPU / 1.2Gi, 14 partitions
+      url: oracle:thin:@172.24.0.203:1908/AAA
+  # =========================
+  # Vert.x Configuration
+  # 7 pods x 800m CPU / 1.2Gi, 200 TPS/pod
+  # =========================
   vertx:
-    event-loops-pool-size: 1         # 800m CPU pod → 1 event loop sufficient
-    internal-blocking-pool-size: 6   # Match consumer concurrency (3) + headroom for blocking ops
+    event-loops-pool-size: 1           # 800m CPU → 1 event loop sufficient
+    internal-blocking-pool-size: 4     # concurrency(2) + 2 headroom for blocking ops
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
     prefer-native-transport: true
     caching: false
-
   thread-pool:
-    core-threads: 6                  # 3 consumer + 3 for HTTP/scheduled/other ops
-    max-threads: 10                  # Minimal burst headroom - avoids context switching on 800m CPU
-    queue-size: 500                  # Backpressure-aware consumer prevents unbounded queue buildup
+    core-threads: 4                    # 2 consumers + 2 for HTTP/scheduled ops
+    max-threads: 8                     # Minimal burst - avoids context switching on 800m CPU
+    queue-size: 250
     growth-resistance: 0
     shutdown-timeout: 30s
-
-  console:
-    color: true
+  # =========================
+  # Logging
+  # =========================
   log:
-    level: R
+    level: INFO
     console:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
-        queue-length: 4096
+        queue-length: 8192
         overflow: discard
-
-    # File Configuration
+      enabled: false
     file:
-      path: /var/log/dte/accounting-service-${HOSTNAME:unknown}.log
+      enabled: true
+      level: INFO
+      path: "/var/log/dte/${HOSTNAME:unknown}.log"
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
         enable: true
-        queue-length: 8192
+        queue-length: 16384
         overflow: discard
       rotation:
-        max-file-size: 100M
-        max-backup-index: 15
+        max-file-size: 60M
+        max-backup-index: 10
         rotate-on-boot: true
-      enabled: true
-      level: ERROR
-
     category:
       "org.apache.kafka":
-        level: INFO
+        level: ERROR
       "io.smallrye.reactive.messaging.kafka":
-        level: INFO
+        level: ERROR
       "io.quarkus.config":
-        level: INFO
+        level: ERROR
       "io.smallrye.config":
-        level: INFO
+        level: ERROR
       "com.csg.airtel.aaa4j":
         level: INFO
-
+  # =========================
+  # OpenTelemetry
+  # =========================
   otel:
     traces:
       exporter: none
-
-  # Micrometer Metrics Configuration
+  # =========================
+  # Micrometer Metrics
+  # =========================
   micrometer:
     enabled: true
+    binder-enabled-default: false
     binder:
-      jvm: true
-      system: true
-      http-server: true
+      jvm:
+        enabled: true
+      system:
+        enabled: true
+      http-server:
+        enabled: true
+      vertx:
+        enabled: true
     export:
       prometheus:
         enabled: true
         path: /q/metrics
-
-
-#  redis:
-#    hosts: redis://localhost:6379
-#    max-pool-size: 150               # Right-sized: 300 TPS x ~5ms = ~1.5 concurrent + headroom
-#    max-waiting-handlers: 3000
-#    max-pool-waiting: 1000
-#    pool-recycle-timeout: 240000
-#    reconnect-attempts: 3
-#    reconnect-interval: 500
-#    pool-cleaner-interval: 20000
-#    response-timeout: 3000
-#    connection-timeout: 2000
-
+    vertx:
+      enabled: true
+      metrics:
+        options:
+          enabled: true
+          registry-name: micrometer
+  # =========================
+  # Redis (Sentinel)
+  # 200 TPS x ~2ms avg = ~0.4 concurrent, 2-3 calls/req = ~1.2 concurrent + headroom
+  # =========================
   redis:
     client-type: sentinel
     hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 12               # Right-sized for concurrency 3: max ~6 concurrent Redis ops + headroom
-    max-waiting-handlers: 128      # Reduced - backpressure prevents unbounded waiting
+    max-pool-size: 6                   # 200 TPS × ~3 Redis calls × 2ms = ~1.2 concurrent + headroom
+    max-waiting-handlers: 128
     max-pool-waiting: 64
-    pool-recycle-timeout: 240000
+    pool-recycle-timeout: 180000
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    timeout: 120000
-
-  # CoA HTTP Client Configuration (Vert.x WebClient)
-#coa:
-#  nas:
-#    host: localhost
-#    port: 8088
-
+    timeout: 3000
+# =========================
+# CoA HTTP Client
+# =========================
 coa:
   nas:
-#    host: airtel-aaa-radius-server-service.airtel-aaa.svc.cluster.local
-    host: localhost
-    port: 8088
-
+    host: airtel-aaa-radius-server-service.csg-aaa-app.svc.cluster.local
+    port: 8080
 webclient:
-  max-pool-size: 20                  # Right-sized for 300 TPS/pod HTTP/1.1
+  max-pool-size: 16                    # 200 TPS/pod HTTP/1.1
   connect-timeout: 5000
-  idle-timeout: 60000
+  idle-timeout: 30000
   keep-alive: true
   pipelining: true
   pipelining-limit: 10
-  http2-max-pool-size: 20            # Right-sized for 300 TPS/pod HTTP/2
+  http2-max-pool-size: 16             # 200 TPS/pod HTTP/2
   http2-multiplexing-limit: 100
   http2-keep-alive-timeout: 60
-
-
-# Pool Configuration - Optimized for 5 pods x 800m CPU / 1.2Gi
-# DB: 32 cores, 12GB RAM → max ~160 total connections safe
-# Per pod: 8 connections x 5 pods = 40 total DB connections
+# =========================
+# DB Connection Pool
+# 200 TPS × ~5ms avg query × ~2 queries/req = ~2 concurrent + headroom
+# 7 pods × 6 = 42 total DB connections
+# =========================
 pool:
-  max-size: 8                       # 5 pods x 8 = 40 total (conservative for 800m CPU, fits 1.2Gi memory)
-  connection-timeout: 5000          # 5 seconds to acquire connection
-  idle-timeout: 600000              # 10 minutes idle before closing
-  max-lifetime: 1800000             # 30 minutes max connection lifetime
-  acquire-increment: 4              # Connections to acquire at once
-  prepared-statement-cache-max-size: 256  # Cache prepared statements
-  pipelining-enabled: true          # Enable query pipelining
-  pipelining-limit: 256             # Max pipelined queries
-  event-loop-size: 1                # Match vertx event-loops-pool-size (800m CPU pod)
-  tcp-keep-alive: true              # Detect dead connections
-  tcp-no-delay: true                # Reduce latency
-  pool-cleaner-enabled: true        # Clean idle connections
-  pool-cleaner-interval: 60000      # Clean every minute
-
-
+  max-size: 6                          # 200 TPS × 10ms total DB time = ~2 concurrent + headroom
+  connection-timeout: 5000
+  idle-timeout: 600000
+  max-lifetime: 1800000
+  acquire-increment: 2
+  prepared-statement-cache-max-size: 256
+  pipelining-enabled: true
+  pipelining-limit: 256
+  event-loop-size: 1                   # Match vertx event-loops-pool-size
+  tcp-keep-alive: true
+  tcp-no-delay: true
+  pool-cleaner-enabled: true
+  pool-cleaner-interval: 60000
+# =========================
+# Idle Session Cleanup
+# =========================
 idle-session:
-  enabled: true
-  timeout-minutes: 60       # 1 hour default - sessions older than this will be terminated
-  scheduler-interval: 30m    # Run every 60 minutes
+  enabled: false
+  timeout-minutes: 60
+  scheduler-interval: 60000m
   batch-size: 1000
-
-  # Process 1000 sessions per batch (increased for scale)
-#kafka:
-#  bootstrap:
-#    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
-
-
-# Kafka Producer/Consumer Configuration - Optimized for 5 pods x 800m CPU / 1.2Gi, 14 partitions
+# =========================
+# Kafka
+# 7 pods × 200 TPS = 1400 TPS total
+# 14 partitions / 7 pods = 2 partitions per pod → concurrency: 2
+# =========================
+kafka:
+  bootstrap:
+    servers: kafka-headless.csg-aaa-query-cache.svc.cluster.local:9092
 mp:
   messaging:
     outgoing:
       db-write-events:
         connector: smallrye-kafka
         topic: dctodr-dc
-        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         acks: all
-        retries: 5
+        retries: 3
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window - accumulate more msgs per batch
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
+        batch.size: 32768
+        linger.ms: 10
+        buffer.memory: 16777216
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
         reconnect.backoff.ms: 1000
         reconnect.backoff.max.ms: 5000
-
+        enable.idempotence: true
       accounting-resp-events:
         connector: smallrye-kafka
         topic: accounting-response-dc
-        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         acks: all
         retries: 3
+        retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
-
+        batch.size: 32768
+        linger.ms: 10
+        buffer.memory: 16777216        # 16MB (was 32MB - saves memory on 1.2Gi pod)
+        metadata.max.age.ms: 30000
+        request.timeout.ms: 30000
+        delivery.timeout.ms: 120000
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        enable.idempotence: true
       accounting-cdr-events:
         connector: smallrye-kafka
         topic: cdr-event-dc
-        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         acks: all
         retries: 3
+        retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
-
+        batch.size: 16384
+        linger.ms: 5
+        buffer.memory: 16777216
+        metadata.max.age.ms: 30000
+        request.timeout.ms: 30000
+        delivery.timeout.ms: 120000
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        enable.idempotence: true
       quota-notification-events:
         connector: smallrye-kafka
         topic: quota-notifications-dc
-        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         acks: all
         retries: 3
+        retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768              # 32KB - larger batches reduce broker requests at 2400 TPS
-        linger.ms: 10                  # 10ms batching window
-        buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
-
+        batch.size: 32768
+        linger.ms: 10
+        buffer.memory: 16777216        # 16MB (was 32MB - saves memory on 1.2Gi pod)
+        metadata.max.age.ms: 30000
+        request.timeout.ms: 30000
+        delivery.timeout.ms: 120000
+        reconnect.backoff.ms: 1000
+        reconnect.backoff.max.ms: 5000
+        enable.idempotence: true
     incoming:
       accounting-events:
         connector: smallrye-kafka
         topic: accounting-dc-2
         group.id: accounting-consumer-group
-        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 100           # Smaller batches - fits 800m CPU, prevents poll timeout
-        max.poll.interval.ms: 120000    # 2 min - generous for 100-record batches on 800m CPU
+        max.poll.records: 200          # 200 TPS / 2 polls per sec = ~100 records/poll, 200 with headroom
+        max.poll.interval.ms: 120000   # 2 min - generous for 200 records on 800m CPU
+        poll-timeout: 1000
         session.timeout.ms: 30000
-        heartbeat.interval.ms: 10000    # Prevent consumer rebalancing under sustained high load
-        fetch.min.bytes: 1              # Reduce latency - don't wait for min bytes
-        fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880  # 5MB per partition - fits 1.2Gi memory
-        receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 1.2Gi memory
-        connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
+        heartbeat.interval.ms: 10000
+        fetch.min.bytes: 1
+        fetch.max.bytes: 10485760
+        max.partition.fetch.bytes: 1048576
+        receive.buffer.bytes: 65336
+        connections.max.idle.ms: 540000
         failure-strategy: ignore
-        concurrency: 3                  # 14 partitions / 5 pods = ~3 per pod - ensures even distribution
-
-
+        concurrency: 2                 # 14 partitions / 7 pods = 2 per pod (exact match)
