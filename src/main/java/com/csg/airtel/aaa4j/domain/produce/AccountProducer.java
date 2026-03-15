@@ -268,9 +268,10 @@ public class AccountProducer {
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
     public Uni<Void> produceQuotaNotificationEvent(QuotaNotificationEvent event) {
-        long startTime = System.currentTimeMillis();
+
         LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
                 event.username(), event.type());
+        /*
         return Uni.createFrom().emitter(em -> {
             Message<QuotaNotificationEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -290,6 +291,9 @@ public class AccountProducer {
 
             quotaNotificationEmitter.send(message);
         });
+
+         */
+        return Uni.createFrom().voidItem();
     }
 
     /**

@@ -288,10 +288,6 @@ public class BucketService {
             return Uni.createFrom().item(createErrorResponseString("Status is required"));
         }
 
-        // Validate status values
-        if (!status.equalsIgnoreCase("ACTIVE") && !status.equalsIgnoreCase("BARRED")) {
-            return Uni.createFrom().item(createErrorResponseString("Invalid status. Must be 'ACTIVE' or 'BARRED'"));
-        }
 
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
@@ -301,6 +297,7 @@ public class BucketService {
 
                     String oldStatus = userData.getUserStatus();
                     LoggingUtil.logInfo(log, M_STATUS, "Changing user status for user %s from %s to %s", userName, oldStatus, status);
+
 
                     // Update userStatus in UserSessionData
                     UserSessionData updatedUserData = userData.toBuilder()

@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
 import io.smallrye.mutiny.Uni;
+import io.smallrye.mutiny.infrastructure.Infrastructure;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;

@@ -87,7 +87,7 @@ public class UserBucketRepository {
                 })
                 .onItem().invoke(results -> {
                     long elapsed = System.currentTimeMillis() - startTime;
-                    LoggingUtil.logDebug(log, M_QUERY, "Fetched %d service buckets for user: %s, queryTime=%dms", results.size(), userName, elapsed);
+                    LoggingUtil.logInfo(log, M_QUERY, "Fetched service buckets for user: %s, queryTime=%dms", userName, elapsed);
                 });
     }
 

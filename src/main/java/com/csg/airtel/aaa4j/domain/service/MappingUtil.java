@@ -5,7 +5,9 @@ import com.csg.airtel.aaa4j.domain.model.*;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 public class MappingUtil {
@@ -14,6 +16,8 @@ public class MappingUtil {
     public static final String SESSION_ID = "sessionId";
     public static final String NAS_IP = "nasIP";
     public static final String FRAMED_IP = "framedIP";
+    private static final Map<String, String> EMPTY_ATTRIBUTES = Collections.emptyMap();
+    private static final String EMPTY = "";
 
     private MappingUtil() {
     }
@@ -24,20 +28,23 @@ public class MappingUtil {
             AccountingResponseEvent.EventType eventType,
             AccountingResponseEvent.ResponseAction responseAction) {
 
-        Map<String, String> attributes = eventType == AccountingResponseEvent.EventType.COA
-                ? Map.of(
-                USERNAME, request.username(),
-                SESSION_ID, request.sessionId(),
-                NAS_IP, request.nasIP(),
-                FRAMED_IP, request.framedIPAddress()
-        )
-                : Map.of();
+        // Optimization: Only create the map if we actually have data
+        Map<String, String> attributes = EMPTY_ATTRIBUTES;
+
+        if (eventType == AccountingResponseEvent.EventType.COA) {
+            attributes = Map.of(
+                    USERNAME, request.username(),
+                    SESSION_ID, request.sessionId(),
+                    NAS_IP, request.nasIP(),
+                    FRAMED_IP, request.framedIPAddress()
+            );
+        }
 
         return new AccountingResponseEvent(
                 request.eventId(),
                 request.username(),
                 eventType,
-                LocalDateTime.now(),
+                LocalDateTime.now(), // Consider passing this as a parameter if available
                 request.sessionId(),
                 responseAction,
                 message,
@@ -52,12 +59,14 @@ public class MappingUtil {
             String framedIPAddress,
             String userName) {
 
-        Map<String, String> attributes =
-                 Map.of(
-                         USERNAME, userName,
-                         SESSION_ID, sessionId,
-                         NAS_IP, nasIP,
-                         FRAMED_IP, framedIPAddress
+        Objects.requireNonNull(sessionId, "sessionId null");
+        Objects.requireNonNull(userName,  "userName null");
+
+        Map<String, String> attributes = Map.of(
+                USERNAME,   userName,
+                SESSION_ID, sessionId,
+                NAS_IP,     nasIP    != null ? nasIP    : EMPTY,
+                FRAMED_IP,  framedIPAddress != null ? framedIPAddress : EMPTY
         );
 
         return new AccountingResponseEvent(
@@ -67,7 +76,7 @@ public class MappingUtil {
                 LocalDateTime.now(),
                 sessionId,
                 AccountingResponseEvent.ResponseAction.DISCONNECT,
-                message,
+                message != null ? message : EMPTY,
                 0L,
                 attributes);
     }

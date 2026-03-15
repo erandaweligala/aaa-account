@@ -30,13 +30,12 @@ public class AccountingUtil {
     private static final String M_BALANCE = "findBalance";
     private static final String M_CACHE = "updateCache";
     private static final String M_CONSUMPTION = "consumption";
-    // Cache parsed time windows to avoid String.split() + Integer.parseInt() on every request
-    private static final ConcurrentHashMap<String, LocalTime[]> TIME_WINDOW_CACHE = new ConcurrentHashMap<>();
     private final AccountProducer accountProducer;
     private final CacheClient cacheClient;
     private final COAService coaService;
     private final QuotaNotificationService quotaNotificationService;
-
+    // Cache parsed time windows to avoid String.split() + Integer.parseInt() on every request
+    private static final ConcurrentHashMap<String, LocalTime[]> TIME_WINDOW_CACHE = new ConcurrentHashMap<>();
 
     public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
                           QuotaNotificationService quotaNotificationService) {
