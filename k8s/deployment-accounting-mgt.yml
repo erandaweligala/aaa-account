@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airtel-aaa-accounting-mgt-deployment
+  namespace: csg-aaa-app
+spec:
+  replicas: 7
+  selector:
+    matchLabels:
+      app: airtel-aaa-accounting-mgt
+  template:
+    metadata:
+      labels:
+        app: airtel-aaa-accounting-mgt
+    spec:
+      # Spread pods across nodes to avoid co-location hotspots
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: airtel-aaa-accounting-mgt
+      containers:
+        - name: airtel-aaa-accounting-mgt
+          image: sameeralakmal/airtel-aaa-accounting-management-service:feature_ocp_Lag_testing_0.0.1_7
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+          args:
+            - -c
+            - |
+              java $JAVA_OPTS \
+                -Djava.security.egd=file:/dev/./urandom \
+                -Dquarkus.config.locations=file:/app/application.yml \
+                -jar /app/airtel-aaa-accounting-management-service.jar
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: >-
+                -Duser.timezone=Asia/Colombo
+                -Xms512m
+                -Xmx1280m
+                -XX:+UseZGC
+                -XX:+ZGenerational
+                -XX:MaxMetaspaceSize=192m
+                -XX:+UseCompressedOops
+                -XX:+UseCompressedClassPointers
+                -XX:+AlwaysPreTouch
+                -XX:+UseStringDeduplication
+                -XX:+ExitOnOutOfMemoryError
+          ports:
+            - containerPort: 9905
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          startupProbe:
+            tcpSocket:
+              port: 9905
+            failureThreshold: 18
+            periodSeconds: 20
+            successThreshold: 1
+            timeoutSeconds: 1
+          livenessProbe:
+            tcpSocket:
+              port: 9905
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 30
+            successThreshold: 1
+            timeoutSeconds: 1
+          readinessProbe:
+            tcpSocket:
+              port: 9905
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 12
+            successThreshold: 1
+            timeoutSeconds: 1
+          volumeMounts:
+            - name: properties-file
+              mountPath: /app/application.yml
+              subPath: application.yml
+            - name: logs-storage
+              mountPath: /var/log/dte/
+              subPath: airtel-aaa-accounting-mgt
+      volumes:
+        - name: properties-file
+          configMap:
+            name: airtel-aaa-accounting-mgt-configmap
+            defaultMode: 420
+        - name: logs-storage
+          persistentVolumeClaim:
+            claimName: logs-pvc-airtel-aaa-ac-mgt
