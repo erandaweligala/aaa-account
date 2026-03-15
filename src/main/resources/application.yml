@@ -1,16 +1,32 @@
+# =====================================================================
+# PER-POD Configuration
+# Target: 1400 TPS / 7 pods = 200 TPS per pod
+# Pod spec: 1 core CPU, 2GB RAM, -Xms512m -Xmx1280m (ZGC)
+#
+# Memory budget per pod (2GB limit):
+#   JVM heap:      1280 MB (-Xmx1280m)
+#   Metaspace:      192 MB (-XX:MaxMetaspaceSize=192m)
+#   Native/off-heap: ~480 MB (Kafka buffers, Netty, ZGC, threads)
+#   Total:         ~1952 MB → fits 2GB limit
+#
+# Kafka buffer budget per pod (off-heap):
+#   4 producers x 8MB buffer.memory = 32 MB
+#   1 consumer fetch buffers         = ~15 MB
+#   Total Kafka:                     = ~47 MB
+# =====================================================================
+
 quarkus:
   http:
     http2: true
     root-path: /api/v1
     port: 9905
-    io-threads: 2                          # Match event-loops-pool-size (1-core pod)
+    io-threads: 2                          # 1-core pod → 2 I/O threads (match event-loops)
     limits:
       max-body-size: 10M
-      max-connections: 500
+      max-connections: 300                 # 200 TPS/pod + headroom
 
   # =========================
   # Database Configuration
-  # 1400 TPS – 7 pods (~200 TPS/pod)
   # =========================
   datasource:
     db-kind: oracle
@@ -20,22 +36,26 @@ quarkus:
       url: oracle:thin:@172.24.0.203:1908/AAA
 
   # =========================
-  # Vert.x Configuration
-  # 1400 TPS – 7 pods x 1 core / 2GB (~200 TPS/pod)
+  # Vert.x Configuration (per pod: 1 core)
   # =========================
   vertx:
-    event-loops-pool-size: 2               # 1-core pod → 2 event loops (Kafka I/O + Redis/HTTP I/O)
-    internal-blocking-pool-size: 16        # Match consumer concurrency (16)
+    event-loops-pool-size: 2               # 2 event loops on 1 core (Kafka I/O + Redis/HTTP I/O)
+    internal-blocking-pool-size: 10        # 200 TPS @ ~25ms avg = ~5 concurrent + headroom
     warning-exception-time: 10s
     max-event-loop-execute-time: 5s
     max-worker-execute-time: 60s
     prefer-native-transport: true
     caching: false
 
+  # =========================
+  # Thread Pool (per pod: 1 core)
+  # 200 TPS @ ~25ms avg processing = ~5 concurrent
+  # concurrency=8 handles bursts up to ~320 TPS/pod
+  # =========================
   thread-pool:
-    core-threads: 16                       # Match consumer concurrency + headroom
-    max-threads: 32                        # Burst capacity without excessive context switching on 1 core
-    queue-size: 1000                       # Backpressure-aware consumer prevents unbounded buildup
+    core-threads: 10                       # 8 consumer + 2 for HTTP/scheduler
+    max-threads: 16                        # Burst cap on 1 core (avoid context switching)
+    queue-size: 500                        # 200 TPS x 2.5s burst = 500 queued max
     growth-resistance: 0
     shutdown-timeout: 30s
 
@@ -47,7 +67,7 @@ quarkus:
     console:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
-        queue-length: 8192
+        queue-length: 4096
         overflow: discard
       enabled: false
     file:
@@ -57,7 +77,7 @@ quarkus:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
         enable: true
-        queue-length: 8192
+        queue-length: 4096                 # 200 TPS x 20s buffer = 4000 log entries
         overflow: discard
       rotation:
         max-file-size: 60M
@@ -109,7 +129,9 @@ quarkus:
           registry-name: micrometer
 
   # =========================
-  # Redis (Sentinel)
+  # Redis (Sentinel) – per pod
+  # 200 TPS x ~2 Redis ops/event x ~3ms = ~1.2 concurrent
+  # Pool 16 handles bursts + pipeline stalls
   # =========================
   redis:
     client-type: sentinel
@@ -117,47 +139,53 @@ quarkus:
     master-name: mymaster
     role: master
     password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 48                      # Sized for concurrency 16: ~32 concurrent Redis ops + headroom
-    max-waiting-handlers: 512
-    max-pool-waiting: 256
-    pool-recycle-timeout: 240000
+    max-pool-size: 16                      # 200 TPS x 2 ops x 3ms = ~1.2 concurrent, 16 for burst
+    max-waiting-handlers: 256              # 200 TPS x 1s backlog max
+    max-pool-waiting: 128
+    pool-recycle-timeout: 180000           # 3 min recycle
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    timeout: 3000
+    timeout: 3000                          # 3s fail-fast
 
 # =========================
-# CoA HTTP Client
+# CoA HTTP Client – per pod
 # =========================
 coa:
   nas:
     host: airtel-aaa-radius-server-service.csg-aaa-app.svc.cluster.local
     port: 8080
 
+# =========================
+# WebClient – per pod
+# 200 TPS CoA calls, most via HTTP/2 multiplex
+# =========================
 webclient:
-  max-pool-size: 20
+  max-pool-size: 8                         # HTTP/1.1 fallback: 200 TPS x ~5ms = ~1 concurrent + headroom
   connect-timeout: 5000
-  idle-timeout: 60000
+  idle-timeout: 30000
   keep-alive: true
   pipelining: true
   pipelining-limit: 10
-  http2-max-pool-size: 20
+  http2-max-pool-size: 8                   # HTTP/2: 8 conns x 100 streams = 800 concurrent capacity
   http2-multiplexing-limit: 100
   http2-keep-alive-timeout: 60
 
 # =========================
-# DB Connection Pool
-# 7 pods x 25 = 175 total DB connections
+# DB Connection Pool – per pod
+# 200 TPS x ~3 queries/event x ~5ms = ~3 concurrent DB conns
+# Pool 12 handles burst + pipelining overhead
+# Total across 7 pods: 7 x 12 = 84 DB connections
 # =========================
 pool:
-  max-size: 25
+  max-size: 12                             # 200 TPS x 3 queries x 5ms = ~3 concurrent, 12 for burst
   connection-timeout: 5000
   idle-timeout: 600000
   max-lifetime: 1800000
-  acquire-increment: 4
+  acquire-increment: 2                     # Smaller increments for 200 TPS pod
   prepared-statement-cache-max-size: 256
   pipelining-enabled: true
-  pipelining-limit: 256
+  pipelining-limit: 128                    # 200 TPS, no need for 256
   event-loop-size: 2                       # Match vertx event-loops-pool-size
   tcp-keep-alive: true
   tcp-no-delay: true
@@ -174,15 +202,18 @@ idle-session:
   batch-size: 1000
 
 # =========================
-# Kafka
+# Kafka Bootstrap
 # =========================
 kafka:
   bootstrap:
     servers: kafka-headless.csg-aaa-query-cache.svc.cluster.local:9092
 
-# =========================
-# Kafka Producer/Consumer – 1400 TPS (7 pods, ~200 TPS/pod)
-# =========================
+# =====================================================================
+# Kafka Producer/Consumer – per pod (200 TPS/pod)
+#
+# Producer buffer budget: 4 producers x 8MB = 32MB off-heap per pod
+# Consumer: concurrency=8, poll 200 records → ~200 TPS at ~25ms avg
+# =====================================================================
 mp:
   messaging:
     outgoing:
@@ -192,13 +223,13 @@ mp:
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         acks: all
-        retries: 5
+        retries: 3
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768
-        linger.ms: 10
-        buffer.memory: 16777216
+        batch.size: 16384                  # 16KB – 200 TPS/pod, smaller batches than 2500 TPS config
+        linger.ms: 5                       # 5ms – lower latency at 200 TPS (less batching needed)
+        buffer.memory: 8388608             # 8MB per producer (4 x 8MB = 32MB total off-heap)
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -216,9 +247,9 @@ mp:
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768
-        linger.ms: 10
-        buffer.memory: 16777216
+        batch.size: 16384                  # 16KB – right-sized for 200 TPS/pod
+        linger.ms: 5
+        buffer.memory: 8388608             # 8MB per producer
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -236,9 +267,9 @@ mp:
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 16384
+        batch.size: 16384                  # 16KB – right-sized for 200 TPS/pod
         linger.ms: 5
-        buffer.memory: 16777216
+        buffer.memory: 8388608             # 8MB per producer
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -256,9 +287,9 @@ mp:
         retry.backoff.ms: 500
         max.in.flight.requests.per.connection: 5
         compression.type: lz4
-        batch.size: 32768
-        linger.ms: 10
-        buffer.memory: 16777216
+        batch.size: 16384                  # 16KB – right-sized for 200 TPS/pod
+        linger.ms: 5
+        buffer.memory: 8388608             # 8MB per producer
         metadata.max.age.ms: 30000
         request.timeout.ms: 30000
         delivery.timeout.ms: 120000
@@ -275,15 +306,15 @@ mp:
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         auto.offset.reset: earliest
         enable.auto.commit: false
-        max.poll.records: 500
-        max.poll.interval.ms: 300000
+        max.poll.records: 200              # 200 TPS/pod → poll 200 records/s matches throughput
+        max.poll.interval.ms: 120000       # 2 min – tighter than 5 min to detect stuck consumers
         poll-timeout: 1000
         session.timeout.ms: 30000
         heartbeat.interval.ms: 10000
         fetch.min.bytes: 1
-        fetch.max.bytes: 52428800
-        max.partition.fetch.bytes: 5242880
-        receive.buffer.bytes: 131072
+        fetch.max.bytes: 10485760          # 10MB – reduced from 50MB to save memory on 2GB pod
+        max.partition.fetch.bytes: 1048576 # 1MB/partition – fits 2GB memory with multiple partitions
+        receive.buffer.bytes: 65536        # 64KB socket buffer – right-sized for 200 TPS
         connections.max.idle.ms: 540000
         failure-strategy: ignore
-        concurrency: 16                    # 16 concurrent slots with backpressure: ~200 TPS/pod at 1400 TPS total
+        concurrency: 8                     # 200 TPS @ ~25ms avg = 5 concurrent, 8 for burst headroom
