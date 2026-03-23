@@ -244,7 +244,41 @@ mp:
         linger.ms: 10                  # 10ms batching window
         buffer.memory: 16777216        # 16MB - reduced for 1GB pod (4 producers x 16MB = 64MB total)
 
+      # Cache sync: publishes Redis writes to the local Kafka cluster so MirrorMaker 2
+      # can replicate them to the peer site (DC↔DR).
+      # On DC: CACHE_SYNC_OUTGOING_TOPIC=cache-sync-dc
+      # On DR: CACHE_SYNC_OUTGOING_TOPIC=cache-sync-dr
+      cache-sync-events:
+        connector: smallrye-kafka
+        topic: ${CACHE_SYNC_OUTGOING_TOPIC:cache-sync-dc}
+        bootstrap.servers: ${CACHE_SYNC_KAFKA_BOOTSTRAP:localhost:9092}
+        value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+        key.serializer: org.apache.kafka.common.serialization.StringSerializer
+        acks: 1                        # Best-effort - don't block on all replicas
+        retries: 2
+        compression.type: lz4
+        batch.size: 16384
+        linger.ms: 5
+        buffer.memory: 8388608         # 8MB
+
     incoming:
+      # Cache sync: consumes Redis writes replicated from the peer site by MirrorMaker 2.
+      # MirrorMaker 2 renames topics with source-cluster prefix: <sourceAlias>.<topicName>
+      # On DC: CACHE_SYNC_INCOMING_TOPIC=dr.cache-sync-dr  (reads DR events mirrored to DC cluster)
+      # On DR: CACHE_SYNC_INCOMING_TOPIC=dc.cache-sync-dc  (reads DC events mirrored to DR cluster)
+      cache-sync-incoming:
+        connector: smallrye-kafka
+        topic: ${CACHE_SYNC_INCOMING_TOPIC:dr.cache-sync-dr}
+        bootstrap.servers: ${CACHE_SYNC_KAFKA_BOOTSTRAP:localhost:9092}
+        group.id: cache-sync-consumer-group
+        value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
+        key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
+        auto.offset.reset: latest      # Don't replay stale events after restart
+        enable.auto.commit: false
+        max.poll.records: 500
+        failure-strategy: ignore
+        concurrency: 4                 # Low concurrency - Redis writes are fast
+
       accounting-events:
         connector: smallrye-kafka
         topic: accounting-dc-2

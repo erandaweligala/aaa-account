@@ -2,7 +2,9 @@ package com.csg.airtel.aaa4j.external.clients;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
+import com.csg.airtel.aaa4j.domain.model.CacheSyncEvent;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
+import com.csg.airtel.aaa4j.domain.produce.CacheSyncProducer;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
@@ -41,19 +43,21 @@ public class CacheClient {
     private static final String GROUP_KEY_PREFIX = "group:";
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
-
+    private final CacheSyncProducer cacheSyncProducer;
 
     private final ReactiveKeyCommands<String> keyCommands;
 
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,
-                       SessionExpiryIndex sessionExpiryIndex) {
+                       SessionExpiryIndex sessionExpiryIndex,
+                       CacheSyncProducer cacheSyncProducer) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
+        this.cacheSyncProducer = cacheSyncProducer;
     }
     @Retry(
             maxRetries = 1,
@@ -113,7 +117,9 @@ public class CacheClient {
                         // No group handling required
                         if (data == null || data.getGroupId() == null
                                 || "1".equalsIgnoreCase(data.getGroupId())) {
-                            return storeUserDataUni.replaceWithVoid();
+                            return storeUserDataUni
+                                    .invoke(() -> cacheSyncProducer.publishUpsert(key, jsonValue))
+                                    .replaceWithVoid();
                         }
 
                         String groupKey = GROUP_KEY_PREFIX + userName;
@@ -131,11 +137,17 @@ public class CacheClient {
                                         return Uni.combine().all().unis(
                                                 valueCommands.set(groupKey, groupValues),
                                                 storeUserDataUni
-                                        ).discardItems();
+                                        ).discardItems()
+                                                .invoke(() -> {
+                                                    cacheSyncProducer.publishUpsert(key, jsonValue);
+                                                    cacheSyncProducer.publishUpsert(groupKey, groupValues);
+                                                });
                                     }
 
                                     // Group cache already exists → only store user data
-                                    return storeUserDataUni.replaceWithVoid();
+                                    return storeUserDataUni
+                                            .invoke(() -> cacheSyncProducer.publishUpsert(key, jsonValue))
+                                            .replaceWithVoid();
                                 });
 
                     } catch (Exception e) {
@@ -224,11 +236,16 @@ public class CacheClient {
                         valueCommands.set(groupKey, groupValues),
                         valueCommands.set(userKey, jsonValue)
                 ).discardItems()
+                        .invoke(() -> {
+                            cacheSyncProducer.publishUpsert(userKey, jsonValue);
+                            cacheSyncProducer.publishUpsert(groupKey, groupValues);
+                        })
                         .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId));
             }
 
             // If no groupId, only update user data
             return valueCommands.set(userKey, jsonValue)
+                    .invoke(() -> cacheSyncProducer.publishUpsert(userKey, jsonValue))
                     .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId))
                     .replaceWithVoid();
         } catch (Exception e) {
@@ -252,9 +269,29 @@ public class CacheClient {
         String userKey2 = GROUP_KEY_PREFIX + key;
 
         return keyCommands.del(userKey1, userKey2)
+                .invoke(() -> {
+                    cacheSyncProducer.publishDelete(userKey1);
+                    cacheSyncProducer.publishDelete(userKey2);
+                })
                 .map(deleted -> deleted > 0
                         ? "Keys deleted count: " + deleted
                         : "No keys found");
+    }
+
+    /**
+     * Applies a cache sync event received from the peer site directly to local Redis,
+     * without publishing a new sync event (prevents replication loops).
+     *
+     * @param key       full Redis key
+     * @param value     serialized value; {@code null} for DELETE
+     * @param operation {@code "UPSERT"} or {@code "DELETE"}
+     * @return Uni that completes when the Redis operation is done
+     */
+    public Uni<Void> applySync(String key, String value, String operation) {
+        if (CacheSyncEvent.DELETE.equals(operation)) {
+            return keyCommands.del(key).replaceWithVoid();
+        }
+        return valueCommands.set(key, value).replaceWithVoid();
     }
 
     /**
