@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 
 @ApplicationScoped
@@ -139,6 +140,91 @@ public class BucketService {
                 });
     }
 
+
+    public Uni<ApiResponse<List<Balance>>> addBucketListBalance(String userName, List<BalanceWrapper> balanceWrappers) {
+        if (userName == null || userName.isBlank()) {
+            return Uni.createFrom().item(createErrorResponseList(USERNAME_IS_REQUIRED));
+        }
+        if (balanceWrappers == null || balanceWrappers.isEmpty()) {
+            return Uni.createFrom().item(createErrorResponseList("Balance list is required"));
+        }
+
+        List<Balance> newBalances = balanceWrappers.stream()
+                .map(BalanceWrapper::getBalance)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        if (newBalances.isEmpty()) {
+            return Uni.createFrom().item(createErrorResponseList("No valid balances provided"));
+        }
+
+        return cacheClient.getUserData(userName)
+                .onItem().transformToUni(userData -> {
+                    UserSessionData updatedUserData;
+
+                    if (userData == null) {
+                        LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance list", userName);
+                        String groupId = balanceWrappers.stream()
+                                .map(BalanceWrapper::getBalance)
+                                .filter(b -> b != null && b.isGroup())
+                                .map(Balance::getBucketUsername)
+                                .filter(Objects::nonNull)
+                                .findFirst()
+                                .orElse(null);
+
+                        long concurrency = balanceWrappers.stream()
+                                .mapToLong(BalanceWrapper::getConcurrency)
+                                .max()
+                                .orElse(0L);
+
+                        updatedUserData = UserSessionData.builder()
+                                .concurrency(concurrency)
+                                .groupId(groupId)
+                                .userName(userName)
+                                .balance(Collections.unmodifiableList(newBalances))
+                                .sessions(Collections.emptyList())
+                                .build();
+                    } else {
+                        List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
+                        List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
+                        List<Balance> combined = new ArrayList<>(nonExpiredBalances);
+                        combined.addAll(newBalances);
+
+                        updatedUserData = userData.toBuilder()
+                                .balance(Collections.unmodifiableList(combined))
+                                .build();
+                    }
+
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
+                            .onItem().transform(result -> {
+                                LoggingUtil.logInfo(log, M_ADD, "Bucket list added successfully for user %s, count: %d", userName, newBalances.size());
+                                return createSuccessResponseList(newBalances, "Bucket List Added Successfully");
+                            });
+                })
+                .onFailure().recoverWithItem(throwable -> {
+                    LoggingUtil.logError(log, M_ADD, throwable, "Failed to add balance list for user %s: %s",
+                            userName, throwable.getMessage());
+                    return createErrorResponseList("Failed to add balance list: " + throwable.getMessage());
+                });
+    }
+
+    private ApiResponse<List<Balance>> createSuccessResponseList(List<Balance> balances, String message) {
+        ApiResponse<List<Balance>> response = new ApiResponse<>();
+        response.setTimestamp(Instant.now());
+        response.setMessage(message);
+        response.setStatus(Response.Status.OK);
+        response.setData(balances);
+        return response;
+    }
+
+    private ApiResponse<List<Balance>> createErrorResponseList(String message) {
+        ApiResponse<List<Balance>> response = new ApiResponse<>();
+        response.setTimestamp(Instant.now());
+        response.setMessage(message);
+        response.setData(null);
+        response.setStatus(Response.Status.BAD_REQUEST);
+        return response;
+    }
 
     public Uni<ApiResponse<Balance>> updateBucketBalance(String userName, Balance balance, String serviceId) {
         LoggingUtil.logInfo(log, M_UPDATE, "Updating bucket Balance for user %s", userName);

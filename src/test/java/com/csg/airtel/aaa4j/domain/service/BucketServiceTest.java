@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.domain.model.response.ApiResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
+import java.util.List;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
 import jakarta.ws.rs.core.Response;
@@ -108,6 +109,102 @@ class BucketServiceTest {
                 eq(USER_NAME)
         );
     }
+    @Test
+    @DisplayName("addBucketListBalance - Success for New User")
+    void testAddBucketListBalance_NewUser() {
+        Balance balance1 = new Balance();
+        balance1.setBucketId("b1");
+        Balance balance2 = new Balance();
+        balance2.setBucketId("b2");
+
+        BalanceWrapper w1 = new BalanceWrapper();
+        w1.setBalance(balance1);
+        BalanceWrapper w2 = new BalanceWrapper();
+        w2.setBalance(balance2);
+
+        doReturn(Uni.createFrom().nullItem())
+                .when(cacheClient).getUserData(USER_NAME);
+        doReturn(Uni.createFrom().voidItem())
+                .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
+
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of(w1, w2))
+                .await().indefinitely();
+
+        assertEquals(Response.Status.OK, response.getStatus());
+        assertEquals("Bucket List Added Successfully", response.getMessage());
+        assertEquals(2, response.getData().size());
+        verify(cacheClient).updateUserAndRelatedCaches(eq(USER_NAME), argThat(data ->
+                data.getBalance().size() == 2), eq(USER_NAME));
+    }
+
+    @Test
+    @DisplayName("addBucketListBalance - Success for Existing User and Cleans Expired")
+    void testAddBucketListBalance_ExistingUser_CleansExpired() {
+        Balance expired = new Balance();
+        expired.setBucketId("exp1");
+        expired.setServiceExpiry(LocalDateTime.now().minusDays(1));
+
+        Balance valid = new Balance();
+        valid.setBucketId("val1");
+
+        UserSessionData existingData = UserSessionData.builder()
+                .userName(USER_NAME)
+                .balance(List.of(expired, valid))
+                .build();
+
+        Balance newBalance = new Balance();
+        newBalance.setBucketId("new1");
+        BalanceWrapper wrapper = new BalanceWrapper();
+        wrapper.setBalance(newBalance);
+
+        doReturn(Uni.createFrom().item(existingData))
+                .when(cacheClient).getUserData(USER_NAME);
+        doReturn(Uni.createFrom().voidItem())
+                .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
+
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of(wrapper))
+                .await().indefinitely();
+
+        assertEquals(Response.Status.OK, response.getStatus());
+        verify(cacheClient).updateUserAndRelatedCaches(eq(USER_NAME), argThat(data ->
+                data.getBalance().size() == 2 &&
+                data.getBalance().stream().noneMatch(b -> "exp1".equals(b.getBucketId()))), eq(USER_NAME));
+    }
+
+    @Test
+    @DisplayName("addBucketListBalance - Validation: null username")
+    void testAddBucketListBalance_NullUsername() {
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(null, List.of(new BalanceWrapper()))
+                .await().indefinitely();
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+        assertEquals("Username is required", response.getMessage());
+    }
+
+    @Test
+    @DisplayName("addBucketListBalance - Validation: empty list")
+    void testAddBucketListBalance_EmptyList() {
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of())
+                .await().indefinitely();
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+        assertEquals("Balance list is required", response.getMessage());
+    }
+
+    @Test
+    @DisplayName("addBucketListBalance - Failure Recovery")
+    void testAddBucketListBalance_Failure() {
+        BalanceWrapper wrapper = new BalanceWrapper();
+        wrapper.setBalance(new Balance());
+
+        doReturn(Uni.createFrom().failure(new RuntimeException("Cache Down")))
+                .when(cacheClient).getUserData(USER_NAME);
+
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of(wrapper))
+                .await().indefinitely();
+
+        assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
+        assertTrue(response.getMessage().contains("Cache Down"));
+    }
+
     @Test
     @DisplayName("updateBucketBalance - Success")
     void testUpdateBucketBalance_Success() {
