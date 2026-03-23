@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
+import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
@@ -205,8 +206,23 @@ public class COAService {
      * @return Uni<UserSessionData> with sessions removed/kept based on NAK/ACK responses
      */
     public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
+        return clearAllSessionsAndSendCOA(userSessionData, username, sessionId, null);
+    }
+
+    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId, AccountingRequestDto request) {
         List<Session> sessions = userSessionData.getSessions();
-        //todo if userSessionData.getSessions() is null set mapto Request Data (AccountingRequestDto)
+        if (sessions == null && request != null) {
+            Session sessionFromRequest = new Session();
+            sessionFromRequest.setSessionId(request.sessionId());
+            sessionFromRequest.setNasIp(request.nasIP());
+            sessionFromRequest.setNasPortId(request.nasPortId());
+            sessionFromRequest.setFramedId(request.framedIPAddress());
+            sessionFromRequest.setSessionTime(request.sessionTime());
+            sessionFromRequest.setUserName(username);
+            sessions = List.of(sessionFromRequest);
+            userSessionData.setSessions(sessions);
+            LoggingUtil.logDebug(log, M_COA, "Sessions were null for user: %s, mapped session from request data", username);
+        }
         if (sessions == null || sessions.isEmpty()) {
             LoggingUtil.logDebug(log, M_COA, "No sessions to disconnect for user: %s", username);
             return Uni.createFrom().item(userSessionData);

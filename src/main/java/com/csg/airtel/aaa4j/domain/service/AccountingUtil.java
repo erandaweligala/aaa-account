@@ -824,7 +824,7 @@ public class AccountingUtil {
         LoggingUtil.logWarn(log, M_UPDATE, "No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
         // Send COA disconnect for all existing sessions
-        return coaService.clearAllSessionsAndSendCOA(userData, request.username(), null)
+        return coaService.clearAllSessionsAndSendCOA(userData, request.username(), null, request)
                 .onItem().transform(updatedUserData -> {
                     LoggingUtil.logDebug(log, M_UPDATE, "Successfully sent COA disconnect for user: %s due to no valid balance",
                             request.username());
@@ -1092,7 +1092,7 @@ public class AccountingUtil {
         String bucketUsername = foundBalance.getBucketUsername();
 
         // Clear all sessions and send COA disconnect for all sessions
-        return coaService.clearAllSessionsAndSendCOA(userData, username, null)
+        return coaService.clearAllSessionsAndSendCOA(userData, username, null, request)
                 .onItem().transformToUni(updatedUserData ->
                         extractCoaCacheAndDBUpdate(
                                 request,
@@ -1161,7 +1161,7 @@ public class AccountingUtil {
                 username, foundBalance.getBucketId());
 
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
-        return coaService.clearAllSessionsAndSendCOA(userData, username, null)
+        return coaService.clearAllSessionsAndSendCOA(userData, username, null, request)
                 .onItem().transformToUni(updatedUserData ->
                         extractCoaCacheAndDBUpdate(
                                 request,
@@ -1216,7 +1216,7 @@ public class AccountingUtil {
                     request.username(), currentSession.getSessionId());
 
             // Remove session from userData and send COA disconnect
-            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId())
+            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId(), request)
                     .onItem().transformToUni(updatedUserData ->
 
                         extractCoaCacheAndDBUpdate(
