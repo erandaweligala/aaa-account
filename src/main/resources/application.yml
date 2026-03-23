@@ -8,20 +8,20 @@ quarkus:
       max-body-size: 10M
       max-connections: 500           # Right-sized for 300 TPS/pod
 
-#  datasource:
-#    db-kind: oracle
-#    username: aaa
-#    password: Aaa!89nky78D
-#    reactive:
-#      #url: oracle:thin:@localhost:1521/FREEPDB1
-#      url: oracle:thin:@localhost:1522/ORCL
-
   datasource:
     db-kind: oracle
     username: aaa
     password: Aaa!89nky78D
     reactive:
-      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
+      #url: oracle:thin:@localhost:1521/FREEPDB1
+      url: oracle:thin:@localhost:1524/ORCL
+
+#  datasource:
+#    db-kind: oracle
+#    username: aaa
+#    password: Aaa!89nky78D
+#    reactive:
+#      url: oracle:thin:@aaa-dev.cn8eyeqma3tp.ap-southeast-2.rds.amazonaws.com:1521/ORCL
 
 
   # Vertx Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
@@ -50,7 +50,7 @@ quarkus:
       async:
         queue-length: 4096
         overflow: discard
-      enabled: false
+      enabled: true
 
     # File Configuration
     file:
@@ -96,34 +96,36 @@ quarkus:
         path: /q/metrics
 
 
-#  redis:
-#    hosts: redis://localhost:6379
-#    max-pool-size: 150               # Right-sized: 300 TPS x ~5ms = ~1.5 concurrent + headroom
-#    max-waiting-handlers: 3000
-#    max-pool-waiting: 1000
-#    pool-recycle-timeout: 240000
-#    reconnect-attempts: 3
-#    reconnect-interval: 500
-#    pool-cleaner-interval: 20000
-#    response-timeout: 3000
-#    connection-timeout: 2000
-
   redis:
-    client-type: sentinel
-    hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
-    master-name: mymaster
-    role: master
-    password: S3cure_Redis_Pass_w0rd!
-    max-pool-size: 48               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
-    max-waiting-handlers: 500      # Reduced - backpressure prevents unbounded waiting
-    max-pool-waiting: 256
+    hosts: redis://localhost:6379
+    max-pool-size: 150               # Right-sized: 300 TPS x ~5ms = ~1.5 concurrent + headroom
+    max-waiting-handlers: 3000
+    max-pool-waiting: 1000
     pool-recycle-timeout: 240000
     reconnect-attempts: 3
     reconnect-interval: 500
     pool-cleaner-interval: 20000
-    timeout: 120000
+    response-timeout: 3000
+    connection-timeout: 2000
+
+#  redis:
+#    client-type: sentinel
+#    hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
+#    master-name: mymaster
+#    role: master
+#    password: S3cure_Redis_Pass_w0rd!
+#    max-pool-size: 48               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
+#    max-waiting-handlers: 500      # Reduced - backpressure prevents unbounded waiting
+#    max-pool-waiting: 256
+#    pool-recycle-timeout: 240000
+#    reconnect-attempts: 3
+#    reconnect-interval: 500
+#    pool-cleaner-interval: 20000
+#    timeout: 120000
 
   # CoA HTTP Client Configuration (Vert.x WebClient)
+  devservices:
+    enabled: false
 #coa:
 #  nas:
 #    host: localhost
@@ -175,7 +177,7 @@ idle-session:
   # Process 1000 sessions per batch (increased for scale)
 #kafka:
 #  bootstrap:
-#    servers: kafka-headless.cluster-dc.svc.cluster.local:9092
+#    servers: localhost:9092
 
 
 # Kafka Producer/Consumer Configuration - Optimized for 2500 TPS (7 pods x 1 core / 2GB, ~360 TPS/pod)
@@ -183,6 +185,7 @@ mp:
   messaging:
     outgoing:
       db-write-events:
+        bootstrap.servers: localhost2:9092
         connector: smallrye-kafka
         topic: dctodr-dc
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
@@ -203,6 +206,7 @@ mp:
 
       accounting-resp-events:
         connector: smallrye-kafka
+        bootstrap.servers: localhost3:9092
         topic: accounting-response-dc
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
