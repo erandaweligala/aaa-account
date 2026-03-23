@@ -206,6 +206,7 @@ public class COAService {
      */
     public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
         List<Session> sessions = userSessionData.getSessions();
+        //todo if userSessionData.getSessions() is null set mapto Request Data (AccountingRequestDto)
         if (sessions == null || sessions.isEmpty()) {
             LoggingUtil.logDebug(log, M_COA, "No sessions to disconnect for user: %s", username);
             return Uni.createFrom().item(userSessionData);
