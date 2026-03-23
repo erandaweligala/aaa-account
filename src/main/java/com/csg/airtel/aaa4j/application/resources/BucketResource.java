@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
 import com.csg.airtel.aaa4j.domain.service.BucketService;
+import java.util.List;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
@@ -18,6 +19,7 @@ import org.jboss.logging.Logger;
 public class BucketResource {
     private static final Logger log = Logger.getLogger(BucketResource.class);
     private static final String M_ADD = "addBucket";
+    private static final String M_ADD_LIST = "addBucketList";
     private static final String M_UPDATE = "updateBucket";
     private static final String M_TERMINATE = "terminateViaHttp";
     private static final String M_STATUS = "userStatusUpdate";
@@ -38,6 +40,21 @@ public class BucketResource {
         return bucketService.addBucketBalance(userName, balance)
                 .onItem().transform(apiResponse -> {
                     LoggingUtil.logInfo(log, M_ADD, "Adding bucket  Completed %s", userName);
+                    return Response.status(apiResponse.getStatus())
+                            .entity(apiResponse)
+                            .build();
+                });
+    }
+
+    @PATCH
+    @Path("/addBucketList/{userName}")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Uni<Response> addBucketList(@PathParam("userName") String userName, List<BalanceWrapper> balances) {
+        LoggingUtil.logInfo(log, M_ADD_LIST, "Adding bucket list Start %s", userName);
+        return bucketService.addBucketListBalance(userName, balances)
+                .onItem().transform(apiResponse -> {
+                    LoggingUtil.logInfo(log, M_ADD_LIST, "Adding bucket list Completed %s", userName);
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
