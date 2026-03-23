@@ -4,7 +4,6 @@ import com.csg.airtel.aaa4j.domain.model.response.ApiResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
-import java.util.List;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import io.smallrye.mutiny.Uni;
 import jakarta.ws.rs.core.Response;
@@ -47,7 +46,7 @@ class BucketServiceTest {
         balance.setBucketUsername("group1");
         balance.setGroup(true);
         BalanceWrapper wrapper = new BalanceWrapper();
-        wrapper.setBalance(balance);
+        wrapper.setBalance(List.of(balance));
 
         // 2. Mocking
         doReturn(Uni.createFrom().nullItem())
@@ -89,7 +88,7 @@ class BucketServiceTest {
         Balance newBalance = new Balance();
         newBalance.setBucketId("new1");
         BalanceWrapper wrapper = new BalanceWrapper();
-        wrapper.setBalance(newBalance);
+        wrapper.setBalance(List.of(newBalance));
 
         // 2. Fix: Use doReturn to handle the Uni generic type
         doReturn(Uni.createFrom().item(existingData))
@@ -117,17 +116,15 @@ class BucketServiceTest {
         Balance balance2 = new Balance();
         balance2.setBucketId("b2");
 
-        BalanceWrapper w1 = new BalanceWrapper();
-        w1.setBalance(balance1);
-        BalanceWrapper w2 = new BalanceWrapper();
-        w2.setBalance(balance2);
+        BalanceWrapper wrapper = new BalanceWrapper();
+        wrapper.setBalance(List.of(balance1, balance2));
 
         doReturn(Uni.createFrom().nullItem())
                 .when(cacheClient).getUserData(USER_NAME);
         doReturn(Uni.createFrom().voidItem())
                 .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
 
-        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of(w1, w2))
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, wrapper)
                 .await().indefinitely();
 
         assertEquals(Response.Status.OK, response.getStatus());
@@ -135,6 +132,7 @@ class BucketServiceTest {
         assertEquals(2, response.getData().size());
         verify(cacheClient).updateUserAndRelatedCaches(eq(USER_NAME), argThat(data ->
                 data.getBalance().size() == 2), eq(USER_NAME));
+
     }
 
     @Test
@@ -155,14 +153,14 @@ class BucketServiceTest {
         Balance newBalance = new Balance();
         newBalance.setBucketId("new1");
         BalanceWrapper wrapper = new BalanceWrapper();
-        wrapper.setBalance(newBalance);
+        wrapper.setBalance(List.of(newBalance));
 
         doReturn(Uni.createFrom().item(existingData))
                 .when(cacheClient).getUserData(USER_NAME);
         doReturn(Uni.createFrom().voidItem())
                 .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
 
-        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of(wrapper))
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, wrapper)
                 .await().indefinitely();
 
         assertEquals(Response.Status.OK, response.getStatus());
@@ -174,7 +172,9 @@ class BucketServiceTest {
     @Test
     @DisplayName("addBucketListBalance - Validation: null username")
     void testAddBucketListBalance_NullUsername() {
-        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(null, List.of(new BalanceWrapper()))
+        BalanceWrapper wrapper = new BalanceWrapper();
+        wrapper.setBalance(List.of(new Balance()));
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(null, wrapper)
                 .await().indefinitely();
         assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
         assertEquals("Username is required", response.getMessage());
@@ -183,7 +183,7 @@ class BucketServiceTest {
     @Test
     @DisplayName("addBucketListBalance - Validation: empty list")
     void testAddBucketListBalance_EmptyList() {
-        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of())
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, new BalanceWrapper())
                 .await().indefinitely();
         assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
         assertEquals("Balance list is required", response.getMessage());
@@ -193,12 +193,12 @@ class BucketServiceTest {
     @DisplayName("addBucketListBalance - Failure Recovery")
     void testAddBucketListBalance_Failure() {
         BalanceWrapper wrapper = new BalanceWrapper();
-        wrapper.setBalance(new Balance());
+        wrapper.setBalance(List.of(new Balance()));
 
         doReturn(Uni.createFrom().failure(new RuntimeException("Cache Down")))
                 .when(cacheClient).getUserData(USER_NAME);
 
-        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, List.of(wrapper))
+        ApiResponse<List<Balance>> response = bucketService.addBucketListBalance(USER_NAME, wrapper)
                 .await().indefinitely();
 
         assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
@@ -302,7 +302,9 @@ class BucketServiceTest {
     void testOnFailureRecovery() {
         when(cacheClient.getUserData(USER_NAME)).thenReturn(Uni.createFrom().failure(new RuntimeException("Database Down")));
 
-        ApiResponse<Balance> response = bucketService.addBucketBalance(USER_NAME, new BalanceWrapper()).await().indefinitely();
+        BalanceWrapper wrapper = new BalanceWrapper();
+        wrapper.setBalance(List.of(new Balance()));
+        ApiResponse<Balance> response = bucketService.addBucketBalance(USER_NAME, wrapper).await().indefinitely();
 
         assertEquals(Response.Status.BAD_REQUEST, response.getStatus());
         assertTrue(response.getMessage().contains("Database Down"));
@@ -391,7 +393,7 @@ class BucketServiceTest {
         Balance newBalance = new Balance();
         newBalance.setBucketId("NEW");
         BalanceWrapper wrapper = new BalanceWrapper();
-        wrapper.setBalance(newBalance);
+        wrapper.setBalance(List.of(newBalance));
 
         doReturn(Uni.createFrom().item(existingData))
                 .when(cacheClient).getUserData(USER_NAME);
