@@ -209,15 +209,15 @@ public class COAService {
         return clearAllSessionsAndSendCOA(userSessionData, username, sessionId, null);
     }
 
-    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId, AccountingRequestDto request) {
+    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId, AccountingRequestDto accountingRequestDto) {
         List<Session> sessions = userSessionData.getSessions();
-        if (sessions == null && request != null) {
+        if (sessions == null && accountingRequestDto != null) {
             Session sessionFromRequest = new Session();
-            sessionFromRequest.setSessionId(request.sessionId());
-            sessionFromRequest.setNasIp(request.nasIP());
-            sessionFromRequest.setNasPortId(request.nasPortId());
-            sessionFromRequest.setFramedId(request.framedIPAddress());
-            sessionFromRequest.setSessionTime(request.sessionTime());
+            sessionFromRequest.setSessionId(accountingRequestDto.sessionId());
+            sessionFromRequest.setNasIp(accountingRequestDto.nasIP());
+            sessionFromRequest.setNasPortId(accountingRequestDto.nasPortId());
+            sessionFromRequest.setFramedId(accountingRequestDto.framedIPAddress());
+            sessionFromRequest.setSessionTime(accountingRequestDto.sessionTime());
             sessionFromRequest.setUserName(username);
             sessions = List.of(sessionFromRequest);
             userSessionData.setSessions(sessions);
