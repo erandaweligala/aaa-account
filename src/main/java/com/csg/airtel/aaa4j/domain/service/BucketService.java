@@ -85,10 +85,11 @@ public class BucketService {
         if (userName == null || userName.isBlank()) {
             return Uni.createFrom().item(createErrorResponse(USERNAME_IS_REQUIRED));
         }
-        if (balance == null) {
+        if (balance == null || balance.getBalance() == null || balance.getBalance().isEmpty()) {
             return Uni.createFrom().item(createErrorResponse("Balance is required"));
         }
 
+        Balance singleBalance = balance.getBalance().get(0);
 
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
@@ -98,10 +99,10 @@ public class BucketService {
                         // Create new entry without session section, only with balance details
                         LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance", userName);
                         List<Balance> newBalances = new ArrayList<>();
-                        newBalances.add(balance.getBalance());
+                        newBalances.add(singleBalance);
                         String groupId = null;
-                        if(balance.getBalance().isGroup()){
-                            groupId = balance.getBalance().getBucketUsername();
+                        if(singleBalance.isGroup()){
+                            groupId = singleBalance.getBucketUsername();
                         }
 
                         updatedUserData = UserSessionData.builder()
@@ -119,7 +120,7 @@ public class BucketService {
                         List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
 
                         List<Balance> newBalances = new ArrayList<>(nonExpiredBalances);
-                        newBalances.add(balance.getBalance());
+                        newBalances.add(singleBalance);
 
                         // Use immutable builder/wither pattern
                         updatedUserData = userData.toBuilder()
@@ -129,7 +130,7 @@ public class BucketService {
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData,userName)
                             /*.call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName)) no need to disconnect*/
-                            .onItem().transform(result -> createSuccessResponse(balance.getBalance(),"Bucket Added Successfully"));
+                            .onItem().transform(result -> createSuccessResponse(singleBalance,"Bucket Added Successfully"));
                 })
                 .onFailure().recoverWithItem(throwable -> {
                     LoggingUtil.logError(log, M_ADD, throwable, "Failed to add balance for user %s: %s",
@@ -141,16 +142,15 @@ public class BucketService {
     }
 
 
-    public Uni<ApiResponse<List<Balance>>> addBucketListBalance(String userName, List<BalanceWrapper> balanceWrappers) {
+    public Uni<ApiResponse<List<Balance>>> addBucketListBalance(String userName, BalanceWrapper balanceWrapper) {
         if (userName == null || userName.isBlank()) {
             return Uni.createFrom().item(createErrorResponseList(USERNAME_IS_REQUIRED));
         }
-        if (balanceWrappers == null || balanceWrappers.isEmpty()) {
+        if (balanceWrapper == null || balanceWrapper.getBalance() == null || balanceWrapper.getBalance().isEmpty()) {
             return Uni.createFrom().item(createErrorResponseList("Balance list is required"));
         }
 
-        List<Balance> newBalances = balanceWrappers.stream()
-                .map(BalanceWrapper::getBalance)
+        List<Balance> newBalances = balanceWrapper.getBalance().stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
@@ -164,21 +164,15 @@ public class BucketService {
 
                     if (userData == null) {
                         LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance list", userName);
-                        String groupId = balanceWrappers.stream()
-                                .map(BalanceWrapper::getBalance)
-                                .filter(b -> b != null && b.isGroup())
+                        String groupId = newBalances.stream()
+                                .filter(b -> b.isGroup())
                                 .map(Balance::getBucketUsername)
                                 .filter(Objects::nonNull)
                                 .findFirst()
                                 .orElse(null);
 
-                        long concurrency = balanceWrappers.stream()
-                                .mapToLong(BalanceWrapper::getConcurrency)
-                                .max()
-                                .orElse(0L);
-
                         updatedUserData = UserSessionData.builder()
-                                .concurrency(concurrency)
+                                .concurrency(balanceWrapper.getConcurrency())
                                 .groupId(groupId)
                                 .userName(userName)
                                 .balance(Collections.unmodifiableList(newBalances))
