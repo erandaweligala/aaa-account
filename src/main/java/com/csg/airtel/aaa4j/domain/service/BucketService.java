@@ -220,7 +220,6 @@ public class BucketService {
         return response;
     }
 
-    //todo add moify this method if check Balance.serviceExpiry and Balance.bucketExpiryDate  ( campaire cache and request object) if chanage then shoud initate COA Disconnect request
     public Uni<ApiResponse<Balance>> updateBucketBalance(String userName, Balance balance, String serviceId) {
         LoggingUtil.logInfo(log, M_UPDATE, "Updating bucket Balance for user %s", userName);
         // Input validation
@@ -251,6 +250,24 @@ public class BucketService {
                     // Remove expired balances
                     List<Balance> balanceList = removeExpiredBalances(existingBalances);
 
+                    // Check if serviceExpiry or bucketExpiryDate changed compared to cached balance
+                    boolean expiryChanged = balanceList.stream()
+                            .filter(b -> b.getServiceId().equals(serviceId))
+                            .findFirst()
+                            .map(cachedBalance -> {
+                                boolean serviceExpiryChanged = !Objects.equals(cachedBalance.getServiceExpiry(), balance.getServiceExpiry());
+                                boolean bucketExpiryChanged = !Objects.equals(cachedBalance.getBucketExpiryDate(), balance.getBucketExpiryDate());
+                                if (serviceExpiryChanged || bucketExpiryChanged) {
+                                    LoggingUtil.logInfo(log, M_UPDATE,
+                                            "Expiry changed for user %s serviceId %s — serviceExpiry: %s -> %s, bucketExpiryDate: %s -> %s",
+                                            userName, serviceId,
+                                            cachedBalance.getServiceExpiry(), balance.getServiceExpiry(),
+                                            cachedBalance.getBucketExpiryDate(), balance.getBucketExpiryDate());
+                                }
+                                return serviceExpiryChanged || bucketExpiryChanged;
+                            })
+                            .orElse(false);
+
                     balanceList.removeIf(b -> b.getServiceId().equals(serviceId));
 
                     balanceList.add(balance);
@@ -259,11 +276,21 @@ public class BucketService {
                             .balance(Collections.unmodifiableList(balanceList))
                             .build();
 
-                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData,userName)
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
+                            .call(() -> {
+                                if (expiryChanged && userData.getSessions() != null && !userData.getSessions().isEmpty()) {
+                                    LoggingUtil.logInfo(log, M_UPDATE,
+                                            "Balance expiry changed for user %s serviceId %s, initiating COA Disconnect for %d active session(s)",
+                                            userName, serviceId, userData.getSessions().size());
+                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                            .replaceWithVoid();
+                                }
+                                return Uni.createFrom().voidItem();
+                            })
                             .onItem().transform(result -> {
                                 LoggingUtil.logInfo(log, M_UPDATE, "Successfully updated balance for user %s, serviceId %s",
                                         userName, serviceId);
-                                return createSuccessResponse(balance,"Updated balance Successfully");
+                                return createSuccessResponse(balance, "Updated balance Successfully");
                             });
                 })
                 .onFailure().recoverWithItem(throwable -> {
