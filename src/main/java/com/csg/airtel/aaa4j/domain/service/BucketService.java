@@ -165,7 +165,7 @@ public class BucketService {
                     if (userData == null) {
                         LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance list", userName);
                         String groupId = newBalances.stream()
-                                .filter(b -> b.isGroup())
+                                .filter(Balance::isGroup)
                                 .map(Balance::getBucketUsername)
                                 .filter(Objects::nonNull)
                                 .findFirst()

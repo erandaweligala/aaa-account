@@ -75,7 +75,7 @@ public class BucketResource {
                 });
 
     }
-/*
+/**
     @PATCH
     @Path("/terminate-sessions/{userName}/{sessionId}")
     @Produces(MediaType.APPLICATION_JSON)
