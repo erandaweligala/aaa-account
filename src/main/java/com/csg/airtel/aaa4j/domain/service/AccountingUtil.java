@@ -1354,26 +1354,24 @@ public class AccountingUtil {
 
     /**
      *
-     * @param timeWindow time window string in format "HH-HH" where HH is 0-24
+     * @param timeWindow time window string in format "HH:mm - HH:mm"
      * @return true if current time is within the window, false otherwise
      * @throws IllegalArgumentException if the format is invalid
      */
-
-    //todo need to change time window validation  HH:mm - HH:mm
     public boolean isWithinTimeWindow(String timeWindow) {
         if (timeWindow == null || timeWindow.trim().isEmpty()) {
             throw new IllegalArgumentException("Time window string cannot be null or empty");
         }
 
-        // Cache parsed time windows - avoids split() + parseInt() on every request (200 TPS)
+        // Cache parsed time windows - avoids parsing on every request (200 TPS)
         LocalTime[] cached = TIME_WINDOW_CACHE.get(timeWindow);
         if (cached == null) {
-            String[] times = timeWindow.split("-");
+            String[] times = timeWindow.split("-", 2);
             if (times.length != 2) {
                 LoggingUtil.logError(log, M_BALANCE, null, "Invalid time window: %s", timeWindow);
-                throw new IllegalArgumentException("Invalid time window format. Expected format: 'HH-HH' (e.g., '00-24', '08-18', '0-12')");
+                throw new IllegalArgumentException("Invalid time window format. Expected format: 'HH:mm - HH:mm' (e.g., '00:00 - 24:00', '08:00 - 18:30')");
             }
-            cached = new LocalTime[]{parseHourOnly(times[0].trim()), parseHourOnly(times[1].trim())};
+            cached = new LocalTime[]{parseHourMinute(times[0].trim()), parseHourMinute(times[1].trim())};
             TIME_WINDOW_CACHE.put(timeWindow, cached);
         }
 
@@ -1390,29 +1388,36 @@ public class AccountingUtil {
 
     /**
      *
-     * @param timeStr the time string (e.g., "0", "8", "24")
-     * @return LocalTime representing the hour (24 becomes 23:59:59)
-     * @throws IllegalArgumentException if format is invalid or hour is out of range
+     * @param timeStr the time string in "HH:mm" format (e.g., "08:00", "18:30", "24:00")
+     * @return LocalTime representing the parsed time (24:00 becomes 23:59:59)
+     * @throws IllegalArgumentException if format is invalid or values are out of range
      */
-    private static LocalTime parseHourOnly(String timeStr) {
+    private static LocalTime parseHourMinute(String timeStr) {
         timeStr = timeStr.trim();
         if (timeStr.isEmpty()) {
             throw new IllegalArgumentException("Time string cannot be empty");
         }
+        String[] parts = timeStr.split(":");
+        if (parts.length != 2) {
+            throw new IllegalArgumentException("Unable to parse time: " + timeStr +
+                    ". Expected format: 'HH:mm' (e.g., '08:00', '18:30')");
+        }
         try {
-            int hour = Integer.parseInt(timeStr);
-            if (hour == 24) {
+            int hour = Integer.parseInt(parts[0].trim());
+            int minute = Integer.parseInt(parts[1].trim());
+            if (hour == 24 && minute == 0) {
                 return LocalTime.of(23, 59, 59);
             }
             if (hour < 0 || hour > 23) {
-                throw new IllegalArgumentException("Hour must be between 0 and 24, got: " + hour);
+                throw new IllegalArgumentException("Hour must be between 0 and 23, got: " + hour);
             }
-
-            return LocalTime.of(hour, 0);
-
+            if (minute < 0 || minute > 59) {
+                throw new IllegalArgumentException("Minute must be between 0 and 59, got: " + minute);
+            }
+            return LocalTime.of(hour, minute);
         } catch (NumberFormatException e) {
-            throw new IllegalArgumentException("Unable to parse hour: " + timeStr +
-                    ". Expected format: single or double digit hour (0-24)", e);
+            throw new IllegalArgumentException("Unable to parse time: " + timeStr +
+                    ". Expected format: 'HH:mm' (e.g., '08:00', '18:30')", e);
         }
     }
 
