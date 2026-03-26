@@ -1,6 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.domain.model.QuotaNotificationEvent;
+import com.csg.airtel.aaa4j.domain.model.ThresholdExpiryEvent;
 import com.csg.airtel.aaa4j.domain.model.ThresholdGlobalTemplates;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -93,13 +93,13 @@ class QuotaNotificationServiceTest {
                 .assertCompleted();
 
         // Verifications
-        ArgumentCaptor<QuotaNotificationEvent> eventCaptor = ArgumentCaptor.forClass(QuotaNotificationEvent.class);
+        ArgumentCaptor<ThresholdExpiryEvent> eventCaptor = ArgumentCaptor.forClass(ThresholdExpiryEvent.class);
         verify(accountProducer).produceQuotaNotificationEvent(eventCaptor.capture());
 
-        QuotaNotificationEvent event = eventCaptor.getValue();
-        assertEquals("testUser", event.username());
-        assertTrue(event.message().contains("80%"));
-        assertTrue(event.message().contains("Data_Pack"));
+        ThresholdExpiryEvent event = eventCaptor.getValue();
+        assertEquals("testUser", event.data().serviceLineNumber());
+        assertTrue(event.data().message().contains("80%"));
+        assertTrue(event.data().message().contains("Data_Pack"));
     }
 
     @Test
