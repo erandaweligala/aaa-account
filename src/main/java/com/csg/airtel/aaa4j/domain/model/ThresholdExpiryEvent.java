@@ -12,14 +12,12 @@ public record ThresholdExpiryEvent(
     public record Meta(
             String eventId,
             String source,
-            String eventType,
+            String eventType,//"THREHOLD/EXPIRY"
             Instant messageTimeStamp,
-            String productType
+            String productType //FTTX
     ) {}
 
     public record Data(
-            String emailId,
-            String contactNumber,
             String message,
             String serviceLineNumber,
             long availableQuota,
