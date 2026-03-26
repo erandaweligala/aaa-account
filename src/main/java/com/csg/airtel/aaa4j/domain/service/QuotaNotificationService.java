@@ -1,6 +1,6 @@
 package com.csg.airtel.aaa4j.domain.service;
 
-import com.csg.airtel.aaa4j.domain.model.QuotaNotificationEvent;
+import com.csg.airtel.aaa4j.domain.model.ThresholdExpiryEvent;
 import com.csg.airtel.aaa4j.domain.model.ThresholdGlobalTemplates;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -9,7 +9,7 @@ import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.*;
 
 @ApplicationScoped
@@ -140,7 +140,7 @@ public class QuotaNotificationService {
                 }
 
                 // Create and send notification
-                QuotaNotificationEvent event = createNotificationEvent(
+                ThresholdExpiryEvent event = createNotificationEvent(
                         userData, balance, template, templateId, newQuota
                 );
 
@@ -160,7 +160,7 @@ public class QuotaNotificationService {
     /**
      * Create notification event from template and balance data.
      */
-    private QuotaNotificationEvent createNotificationEvent(
+    private ThresholdExpiryEvent createNotificationEvent(
             UserSessionData userData,
             Balance balance,
             ThresholdGlobalTemplates template,
@@ -176,17 +176,26 @@ public class QuotaNotificationService {
 
         String type = template.getThreshold() + "% quota exceeded";
 
-        return new QuotaNotificationEvent(
-                LocalDateTime.now(),
+        ThresholdExpiryEvent.Meta meta = new ThresholdExpiryEvent.Meta(
+                templateId != null ? String.valueOf(templateId) : null,
+                null,
+                type,
+                Instant.now(),
+                null
+        );
+
+        ThresholdExpiryEvent.Data data = new ThresholdExpiryEvent.Data(
                 message,
                 userData.getUserName(),
-                type,
                 availableQuota,
                 balance.getBucketId(),
-                template.getThreshold(),
+                template.getThreshold() != null ? template.getThreshold().intValue() : 0,
                 balance.getInitialBalance(),
-                templateId
+                balance.getBucketId(),
+                null
         );
+
+        return new ThresholdExpiryEvent(meta, data);
     }
 
 

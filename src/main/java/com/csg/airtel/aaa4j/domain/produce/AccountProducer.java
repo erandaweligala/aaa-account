@@ -2,7 +2,7 @@ package com.csg.airtel.aaa4j.domain.produce;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
-import com.csg.airtel.aaa4j.domain.model.QuotaNotificationEvent;
+import com.csg.airtel.aaa4j.domain.model.ThresholdExpiryEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
@@ -30,14 +30,14 @@ public class AccountProducer {
     private final Emitter<DBWriteRequest> dbWriteRequestEmitter;
     private final Emitter<AccountingResponseEvent> accountingResponseEmitter;
     private final Emitter<AccountingCDREvent> accountingCDREventEmitter;
-    private final Emitter<QuotaNotificationEvent> quotaNotificationEmitter;
+    private final Emitter<ThresholdExpiryEvent> quotaNotificationEmitter;
     private final CacheClient cacheClient;
     private final SessionLifecycleManager sessionLifecycleManager;
 
     public AccountProducer(@Channel("db-write-events")Emitter<DBWriteRequest> dbWriteRequestEmitter,
                            @Channel("accounting-resp-events")Emitter<AccountingResponseEvent> accountingResponseEmitter,
                            @Channel("accounting-cdr-events") Emitter<AccountingCDREvent> accountingCDREventEmitter,
-                           @Channel("quota-notification-events") Emitter<QuotaNotificationEvent> quotaNotificationEmitter,
+                           @Channel("quota-notification-events") Emitter<ThresholdExpiryEvent> quotaNotificationEmitter,
                            CacheClient cacheClient,
                            SessionLifecycleManager sessionLifecycleManager
                           ) {
@@ -267,20 +267,20 @@ public class AccountProducer {
     )
     @Timeout(value = 10000)
     @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
-    public Uni<Void> produceQuotaNotificationEvent(QuotaNotificationEvent event) {
+    public Uni<Void> produceQuotaNotificationEvent(ThresholdExpiryEvent event) {
 
         LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
-                event.username(), event.type());
+                event.data().serviceLineNumber(), event.meta().eventType());
         /*
         return Uni.createFrom().emitter(em -> {
-            Message<QuotaNotificationEvent> message = Message.of(event)
+            Message<ThresholdExpiryEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
-                            .withKey(event.username())
+                            .withKey(event.data().serviceLineNumber())
                             .build())
                     .withAck(() -> {
                         em.complete(null);
                         LOG.infof("Successfully sent quota notification event for user: %s, %d ms",
-                                event.username(), System.currentTimeMillis() - startTime);
+                                event.data().serviceLineNumber(), System.currentTimeMillis() - startTime);
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
@@ -303,8 +303,8 @@ public class AccountProducer {
      * @param throwable the failure cause
      * @return empty Uni (operation failed)
      */
-    private Uni<Void> fallbackProduceQuotaNotificationEvent(QuotaNotificationEvent event, Throwable throwable) {
-        FailoverPathLogger.logFallbackPath(LOG, "produceQuotaNotificationEvent", event.username(), throwable);
+    private Uni<Void> fallbackProduceQuotaNotificationEvent(ThresholdExpiryEvent event, Throwable throwable) {
+        FailoverPathLogger.logFallbackPath(LOG, "produceQuotaNotificationEvent", event.data().serviceLineNumber(), throwable);
         return Uni.createFrom().voidItem();
     }
 
