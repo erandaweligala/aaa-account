@@ -113,68 +113,6 @@ public class IdleSessionTerminatorScheduler {
     }
 
     /**
-     * Terminates a single session identified by userId and sessionId.
-     * Called by the {@link com.csg.airtel.aaa4j.domain.service.SessionTtlListener} when a
-     * session's absolute TTL Redis key expires via keyspace notification.
-     *
-     * @param userId    The user ID whose session has expired
-     * @param sessionId The session ID to terminate
-     * @return Uni that completes when termination is done
-     */
-    public Uni<Void> terminateExpiredSession(String userId, String sessionId) {
-        LoggingUtil.logInfo(log, M_TERMINATE, "Terminating TTL-expired session: userId=%s, sessionId=%s", userId, sessionId);
-
-        return cacheClient.getUserData(userId)
-                .onItem().transformToUni(userData -> {
-                    if (userData == null || userData.getSessions() == null || userData.getSessions().isEmpty()) {
-                        LoggingUtil.logDebug(log, M_TERMINATE,
-                                "No user/session data found for userId=%s, cleaning up index only", userId);
-                        return sessionExpiryIndex.removeSession(userId, sessionId);
-                    }
-
-                    Session toTerminate = null;
-                    for (Session s : userData.getSessions()) {
-                        if (sessionId.equals(s.getSessionId())) {
-                            toTerminate = s;
-                            break;
-                        }
-                    }
-
-                    if (toTerminate == null) {
-                        LoggingUtil.logDebug(log, M_TERMINATE,
-                                "Session %s not found for user %s, already terminated — cleaning up index", sessionId, userId);
-                        return sessionExpiryIndex.removeSession(userId, sessionId);
-                    }
-
-                    LoggingUtil.logInfo(log, M_TERMINATE,
-                            "Removing TTL-expired session %s for user %s", sessionId, userData.getUserName());
-
-                    List<Session> updatedSessions = new ArrayList<>(userData.getSessions());
-                    updatedSessions.remove(toTerminate);
-                    userData.setSessions(updatedSessions);
-
-                    monitoringService.recordSessionTerminated();
-
-                    String userName = userData.getUserName() != null ? userData.getUserName() : userId;
-                    return triggerDBRequestInitiate(List.of(toTerminate), userData)
-                            .onItem().transformToUni(v ->
-                                    Uni.combine().all().unis(
-                                            cacheClient.updateUserAndRelatedCaches(userName, userData, userName)
-                                                    .onFailure().invoke(e -> LoggingUtil.logError(log, M_TERMINATE, e,
-                                                            "Cache update failed for user: %s", userName))
-                                                    .onFailure().recoverWithNull()
-                                                    .replaceWithVoid(),
-                                            sessionExpiryIndex.removeSession(userId, sessionId)
-                                    ).discardItems()
-                            );
-                })
-                .onFailure().invoke(error -> LoggingUtil.logError(log, M_TERMINATE, error,
-                        "Error terminating TTL-expired session: userId=%s, sessionId=%s", userId, sessionId))
-                .onFailure().recoverWithNull()
-                .replaceWithVoid();
-    }
-
-    /**
      * Process expired sessions in batches until no more expired sessions exist.
      * Uses recursive batch processing to handle large numbers of expired sessions.
      */
@@ -481,7 +419,7 @@ public class IdleSessionTerminatorScheduler {
             long timeoutMinutes = Long.parseLong(session.getAbsoluteTimeOut().trim());
 
             // Calculate when the session should expire (sessionInitiatedTime + timeoutMinutes)
-            LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusMinutes(timeoutMinutes);
+            LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
 
             // Check if current time has exceeded the expiry time
             LocalDateTime currentTime = LocalDateTime.now();

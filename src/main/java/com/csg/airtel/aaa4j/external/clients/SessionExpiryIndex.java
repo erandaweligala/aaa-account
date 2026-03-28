@@ -2,11 +2,9 @@ package com.csg.airtel.aaa4j.external.clients;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
-import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.sortedset.ReactiveSortedSetCommands;
 import io.quarkus.redis.datasource.sortedset.ScoreRange;
 import io.quarkus.redis.datasource.sortedset.ZRangeArgs;
-import io.quarkus.redis.datasource.value.ReactiveValueCommands;
 import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -38,17 +36,12 @@ public class SessionExpiryIndex {
 
     private static final String EXPIRY_INDEX_KEY = "session:";
     private static final String MEMBER_SEPARATOR = ":";
-    public static final String SESSION_TTL_KEY_PREFIX = "session:ttl:";
 
     private final ReactiveSortedSetCommands<String, String> sortedSetCommands;
-    private final ReactiveValueCommands<String, String> valueCommands;
-    private final ReactiveKeyCommands<String> keyCommands;
 
     @Inject
     public SessionExpiryIndex(ReactiveRedisDataSource reactiveRedisDataSource) {
         this.sortedSetCommands = reactiveRedisDataSource.sortedSet(String.class, String.class);
-        this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
-        this.keyCommands = reactiveRedisDataSource.key();
     }
 
     /**
@@ -168,63 +161,6 @@ public class SessionExpiryIndex {
      */
     public Uni<Long> getTotalIndexedSessions() {
         return sortedSetCommands.zcard(EXPIRY_INDEX_KEY);
-    }
-
-    /**
-     * Set a dedicated Redis key with absolute TTL for a session.
-     * Used to trigger keyspace expiry notifications when the session's absolute timeout is reached.
-     *
-     * @param userId The user ID
-     * @param sessionId The session ID
-     * @param ttlSeconds TTL in seconds (derived from session's absoluteTimeOut)
-     * @return Uni that completes when the key is set
-     */
-    public Uni<Void> setSessionTtlKey(String userId, String sessionId, long ttlSeconds) {
-        String key = SESSION_TTL_KEY_PREFIX + buildMember(userId, sessionId);
-        String value = buildMember(userId, sessionId);
-
-        return valueCommands.setex(key, ttlSeconds, value)
-                .onItem().invoke(v ->
-                        LoggingUtil.logDebug(log, M_INDEX, "Set session TTL key: %s, TTL: %ds", key, ttlSeconds))
-                .replaceWithVoid();
-    }
-
-    /**
-     * Delete the dedicated TTL key for a session.
-     * Called when a session is terminated normally (STOP) so the key doesn't linger.
-     *
-     * @param userId The user ID
-     * @param sessionId The session ID
-     * @return Uni that completes when the key is deleted
-     */
-    public Uni<Void> deleteSessionTtlKey(String userId, String sessionId) {
-        String key = SESSION_TTL_KEY_PREFIX + buildMember(userId, sessionId);
-
-        return keyCommands.del(key)
-                .onItem().invoke(count ->
-                        LoggingUtil.logDebug(log, M_INDEX, "Deleted session TTL key: %s (removed: %d)", key, count))
-                .replaceWithVoid();
-    }
-
-    /**
-     * Parse an expired TTL key back into a SessionExpiryEntry.
-     * Used by the keyspace notification listener to extract userId and sessionId.
-     *
-     * @param expiredKey The full Redis key that expired (e.g. "session:ttl:user1:sess1")
-     * @return SessionExpiryEntry or null if key format is invalid
-     */
-    public static SessionExpiryEntry parseTtlMember(String expiredKey) {
-        if (expiredKey == null || !expiredKey.startsWith(SESSION_TTL_KEY_PREFIX)) {
-            return null;
-        }
-        String member = expiredKey.substring(SESSION_TTL_KEY_PREFIX.length());
-        int sep = member.indexOf(MEMBER_SEPARATOR);
-        if (sep <= 0 || sep >= member.length() - 1) {
-            return null;
-        }
-        String userId = member.substring(0, sep);
-        String sessionId = member.substring(sep + 1);
-        return new SessionExpiryEntry(userId, sessionId, member);
     }
 
     private String buildMember(String userId, String sessionId) {

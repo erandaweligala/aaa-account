@@ -176,7 +176,7 @@ public class QuotaNotificationService {
 
 
         ThresholdExpiryEvent.Meta meta = new ThresholdExpiryEvent.Meta(
-                UUID.randomUUID().toString(),
+                templateId.toString(),
                 "AAA",
                 "THREHOLD",
                 Instant.now(),
