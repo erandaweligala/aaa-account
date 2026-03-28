@@ -63,15 +63,26 @@ public class SessionLifecycleManager {
         monitoringService.recordSessionCreated();
 
         long expiryTimeMillis = calculateExpiryTime(session.getSessionInitiatedTime());
+        long ttlSeconds = calculateAbsoluteTtlSeconds(session);
 
-        LoggingUtil.logDebug(log, M_CREATE, "Registering new session in expiry index: userId=%s, sessionId=%s, expiryTime=%d",
-                userId, session.getSessionId(), expiryTimeMillis);
+        LoggingUtil.logDebug(log, M_CREATE, "Registering new session: userId=%s, sessionId=%s, idleExpiryTime=%d, absoluteTtlSecs=%d",
+                userId, session.getSessionId(), expiryTimeMillis, ttlSeconds);
 
-        return sessionExpiryIndex.registerSession(userId, session.getSessionId(), expiryTimeMillis)
+        // Register in idle-timeout sorted set index
+        Uni<Void> idleIndexUni = sessionExpiryIndex.registerSession(userId, session.getSessionId(), expiryTimeMillis)
                 .onFailure().invoke(e ->
                         LoggingUtil.logWarn(log, M_CREATE, "Failed to register session in expiry index: %s", e.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
+
+        // Set dedicated TTL key for absolute session timeout — triggers keyspace expiry notification
+        Uni<Void> ttlKeyUni = sessionExpiryIndex.setSessionTtlKey(userId, session.getSessionId(), ttlSeconds)
+                .onFailure().invoke(e ->
+                        LoggingUtil.logWarn(log, M_CREATE, "Failed to set session TTL key: %s", e.getMessage()))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
+
+        return Uni.combine().all().unis(idleIndexUni, ttlKeyUni).discardItems();
     }
 
     /**
@@ -118,22 +129,32 @@ public class SessionLifecycleManager {
         // Record session termination metric
         monitoringService.recordSessionTerminated();
 
-        LoggingUtil.logDebug(log, M_TERMINATE, "Removing terminated session from expiry index: userId=%s, sessionId=%s",
+        LoggingUtil.logDebug(log, M_TERMINATE, "Removing terminated session from expiry index and TTL key: userId=%s, sessionId=%s",
                 userId, sessionId);
 
-        return sessionExpiryIndex.removeSession(userId, sessionId)
+        // Remove from idle-timeout sorted set index
+        Uni<Void> idleIndexUni = sessionExpiryIndex.removeSession(userId, sessionId)
                 .onFailure().invoke(e ->
                         LoggingUtil.logWarn(log, M_TERMINATE, "Failed to remove session from expiry index: %s", e.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
+
+        // Delete dedicated TTL key so it doesn't fire after normal termination
+        Uni<Void> ttlKeyUni = sessionExpiryIndex.deleteSessionTtlKey(userId, sessionId)
+                .onFailure().invoke(e ->
+                        LoggingUtil.logWarn(log, M_TERMINATE, "Failed to delete session TTL key: %s", e.getMessage()))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
+
+        return Uni.combine().all().unis(idleIndexUni, ttlKeyUni).discardItems();
     }
 
     /**
-     * Calculate expiry timestamp based on session start time and configured timeout.
+     * Calculate idle-timeout expiry timestamp based on session start time and configured idle timeout.
+     * This value slides forward on each INTERIM update via onSessionActivity.
      */
     private long calculateExpiryTime(LocalDateTime sessionInitiatedTime) {
         if (sessionInitiatedTime == null) {
-            // Fallback to current time if no session time
             sessionInitiatedTime = LocalDateTime.now();
         }
 
@@ -142,5 +163,24 @@ public class SessionLifecycleManager {
                 .toInstant()
                 .plus(Duration.ofMinutes(config.timeoutMinutes()))
                 .toEpochMilli();
+    }
+
+    /**
+     * Calculate the absolute TTL in seconds for a session's dedicated Redis TTL key.
+     * Uses the session's absoluteTimeOut field (minutes) when available; falls back to
+     * the configured idle timeout.
+     */
+    private long calculateAbsoluteTtlSeconds(Session session) {
+        if (session.getAbsoluteTimeOut() != null) {
+            try {
+                long timeoutMinutes = Long.parseLong(session.getAbsoluteTimeOut().trim());
+                return timeoutMinutes * 60L;
+            } catch (NumberFormatException e) {
+                LoggingUtil.logWarn(log, M_CREATE,
+                        "Invalid absoluteTimeOut format '%s' for sessionId=%s, using configured default",
+                        session.getAbsoluteTimeOut(), session.getSessionId());
+            }
+        }
+        return (long) config.timeoutMinutes() * 60L;
     }
 }
