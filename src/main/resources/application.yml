@@ -175,6 +175,13 @@ idle-session:
   batch-size: 1000
 
   # Process 1000 sessions per batch (increased for scale)
+
+# Absolute session timeout – event-driven via Redis TTL + keyspace notifications.
+# TTL is set on session:ttl:{userId}:{sessionId} keys using the absoluteTimeOut field
+# (in seconds) from the session. When the key expires, SessionKeyspaceListener fires
+# and terminates the session via AbsoluteSessionTerminatorService.
+# Redis must have keyspace notifications enabled:  CONFIG SET notify-keyspace-events Ex
+# (done automatically at startup by SessionKeyspaceListener)
 #kafka:
 #  bootstrap:
 #    servers: localhost:9092
