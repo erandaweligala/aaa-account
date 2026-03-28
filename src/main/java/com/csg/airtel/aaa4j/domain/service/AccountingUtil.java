@@ -1451,7 +1451,7 @@ public class AccountingUtil {
      * @return true if the session has exceeded the absolute timeout, false otherwise
      */
 
-    // todo add this timeout set TTl time and TTl liserner read and trigger and termainate sessions
+    // todo add this timeout set TTl time and TTl liserner read and trigger and termainate sessions (only used AbsoluteTimeout )
     private boolean isSessionAbsoluteTimeoutExceeded(Session session) {
         if (session == null || session.getSessionInitiatedTime() == null ) {
             return false;
