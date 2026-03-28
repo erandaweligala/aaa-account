@@ -174,25 +174,24 @@ public class QuotaNotificationService {
                 availableQuota
         );
 
-        String type = template.getThreshold() + "% quota exceeded";
 
         ThresholdExpiryEvent.Meta meta = new ThresholdExpiryEvent.Meta(
-                templateId != null ? String.valueOf(templateId) : null,
-                null,
-                type,
+                UUID.randomUUID().toString(),
+                "AAA",
+                "THREHOLD",
                 Instant.now(),
-                null
+                "FTTX"
         );
 
         ThresholdExpiryEvent.Data data = new ThresholdExpiryEvent.Data(
                 message,
                 userData.getUserName(),
                 availableQuota,
-                balance.getBucketId(),
+                balance.getServiceId(),
                 template.getThreshold() != null ? template.getThreshold().intValue() : 0,
                 balance.getInitialBalance(),
                 balance.getBucketId(),
-                null
+                balance.getBucketExpiryDate()
         );
 
         return new ThresholdExpiryEvent(meta, data);

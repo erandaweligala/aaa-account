@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.domain.model;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 
 public record ThresholdExpiryEvent(
         Meta meta,
@@ -25,6 +26,6 @@ public record ThresholdExpiryEvent(
             int thresholdLevel,
             long initialBalance,
             String planCode,
-            @JsonProperty("expiryDate") Instant expiryDate
+            @JsonProperty("expiryDate") LocalDateTime expiryDate
     ) {}
 }
