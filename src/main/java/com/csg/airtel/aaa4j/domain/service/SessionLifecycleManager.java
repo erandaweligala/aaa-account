@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.config.IdleSessionConfig;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.external.clients.SessionExpiryIndex;
+import com.csg.airtel.aaa4j.external.clients.SessionTtlClient;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -34,14 +35,17 @@ public class SessionLifecycleManager {
     private static final String M_TERMINATE = "onSessionTerminated";
 
     private final SessionExpiryIndex sessionExpiryIndex;
+    private final SessionTtlClient sessionTtlClient;
     private final IdleSessionConfig config;
     private final MonitoringService monitoringService;
 
     @Inject
     public SessionLifecycleManager(SessionExpiryIndex sessionExpiryIndex,
+                                   SessionTtlClient sessionTtlClient,
                                    IdleSessionConfig config,
                                    MonitoringService monitoringService) {
         this.sessionExpiryIndex = sessionExpiryIndex;
+        this.sessionTtlClient = sessionTtlClient;
         this.config = config;
         this.monitoringService = monitoringService;
     }
@@ -67,11 +71,18 @@ public class SessionLifecycleManager {
         LoggingUtil.logDebug(log, M_CREATE, "Registering new session in expiry index: userId=%s, sessionId=%s, expiryTime=%d",
                 userId, session.getSessionId(), expiryTimeMillis);
 
-        return sessionExpiryIndex.registerSession(userId, session.getSessionId(), expiryTimeMillis)
+        Uni<Void> registerInIndex = sessionExpiryIndex.registerSession(userId, session.getSessionId(), expiryTimeMillis)
                 .onFailure().invoke(e ->
                         LoggingUtil.logWarn(log, M_CREATE, "Failed to register session in expiry index: %s", e.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
+
+        Uni<Void> setAbsoluteTtl = parseAbsoluteTimeoutSeconds(session.getAbsoluteTimeOut()) > 0
+                ? sessionTtlClient.setAbsoluteTimeout(userId, session.getSessionId(),
+                        parseAbsoluteTimeoutSeconds(session.getAbsoluteTimeOut()))
+                : Uni.createFrom().voidItem();
+
+        return Uni.join().all(registerInIndex, setAbsoluteTtl).andCollectFailures().replaceWithVoid();
     }
 
     /**
@@ -121,11 +132,31 @@ public class SessionLifecycleManager {
         LoggingUtil.logDebug(log, M_TERMINATE, "Removing terminated session from expiry index: userId=%s, sessionId=%s",
                 userId, sessionId);
 
-        return sessionExpiryIndex.removeSession(userId, sessionId)
+        Uni<Void> removeFromIndex = sessionExpiryIndex.removeSession(userId, sessionId)
                 .onFailure().invoke(e ->
                         LoggingUtil.logWarn(log, M_TERMINATE, "Failed to remove session from expiry index: %s", e.getMessage()))
                 .onFailure().recoverWithNull()
                 .replaceWithVoid();
+
+        Uni<Void> removeTtlKey = sessionTtlClient.removeAbsoluteTimeoutKey(userId, sessionId);
+
+        return Uni.join().all(removeFromIndex, removeTtlKey).andCollectFailures().replaceWithVoid();
+    }
+
+    /**
+     * Parses the absoluteTimeOut string field (in seconds) from the session.
+     * Returns 0 if the value is null, blank, or not numeric.
+     */
+    private long parseAbsoluteTimeoutSeconds(String absoluteTimeOut) {
+        if (absoluteTimeOut == null || absoluteTimeOut.isBlank()) {
+            return 0L;
+        }
+        try {
+            return Long.parseLong(absoluteTimeOut.trim());
+        } catch (NumberFormatException e) {
+            LoggingUtil.logWarn(log, M_CREATE, "Invalid absoluteTimeOut value '%s', skipping TTL key", absoluteTimeOut);
+            return 0L;
+        }
     }
 
     /**
