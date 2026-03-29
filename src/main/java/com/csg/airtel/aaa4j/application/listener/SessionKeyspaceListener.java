@@ -6,10 +6,13 @@ import com.csg.airtel.aaa4j.external.clients.SessionTtlClient;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.pubsub.ReactivePubSubCommands;
 import io.quarkus.runtime.StartupEvent;
+import io.vertx.mutiny.redis.client.RedisAPI;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
+
+import java.util.List;
 
 /**
  * Listens for Redis keyspace expiry notifications to implement event-driven
@@ -42,12 +45,15 @@ public class SessionKeyspaceListener {
 
     private final ReactiveRedisDataSource reactiveRedisDataSource;
     private final AbsoluteSessionTerminatorService absoluteSessionTerminatorService;
+    private final RedisAPI redisAPI;
 
     @Inject
     public SessionKeyspaceListener(ReactiveRedisDataSource reactiveRedisDataSource,
-                                   AbsoluteSessionTerminatorService absoluteSessionTerminatorService) {
+                                   AbsoluteSessionTerminatorService absoluteSessionTerminatorService,
+                                   RedisAPI redisAPI) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.absoluteSessionTerminatorService = absoluteSessionTerminatorService;
+        this.redisAPI = redisAPI;
     }
 
     /**
@@ -65,8 +71,7 @@ public class SessionKeyspaceListener {
 
     private void enableKeyspaceNotifications() {
         // "E" = Keyevent events, "x" = Expired events
-        reactiveRedisDataSource.server(String.class)
-                .configSet("notify-keyspace-events", "Ex")
+        redisAPI.configSet(List.of("notify-keyspace-events", "Ex"))
                 .subscribe().with(
                         v -> LoggingUtil.logInfo(log, M_LISTEN,
                                 "Redis keyspace notifications enabled (notify-keyspace-events=Ex)"),
