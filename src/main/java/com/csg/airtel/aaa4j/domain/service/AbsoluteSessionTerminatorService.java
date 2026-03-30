@@ -42,16 +42,19 @@ public class AbsoluteSessionTerminatorService {
     private final SessionExpiryIndex sessionExpiryIndex;
     private final AccountProducer accountProducer;
     private final MonitoringService monitoringService;
+    private final COAService coaService;
 
     @Inject
     public AbsoluteSessionTerminatorService(CacheClient cacheClient,
                                              SessionExpiryIndex sessionExpiryIndex,
                                              AccountProducer accountProducer,
-                                             MonitoringService monitoringService) {
+                                             MonitoringService monitoringService,
+                                             COAService coaService) {
         this.cacheClient = cacheClient;
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.accountProducer = accountProducer;
         this.monitoringService = monitoringService;
+        this.coaService = coaService;
     }
 
     /**
@@ -99,6 +102,9 @@ public class AbsoluteSessionTerminatorService {
             return sessionExpiryIndex.removeSession(userId, sessionId);
         }
 
+        // Send CoA disconnect before modifying userData so the method captures the session
+        Uni<Void> coaDisconnect = coaService.clearAllSessionsAndSendCOAMassageQue(userData, userId, sessionId);
+
         // Remove the session from the user's active list
         List<Session> remaining = new ArrayList<>(sessions);
         remaining.remove(target);
@@ -109,13 +115,13 @@ public class AbsoluteSessionTerminatorService {
         LoggingUtil.logInfo(log, M_TERMINATE,
                 "Removing absolute timeout session %s for user %s", sessionId, userId);
 
-        // DB write + index removal + cache update – execute in parallel
+        // DB write + index removal + cache update + CoA disconnect – execute in parallel
         Uni<Void> dbWrite      = triggerDBWriteIfNeeded(target, userData.getBalance());
         Uni<Void> indexRemoval = sessionExpiryIndex.removeSession(userId, sessionId);
         Uni<Void> cacheUpdate  = cacheClient.updateUserAndRelatedCaches(
                 userData.getUserName(), userData, userData.getUserName());
 
-        return Uni.join().all(dbWrite, indexRemoval, cacheUpdate).andCollectFailures()
+        return Uni.join().all(dbWrite, indexRemoval, cacheUpdate, coaDisconnect).andCollectFailures()
                 .replaceWithVoid()
                 .onFailure().invoke(e ->
                         LoggingUtil.logError(log, M_TERMINATE, e,
