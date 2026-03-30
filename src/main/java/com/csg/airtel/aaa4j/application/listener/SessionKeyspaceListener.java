@@ -65,7 +65,7 @@ public class SessionKeyspaceListener {
 
     private void enableKeyspaceNotifications() {
         // "E" = Keyevent events, "x" = Expired events
-        reactiveRedisDataSource.execute(String.class, "CONFIG", "SET", "notify-keyspace-events", "Ex")
+        reactiveRedisDataSource.execute("CONFIG", "SET", "notify-keyspace-events", "Ex")
                 .subscribe().with(
                         result -> LoggingUtil.logInfo(log, M_LISTEN,
                                 "Redis keyspace notifications enabled (notify-keyspace-events=Ex): %s", result),
