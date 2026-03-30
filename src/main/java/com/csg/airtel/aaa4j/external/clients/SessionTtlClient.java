@@ -28,7 +28,7 @@ public class SessionTtlClient {
     private static final Logger log = Logger.getLogger(SessionTtlClient.class);
     private static final String M_TTL = "sessionTtl";
 
-    public static final String TTL_KEY_PREFIX = "sessionttl:ttl:";
+    public static final String TTL_KEY_PREFIX = "session:ttl:";
     private static final String SEPARATOR = ":";
 
     private final ReactiveValueCommands<String, String> valueCommands;
