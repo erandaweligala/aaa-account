@@ -112,15 +112,15 @@ public class AbsoluteSessionTerminatorService {
                 .onFailure().recoverWithItem(userData)
                 .onItem().transformToUni(updatedUserData -> {
                     // Ensure the terminated session is removed regardless of CoA ACK/NAK
-                    List<Session> remaining = new ArrayList<>();
-                    if (updatedUserData.getSessions() != null) {
-                        for (Session s : updatedUserData.getSessions()) {
-                            if (!sessionId.equals(s.getSessionId())) {
-                                remaining.add(s);
-                            }
-                        }
-                    }
-                    updatedUserData.setSessions(remaining);
+//                    List<Session> remaining = new ArrayList<>();
+//                    if (updatedUserData.getSessions() != null) {
+//                        for (Session s : updatedUserData.getSessions()) {
+//                            if (!sessionId.equals(s.getSessionId())) {
+//                                remaining.add(s);
+//                            }
+//                        }
+//                    }
+//                    updatedUserData.setSessions(remaining);
 
                     // DB write + index removal + cache update – execute in parallel
                     Uni<Void> dbWrite      = triggerDBWriteIfNeeded(target, updatedUserData.getBalance());

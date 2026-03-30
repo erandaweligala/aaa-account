@@ -34,7 +34,7 @@ public class AccountingUtil {
     private final CacheClient cacheClient;
     private final COAService coaService;
     private final QuotaNotificationService quotaNotificationService;
-    // Cache parsed time windows to avoid String.split() + Integer.parseInt() on every request
+    
     private static final ConcurrentHashMap<String, LocalTime[]> TIME_WINDOW_CACHE = new ConcurrentHashMap<>();
 
     public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
@@ -1210,30 +1210,6 @@ public class AccountingUtil {
 
     private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
 
-        // Check if session has exceeded absolute timeout
-        if (isSessionAbsoluteTimeoutExceeded(currentSession)) {
-            LoggingUtil.logInfo(log, M_UPDATE, "Session absolute timeout exceeded for user: %s, sessionId: %s. Disconnecting session.",
-                    request.username(), currentSession.getSessionId());
-
-            // Remove session from userData and send COA disconnect
-            return coaService.clearAllSessionsAndSendCOA(userData, request.username(), currentSession.getSessionId(), request)
-                    .onItem().transformToUni(updatedUserData ->
-
-                        extractCoaCacheAndDBUpdate(
-                                request,
-                                foundBalance,
-                                updatedUserData,
-                                request.username(),
-                                foundBalance.getBucketUsername(),
-                                true
-                        )
-                    )
-                    .onFailure().invoke(err ->
-                            LoggingUtil.logError(log, M_UPDATE, err, "Error disconnecting timed-out session for user: %s, sessionId: %s",
-                                    request.username(), currentSession.getSessionId()))
-                    .replaceWith(UpdateResult.failure("Failed to disconnect timed-out session",currentSession));
-        }
-
         return extractCoaCacheAndDBUpdate(request, foundBalance,
                 userData, request.username(), foundBalance.getBucketUsername(),false)
                 .onFailure().invoke(err ->
@@ -1299,7 +1275,6 @@ public class AccountingUtil {
            return totalUsage;
         }
         if (usageDelta < 0) {
-            // if totalUsage is unexpectedly smaller than previous usage, clamp to 0
             usageDelta = 0;
         }
         return foundBalance.getQuota() - usageDelta;
@@ -1442,44 +1417,6 @@ public class AccountingUtil {
                 )
                 .onFailure().recoverWithNull();
     }
-
-
-    /**
-     * Checks if a session has exceeded its absolute timeout based on sessionInitiatedTime and sessionTimeOut.
-     *
-     * @param session The session to check
-     * @return true if the session has exceeded the absolute timeout, false otherwise
-     */
-
-    // todo add this timeout set TTl time and TTl liserner read and trigger and termainate sessions (only implemt  AbsoluteTimeout only)
-    private boolean isSessionAbsoluteTimeoutExceeded(Session session) {
-        if (session == null || session.getSessionInitiatedTime() == null ) {
-            return false;
-        }
-
-        try {
-            // Parse sessionTimeOut as minutes
-            long timeoutMinutes = Long.parseLong(session.getAbsoluteTimeOut());
-
-
-            LocalDateTime sessionExpiryTime = session.getSessionStartTime().plusSeconds(timeoutMinutes);
-
-            // Check if current time has exceeded the expiry time
-            LocalDateTime currentTime = LocalDateTime.now();
-            boolean isExpired = currentTime.isAfter(sessionExpiryTime);
-
-            LoggingUtil.logDebug(log, M_UPDATE, "Session timeout check - SessionId: %s, InitiatedTime: %s, Timeout : %d, ExpiryTime: %s, CurrentTime: %s, IsExpired: %b",
-                    session.getSessionId(), session.getSessionInitiatedTime(), timeoutMinutes,
-                    sessionExpiryTime, currentTime, isExpired);
-
-            return isExpired;
-        } catch (NumberFormatException e) {
-            LoggingUtil.logWarn(log, M_UPDATE, "Invalid sessionTimeOut format: %s. Expected numeric value in minutes. Error: %s",
-                    session.getAbsoluteTimeOut(), e.getMessage());
-            return false;
-        }
-    }
-
 
 
 }
