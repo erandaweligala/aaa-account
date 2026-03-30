@@ -102,30 +102,38 @@ public class AbsoluteSessionTerminatorService {
             return sessionExpiryIndex.removeSession(userId, sessionId);
         }
 
-        // Send CoA disconnect before modifying userData so the method captures the session
-        Uni<Void> coaDisconnect = coaService.clearAllSessionsAndSendCOAMassageQue(userData, userId, sessionId);
-
-        // Remove the session from the user's active list
-        List<Session> remaining = new ArrayList<>(sessions);
-        remaining.remove(target);
-        userData.setSessions(remaining);
-
         monitoringService.recordSessionTerminated();
 
         LoggingUtil.logInfo(log, M_TERMINATE,
                 "Removing absolute timeout session %s for user %s", sessionId, userId);
 
-        // DB write + index removal + cache update + CoA disconnect – execute in parallel
-        Uni<Void> dbWrite      = triggerDBWriteIfNeeded(target, userData.getBalance());
-        Uni<Void> indexRemoval = sessionExpiryIndex.removeSession(userId, sessionId);
-        Uni<Void> cacheUpdate  = cacheClient.updateUserAndRelatedCaches(
-                userData.getUserName(), userData, userData.getUserName());
+        // Send CoA disconnect via HTTP; fall back to original userData if CoA itself fails
+        return coaService.clearAllSessionsAndSendCOA(userData, userId, sessionId)
+                .onFailure().recoverWithItem(userData)
+                .onItem().transformToUni(updatedUserData -> {
+                    // Ensure the terminated session is removed regardless of CoA ACK/NAK
+                    List<Session> remaining = new ArrayList<>();
+                    if (updatedUserData.getSessions() != null) {
+                        for (Session s : updatedUserData.getSessions()) {
+                            if (!sessionId.equals(s.getSessionId())) {
+                                remaining.add(s);
+                            }
+                        }
+                    }
+                    updatedUserData.setSessions(remaining);
 
-        return Uni.join().all(dbWrite, indexRemoval, cacheUpdate, coaDisconnect).andCollectFailures()
-                .replaceWithVoid()
-                .onFailure().invoke(e ->
-                        LoggingUtil.logError(log, M_TERMINATE, e,
-                                "Error during cleanup for userId=%s sessionId=%s", userId, sessionId));
+                    // DB write + index removal + cache update – execute in parallel
+                    Uni<Void> dbWrite      = triggerDBWriteIfNeeded(target, updatedUserData.getBalance());
+                    Uni<Void> indexRemoval = sessionExpiryIndex.removeSession(userId, sessionId);
+                    Uni<Void> cacheUpdate  = cacheClient.updateUserAndRelatedCaches(
+                            updatedUserData.getUserName(), updatedUserData, updatedUserData.getUserName());
+
+                    return Uni.join().all(dbWrite, indexRemoval, cacheUpdate).andCollectFailures()
+                            .replaceWithVoid()
+                            .onFailure().invoke(e ->
+                                    LoggingUtil.logError(log, M_TERMINATE, e,
+                                            "Error during cleanup for userId=%s sessionId=%s", userId, sessionId));
+                });
     }
 
     private Session findSession(List<Session> sessions, String sessionId) {
