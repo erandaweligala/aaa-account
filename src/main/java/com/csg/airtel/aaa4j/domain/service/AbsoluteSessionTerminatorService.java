@@ -14,7 +14,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -112,15 +111,13 @@ public class AbsoluteSessionTerminatorService {
                 .onFailure().recoverWithItem(userData)
                 .onItem().transformToUni(updatedUserData -> {
                     // Ensure the terminated session is removed regardless of CoA ACK/NAK
-//                    List<Session> remaining = new ArrayList<>();
-//                    if (updatedUserData.getSessions() != null) {
-//                        for (Session s : updatedUserData.getSessions()) {
-//                            if (!sessionId.equals(s.getSessionId())) {
-//                                remaining.add(s);
-//                            }
-//                        }
-//                    }
-//                    updatedUserData.setSessions(remaining);
+                    if (updatedUserData.getSessions() != null) {
+                        updatedUserData.setSessions(
+                                updatedUserData.getSessions().stream()
+                                        .filter(s -> !sessionId.equals(s.getSessionId()))
+                                        .toList()
+                        );
+                    }
 
                     // DB write + index removal + cache update – execute in parallel
                     Uni<Void> dbWrite      = triggerDBWriteIfNeeded(target, updatedUserData.getBalance());
@@ -137,12 +134,10 @@ public class AbsoluteSessionTerminatorService {
     }
 
     private Session findSession(List<Session> sessions, String sessionId) {
-        for (Session s : sessions) {
-            if (sessionId.equals(s.getSessionId())) {
-                return s;
-            }
-        }
-        return null;
+        return sessions.stream()
+                .filter(s -> sessionId.equals(s.getSessionId()))
+                .findFirst()
+                .orElse(null);
     }
 
     private Uni<Void> triggerDBWriteIfNeeded(Session session, List<Balance> balances) {
@@ -150,13 +145,10 @@ public class AbsoluteSessionTerminatorService {
             return Uni.createFrom().voidItem();
         }
 
-        Balance match = null;
-        for (Balance b : balances) {
-            if (session.getPreviousUsageBucketId().equals(b.getBucketId())) {
-                match = b;
-                break;
-            }
-        }
+        Balance match = balances.stream()
+                .filter(b -> session.getPreviousUsageBucketId().equals(b.getBucketId()))
+                .findFirst()
+                .orElse(null);
 
         if (match == null || match.getQuota() >= session.getAvailableBalance()) {
             return Uni.createFrom().voidItem();
