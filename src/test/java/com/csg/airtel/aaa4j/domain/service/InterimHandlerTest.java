@@ -194,7 +194,7 @@ class InterimHandlerTest {
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), any()))
                 .thenReturn(Uni.createFrom().item(result));
 
-        when(sessionLifecycleManager.onSessionActivity(any(), any()))
+        when(sessionLifecycleManager.onSessionCreated(any(), any()))
                 .thenReturn(Uni.createFrom().voidItem());
 
         // Act

@@ -7,6 +7,7 @@ import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.AbstractAccountingHandler;
 import com.csg.airtel.aaa4j.domain.service.COAService;
+import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
 import com.csg.airtel.aaa4j.external.clients.CacheClient;
 import com.csg.airtel.aaa4j.external.repository.UserBucketRepository;
 import io.smallrye.mutiny.Uni;
@@ -35,6 +36,8 @@ class AbstractAccountingHandlerTest {
     UserBucketRepository userRepository;
     @Mock
     COAService coaService;
+    @Mock
+    SessionLifecycleManager sessionLifecycleManager;
 
     @InjectMocks
     AbstractAccountingHandler handler;
@@ -121,6 +124,8 @@ class AbstractAccountingHandlerTest {
 
         when(userRepository.getServiceBucketsByUserName("testUser"))
                 .thenReturn(Uni.createFrom().item(List.of(bucket)));
+        when(sessionLifecycleManager.onSessionCreated(anyString(), any()))
+                .thenReturn(Uni.createFrom().voidItem());
 
         AbstractAccountingHandler.AccountingRequestProcessor processor = (data, req, id) -> {
             assertEquals("otherUser", data.getGroupId());
