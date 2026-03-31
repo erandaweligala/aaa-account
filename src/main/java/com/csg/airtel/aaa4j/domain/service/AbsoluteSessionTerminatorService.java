@@ -14,7 +14,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -23,14 +22,6 @@ import java.util.List;
  * <p>Called by {@link com.csg.airtel.aaa4j.application.listener.SessionKeyspaceListener}
  * when the Redis TTL key ({@code session:ttl:{userId}:{sessionId}}) expires.</p>
  *
- * <p>On termination:</p>
- * <ol>
- *   <li>Fetches user session data from cache</li>
- *   <li>Removes the expired session from the session list</li>
- *   <li>Removes the session from the sorted-set expiry index</li>
- *   <li>Triggers a DB write event to persist the balance state</li>
- *   <li>Updates the cache with the modified user data</li>
- * </ol>
  */
 @ApplicationScoped
 public class AbsoluteSessionTerminatorService {
@@ -85,9 +76,6 @@ public class AbsoluteSessionTerminatorService {
                 .replaceWithVoid();
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
 
     private Uni<Void> processTermination(UserSessionData userData, String userId, String sessionId) {
         List<Session> sessions = userData.getSessions();
@@ -111,19 +99,9 @@ public class AbsoluteSessionTerminatorService {
         return coaService.clearAllSessionsAndSendCOA(userData, userId, sessionId)
                 .onFailure().recoverWithItem(userData)
                 .onItem().transformToUni(updatedUserData -> {
-                    // Ensure the terminated session is removed regardless of CoA ACK/NAK
-//                    List<Session> remaining = new ArrayList<>();
-//                    if (updatedUserData.getSessions() != null) {
-//                        for (Session s : updatedUserData.getSessions()) {
-//                            if (!sessionId.equals(s.getSessionId())) {
-//                                remaining.add(s);
-//                            }
-//                        }
-//                    }
-//                    updatedUserData.setSessions(remaining);
 
                     // DB write + index removal + cache update – execute in parallel
-                    Uni<Void> dbWrite      = triggerDBWriteIfNeeded(target, updatedUserData.getBalance());
+                    Uni<Void> dbWrite      = triggerDBWrite(target, updatedUserData.getBalance());
                     Uni<Void> indexRemoval = sessionExpiryIndex.removeSession(userId, sessionId);
                     Uni<Void> cacheUpdate  = cacheClient.updateUserAndRelatedCaches(
                             updatedUserData.getUserName(), updatedUserData, updatedUserData.getUserName());
@@ -145,7 +123,7 @@ public class AbsoluteSessionTerminatorService {
         return null;
     }
 
-    private Uni<Void> triggerDBWriteIfNeeded(Session session, List<Balance> balances) {
+    private Uni<Void> triggerDBWrite(Session session, List<Balance> balances) {
         if (balances == null || balances.isEmpty() || session.getPreviousUsageBucketId() == null) {
             return Uni.createFrom().voidItem();
         }

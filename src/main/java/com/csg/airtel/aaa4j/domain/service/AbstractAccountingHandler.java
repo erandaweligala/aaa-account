@@ -74,7 +74,6 @@ public class AbstractAccountingHandler {
 
         return cacheUtil.getGroupId(request.username())
                 .onItem().transformToUni(cacheGroupId -> {
-
                     if (cacheGroupId == null) {
                         return getUserServicesDetails(request, traceId, processor, sessionCreator);
                     } else {

@@ -34,7 +34,7 @@ public class AccountingUtil {
     private final CacheClient cacheClient;
     private final COAService coaService;
     private final QuotaNotificationService quotaNotificationService;
-    
+
     private static final ConcurrentHashMap<String, LocalTime[]> TIME_WINDOW_CACHE = new ConcurrentHashMap<>();
 
     public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
@@ -101,7 +101,6 @@ public class AccountingUtil {
             return null;
         }
 
-        // Fast path: if bucketId provided, find exact match first
         if (bucketId != null) {
             for (Balance balance : balances) {
                 if (bucketId.equals(balance.getBucketId())) {

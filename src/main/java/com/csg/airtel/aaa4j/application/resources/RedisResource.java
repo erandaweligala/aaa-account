@@ -11,7 +11,7 @@ import io.smallrye.mutiny.infrastructure.Infrastructure;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
-
+import org.jboss.logging.Logger;
 
 
 import java.util.HashMap;
@@ -24,7 +24,7 @@ import java.util.Map;
 @Path("/debug")
 @ApplicationScoped
 public class RedisResource {
-
+    private static final Logger log = Logger.getLogger(RedisResource.class);
     final UserBucketRepository userRepository;
 
     final CacheClient cacheClient;
@@ -89,7 +89,7 @@ public class RedisResource {
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
     public Uni <UserSessionData> getKeyCache(@QueryParam("username") String key) {
-
+        log.infof("cache check request initiated key %s",key);
         return cacheClient
                 .getUserData(key)
                 .onItem().transform(result ->

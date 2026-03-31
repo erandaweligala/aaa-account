@@ -33,15 +33,12 @@ public class StartHandler {
     private static final String M_UPDATE_CACHES = "updateCachesForSession";
     private static final String M_UPDATE_USER_GROUP = "updateUserAndGroupCaches";
     private static final String M_UPDATE_BOTH = "updateBothCaches";
-    private static final String M_UPDATE_USER_ONLY = "updateUserCacheOnly";
     private static final String M_HANDLE_NEW_SESSION = "handleNewUserSession";
     private static final String M_HANDLE_NO_BUCKETS = "handleNoServiceBuckets";
     private static final String M_HANDLE_ZERO_QUOTA = "handleZeroQuota";
-    private static final String M_CREATE_STORE_SESSION = "createAndStoreNewSession";
     private static final String M_HANDLE_NO_BALANCE = "handleNoValidBalance";
-    private static final String M_STORE_USER_DATA = "storeUserSessionData";
     private static final String M_STORE_NEW_GROUP = "storeNewGroupData";
-    private static final String M_UPDATE_EXISTING_GROUP = "updateExistingGroupData";
+
 
     private final CacheClient utilCache;
     private final UserBucketRepository userRepository;
