@@ -65,6 +65,7 @@ public class InterimHandler {
     private Uni<Void> processAccountingRequest(
             UserSessionData userData, AccountingRequestDto request, String cachedGroupData) {
         Session session = accountingHandler.findSessionById(userData.getSessions(), request.sessionId());
+        boolean isNewSession = session == null;
 
         if (session == null) {
             long concurrency = userData.getConcurrency();
@@ -101,7 +102,9 @@ public class InterimHandler {
         } else {
             Session finalSession = session;
             return accountingUtil.updateSessionAndBalance(userData, session, request,null)
-                    .call(() -> sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
+                    .call(() -> isNewSession
+                            ? sessionLifecycleManager.onSessionCreated(request.username(), finalSession)
+                            : sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
                     .onItem().transformToUni(updateResult -> {
                         if (!updateResult.success()) {
                             LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s reason: %s", request.sessionId(),updateResult.errorMessage());

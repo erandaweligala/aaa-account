@@ -36,15 +36,18 @@ public class AbstractAccountingHandler {
     private final CacheClient cacheUtil;
     private final UserBucketRepository userRepository;
     private final COAService coaService;
+    private final SessionLifecycleManager sessionLifecycleManager;
 
     @Inject
     public AbstractAccountingHandler(
             CacheClient cacheUtil,
             UserBucketRepository userRepository,
-            COAService coaService) {
+            COAService coaService,
+            SessionLifecycleManager sessionLifecycleManager) {
         this.cacheUtil = cacheUtil;
         this.userRepository = userRepository;
         this.coaService = coaService;
+        this.sessionLifecycleManager = sessionLifecycleManager;
     }
 
     /**
@@ -151,7 +154,8 @@ public class AbstractAccountingHandler {
                             .sessionTimeOut(sessionTimeout)
                             .build();
 
-                    return processor.process(newUserSessionData, request, traceId);
+                    return sessionLifecycleManager.onSessionCreated(request.username(), newSession)
+                            .chain(() -> processor.process(newUserSessionData, request, traceId));
                 });
     }
 
