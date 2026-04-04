@@ -5,6 +5,8 @@ import org.jboss.logging.Logger;
 public class LoggingUtil {
 
     public static final String TRACE_ID = "traceId";
+    public static final String USER_NAME = "userName";
+    public static final String SESSION_ID = "sessionId";
 
     private LoggingUtil() {
         // Private constructor to prevent instantiation

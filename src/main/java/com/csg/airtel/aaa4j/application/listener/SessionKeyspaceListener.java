@@ -1,8 +1,10 @@
 package com.csg.airtel.aaa4j.application.listener;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
+import com.csg.airtel.aaa4j.application.common.TraceIdGenerator;
 import com.csg.airtel.aaa4j.domain.service.AbsoluteSessionTerminatorService;
 import com.csg.airtel.aaa4j.external.clients.SessionTtlClient;
+import org.slf4j.MDC;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.pubsub.ReactivePubSubCommands;
 import io.quarkus.runtime.StartupEvent;
@@ -100,10 +102,19 @@ public class SessionKeyspaceListener {
         String userId    = parts[0];
         String sessionId = parts[1];
 
+        MDC.put(LoggingUtil.TRACE_ID, TraceIdGenerator.generateTraceId());
+        MDC.put(LoggingUtil.USER_NAME, userId);
+        MDC.put(LoggingUtil.SESSION_ID, sessionId);
+
         LoggingUtil.logInfo(log, M_LISTEN,
                 "Absolute timeout TTL expired: userId=%s sessionId=%s", userId, sessionId);
 
         absoluteSessionTerminatorService.terminateSession(userId, sessionId)
+                .onTermination().invoke(() -> {
+                    MDC.remove(LoggingUtil.TRACE_ID);
+                    MDC.remove(LoggingUtil.USER_NAME);
+                    MDC.remove(LoggingUtil.SESSION_ID);
+                })
                 .subscribe().with(
                         v -> LoggingUtil.logInfo(log, M_LISTEN,
                                 "Absolute timeout session terminated: userId=%s sessionId=%s", userId, sessionId),
