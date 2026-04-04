@@ -10,8 +10,8 @@ quarkus:
 
   datasource:
     db-kind: oracle
-    username: aaa
-    password: Aaa!89nky78D
+    username: "${DB_USER}"
+    password: "${DB_PASSWORD}"
     reactive:
       #url: oracle:thin:@localhost:1521/FREEPDB1
       url: oracle:thin:@localhost:1524/ORCL
@@ -111,9 +111,9 @@ quarkus:
 #  redis:
 #    client-type: sentinel
 #    hosts: redis://redis-cluster-headless.csg-aaa-query-cache.svc.cluster.local:26379
-#    master-name: mymaster
-#    role: master
-#    password: S3cure_Redis_Pass_w0rd!
+#    master-name: "${REDIS_MASTER_NAME}"
+#    role: "${REDIS_ROLE}"
+#    password: "${REDIS_PASSWORD}"
 #    max-pool-size: 48               # Right-sized for concurrency 16: max ~32 concurrent Redis ops + headroom
 #    max-waiting-handlers: 500      # Reduced - backpressure prevents unbounded waiting
 #    max-pool-waiting: 256
