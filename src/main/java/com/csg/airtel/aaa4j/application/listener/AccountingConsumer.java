@@ -51,14 +51,14 @@ public class AccountingConsumer {
 
     private void setMdcContext(AccountingRequestDto request) {
         MDC.put(LoggingUtil.TRACE_ID, request.eventId());
-        MDC.put("userName", request.username());
-        MDC.put("sessionId", request.sessionId());
+        MDC.put(LoggingUtil.USER_NAME, request.username());
+        MDC.put(LoggingUtil.SESSION_ID, request.sessionId());
     }
 
     private void clearMdcContext() {
         MDC.remove(LoggingUtil.TRACE_ID);
-        MDC.remove("userName");
-        MDC.remove("sessionId");
+        MDC.remove(LoggingUtil.USER_NAME);
+        MDC.remove(LoggingUtil.SESSION_ID);
     }
 }
 
