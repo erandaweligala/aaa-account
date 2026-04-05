@@ -16,7 +16,12 @@ public class LoggingUtil {
     private static final ThreadLocal<StringBuilder> SB_POOL =
             ThreadLocal.withInitial(() -> new StringBuilder(256));
 
-    private static final int SB_SOFT_CAP = 2048;
+    /** Typical log messages are 50–200 chars; 512 is a generous cap without wasting memory.
+     *  40 threads × 512 bytes = 20KB idle hold (vs 80KB at the old 2048 cap). */
+    private static final int SB_SOFT_CAP = 512;
+
+    /** Reusable empty array returned when args is null — avoids inline new Object[0]. */
+    private static final Object[] EMPTY_ARGS = new Object[0];
 
     private LoggingUtil() {
         // Private constructor to prevent instantiation
@@ -81,8 +86,17 @@ public class LoggingUtil {
      * Supports %s and %d placeholders; %% emits a literal %.
      */
     private static String buildMessage(String method, String message, Object... args) {
+        // Null guards — prevent NPE from method.length() / message.length() / args.length
+        if (method == null)  method  = "";
+        if (message == null) message = "";
+        if (args == null)    args    = EMPTY_ARGS;
+
         StringBuilder sb = SB_POOL.get();
         sb.setLength(0);
+
+        // Pre-size hint avoids 1–2 intermediate re-allocations on first use per thread
+        // when the message is longer than the initial 256-byte buffer.
+        sb.ensureCapacity(method.length() + message.length() + 32);
 
         sb.append('[').append(method).append(']');
 
