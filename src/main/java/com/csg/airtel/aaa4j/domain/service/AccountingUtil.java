@@ -36,6 +36,7 @@ public class AccountingUtil {
     private final QuotaNotificationService quotaNotificationService;
 
     private static final ConcurrentHashMap<String, LocalTime[]> TIME_WINDOW_CACHE = new ConcurrentHashMap<>();
+    private static final int TIME_WINDOW_CACHE_MAX_SIZE = 500;
 
     public AccountingUtil(AccountProducer accountProducer, CacheClient utilCache, COAService coaService,
                           QuotaNotificationService quotaNotificationService) {
@@ -436,21 +437,23 @@ public class AccountingUtil {
 
         // Calculate the fixed window bounds for the current period
         LocalDate[] windowBounds = calculateFixedWindowBounds(serviceStartDate, windowDays);
-        LocalDate windowStartDate = windowBounds[0];
-        LocalDate windowEndDate = windowBounds[1];
+
+        // Convert bounds to epoch days once — long comparison is faster than LocalDate.isBefore/isAfter
+        // (avoids object method dispatch and redundant chronology checks per record)
+        long windowStartDay = windowBounds[0].toEpochDay();
+        long windowEndDay = windowBounds[1].toEpochDay();
 
         // Sum consumption only within the current window period
         long total = 0L;
         for (ConsumptionRecord consumptionRecord : history) {
-            LocalDate recordDate = consumptionRecord.getDate();
-            // Include records within the current window (inclusive on both ends)
-            if (!recordDate.isBefore(windowStartDate) && !recordDate.isAfter(windowEndDate)) {
+            long recordDay = consumptionRecord.getDate().toEpochDay();
+            if (recordDay >= windowStartDay && recordDay <= windowEndDay) {
                 total += consumptionRecord.getBytesConsumed();
             }
         }
 
         LoggingUtil.logDebug(log, M_CONSUMPTION, "Consumption in current window for bucket %s: %d bytes (window: %s to %s)",
-                balance.getBucketId(), total, windowStartDate, windowEndDate);
+                balance.getBucketId(), total, windowBounds[0], windowBounds[1]);
 
         return total;
     }
@@ -1338,6 +1341,7 @@ public class AccountingUtil {
         }
 
         // Cache parsed time windows - avoids parsing on every request (200 TPS)
+        // Bounded to TIME_WINDOW_CACHE_MAX_SIZE entries to prevent unbounded memory growth
         LocalTime[] cached = TIME_WINDOW_CACHE.get(timeWindow);
         if (cached == null) {
             String[] times = timeWindow.split("-", 2);
@@ -1346,7 +1350,9 @@ public class AccountingUtil {
                 throw new IllegalArgumentException("Invalid time window format. Expected format: 'HH:mm - HH:mm' (e.g., '00:00 - 24:00', '08:00 - 18:30')");
             }
             cached = new LocalTime[]{parseHourMinute(times[0].trim()), parseHourMinute(times[1].trim())};
-            TIME_WINDOW_CACHE.put(timeWindow, cached);
+            if (TIME_WINDOW_CACHE.size() < TIME_WINDOW_CACHE_MAX_SIZE) {
+                TIME_WINDOW_CACHE.putIfAbsent(timeWindow, cached);
+            }
         }
 
         LocalTime startTime = cached[0];

@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 
 @ApplicationScoped
@@ -150,9 +149,12 @@ public class BucketService {
             return Uni.createFrom().item(createErrorResponseList("Balance list is required"));
         }
 
-        List<Balance> newBalances = balanceWrapper.getBalance().stream()
-                .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+        List<Balance> newBalances = new ArrayList<>(balanceWrapper.getBalance().size());
+        for (Balance b : balanceWrapper.getBalance()) {
+            if (b != null) {
+                newBalances.add(b);
+            }
+        }
 
         if (newBalances.isEmpty()) {
             return Uni.createFrom().item(createErrorResponseList("No valid balances provided"));
@@ -164,12 +166,13 @@ public class BucketService {
 
                     if (userData == null) {
                         LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance list", userName);
-                        String groupId = newBalances.stream()
-                                .filter(Balance::isGroup)
-                                .map(Balance::getBucketUsername)
-                                .filter(Objects::nonNull)
-                                .findFirst()
-                                .orElse(null);
+                        String groupId = null;
+                        for (Balance b : newBalances) {
+                            if (b.isGroup() && b.getBucketUsername() != null) {
+                                groupId = b.getBucketUsername();
+                                break;
+                            }
+                        }
 
                         updatedUserData = UserSessionData.builder()
                                 .concurrency(balanceWrapper.getConcurrency())
@@ -251,22 +254,22 @@ public class BucketService {
                     List<Balance> balanceList = removeExpiredBalances(existingBalances);
 
                     // Check if serviceExpiry or bucketExpiryDate changed compared to cached balance
-                    boolean expiryChanged = balanceList.stream()
-                            .filter(b -> b.getServiceId().equals(serviceId))
-                            .findFirst()
-                            .map(cachedBalance -> {
-                                boolean serviceExpiryChanged = !Objects.equals(cachedBalance.getServiceExpiry(), balance.getServiceExpiry());
-                                boolean bucketExpiryChanged = !Objects.equals(cachedBalance.getBucketExpiryDate(), balance.getBucketExpiryDate());
-                                if (serviceExpiryChanged || bucketExpiryChanged) {
-                                    LoggingUtil.logInfo(log, M_UPDATE,
-                                            "Expiry changed for user %s serviceId %s — serviceExpiry: %s -> %s, bucketExpiryDate: %s -> %s",
-                                            userName, serviceId,
-                                            cachedBalance.getServiceExpiry(), balance.getServiceExpiry(),
-                                            cachedBalance.getBucketExpiryDate(), balance.getBucketExpiryDate());
-                                }
-                                return serviceExpiryChanged || bucketExpiryChanged;
-                            })
-                            .orElse(false);
+                    boolean expiryChanged = false;
+                    for (Balance cachedBalance : balanceList) {
+                        if (cachedBalance.getServiceId().equals(serviceId)) {
+                            boolean serviceExpiryChanged = !Objects.equals(cachedBalance.getServiceExpiry(), balance.getServiceExpiry());
+                            boolean bucketExpiryChanged = !Objects.equals(cachedBalance.getBucketExpiryDate(), balance.getBucketExpiryDate());
+                            if (serviceExpiryChanged || bucketExpiryChanged) {
+                                LoggingUtil.logInfo(log, M_UPDATE,
+                                        "Expiry changed for user %s serviceId %s — serviceExpiry: %s -> %s, bucketExpiryDate: %s -> %s",
+                                        userName, serviceId,
+                                        cachedBalance.getServiceExpiry(), balance.getServiceExpiry(),
+                                        cachedBalance.getBucketExpiryDate(), balance.getBucketExpiryDate());
+                                expiryChanged = true;
+                            }
+                            break;
+                        }
+                    }
 
                     balanceList.removeIf(b -> b.getServiceId().equals(serviceId));
 
@@ -560,8 +563,13 @@ public class BucketService {
                     }
 
                     // Check if balance with the given serviceId exists
-                    boolean serviceExists = existingBalances.stream()
-                            .anyMatch(b -> serviceId.equals(b.getServiceId()));
+                    boolean serviceExists = false;
+                    for (Balance b : existingBalances) {
+                        if (serviceId.equals(b.getServiceId())) {
+                            serviceExists = true;
+                            break;
+                        }
+                    }
 
                     if (!serviceExists) {
                         return Uni.createFrom().item(createErrorResponseString(
@@ -581,9 +589,12 @@ public class BucketService {
                     List<Session> sessions = userData.getSessions();
                     if (sessions != null && !sessions.isEmpty()) {
                         // Filter sessions linked to the serviceId being deleted
-                        List<Session> matchingSessions = sessions.stream()
-                                .filter(s -> serviceId.equals(s.getServiceId()))
-                                .toList();
+                        List<Session> matchingSessions = new ArrayList<>();
+                        for (Session s : sessions) {
+                            if (serviceId.equals(s.getServiceId())) {
+                                matchingSessions.add(s);
+                            }
+                        }
 
                         if (!matchingSessions.isEmpty()) {
                             LoggingUtil.logInfo(log, M_DELETE_SVC,

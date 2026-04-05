@@ -15,8 +15,11 @@ import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 
 
@@ -43,9 +46,14 @@ public class COAService {
         if (sessions == null || sessions.isEmpty()) {
             return Uni.createFrom().voidItem();
         }
-        if(sessionId != null){
-            sessions = sessions.stream().filter(rs -> Objects.equals(rs.getSessionId(), sessionId))
-                    .toList();
+        if (sessionId != null) {
+            List<Session> filtered = new ArrayList<>();
+            for (Session s : sessions) {
+                if (Objects.equals(s.getSessionId(), sessionId)) {
+                    filtered.add(s);
+                }
+            }
+            sessions = filtered;
         }
 
         // Use merge instead of concatenate for parallel execution (better throughput)
@@ -231,9 +239,13 @@ public class COAService {
         // Filter sessions if specific sessionId is provided
         List<Session> sessionsToDisconnect;
         if (sessionId != null) {
-            sessionsToDisconnect = sessions.stream()
-                    .filter(s -> Objects.equals(s.getSessionId(), sessionId))
-                    .toList();
+            List<Session> filtered = new ArrayList<>();
+            for (Session s : sessions) {
+                if (Objects.equals(s.getSessionId(), sessionId)) {
+                    filtered.add(s);
+                }
+            }
+            sessionsToDisconnect = filtered;
         } else {
             sessionsToDisconnect = sessions;
         }
@@ -281,11 +293,13 @@ public class COAService {
                 .merge() // Parallel execution for all sessions
                 .collect().asList()
                 .onItem().transform(results -> {
-                    // Collect NAK session IDs (failed disconnects)
-                    List<String> nakSessionIds = results.stream()
-                            .filter(result -> !result.isAck())
-                            .map(CoAResult::sessionId)
-                            .toList();
+                    // Collect NAK session IDs into a Set for O(1) lookup
+                    Set<String> nakSessionIds = new HashSet<>();
+                    for (CoAResult result : results) {
+                        if (!result.isAck()) {
+                            nakSessionIds.add(result.sessionId());
+                        }
+                    }
 
                     if (nakSessionIds.isEmpty()) {
                         LoggingUtil.logInfo(log, M_COA, "No sessions received NAK for user: %s, returning original data", username);
@@ -293,9 +307,12 @@ public class COAService {
                     }
 
                     // Remove sessions that got NAK from the list
-                    List<Session> remainingSessions = userSessionData.getSessions().stream()
-                            .filter(s -> !nakSessionIds.contains(s.getSessionId()))
-                            .toList();
+                    List<Session> remainingSessions = new ArrayList<>();
+                    for (Session s : userSessionData.getSessions()) {
+                        if (!nakSessionIds.contains(s.getSessionId())) {
+                            remainingSessions.add(s);
+                        }
+                    }
 
                     LoggingUtil.logInfo(log, M_COA, "Removed %d NAK sessions from user: %s, remaining sessions: %d",
                             nakSessionIds.size(), username, remainingSessions.size());
