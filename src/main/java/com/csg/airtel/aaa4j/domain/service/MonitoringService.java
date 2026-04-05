@@ -130,26 +130,35 @@ public class MonitoringService {
      * Updates the daily COA request count.
      * Resets the counter if a new day has started (00:00).
      * Syncs the count with Redis for distributed tracking.
+     *
+     * Uses double-checked locking: the volatile read of currentDay is lock-free on the
+     * hot path (same-day case), and synchronization is only acquired for the rare
+     * day-rollover case, eliminating thread contention at high TPS.
      */
-    private synchronized void updateDailyCoaCount() {
+    private void updateDailyCoaCount() {
         LocalDate today = LocalDate.now();
 
-        // Check if we've moved to a new day
+        // Fast path: lock-free check (currentDay is volatile, read is atomic)
         if (!today.equals(currentDay)) {
-            LoggingUtil.logInfo(log, M_COA, "New day detected. Resetting COA daily count. Previous day: %s, Count: %d",
-                    currentDay, dailyCoaRequestCount.get());
-            currentDay = today;
-            dailyCoaRequestCount.set(0);
+            synchronized (this) {
+                // Double-checked: only one thread performs the reset
+                if (!today.equals(currentDay)) {
+                    LoggingUtil.logInfo(log, M_COA, "New day detected. Resetting COA daily count. Previous day: %s, Count: %d",
+                            currentDay, dailyCoaRequestCount.get());
+                    currentDay = today;
+                    dailyCoaRequestCount.set(0);
 
-            // Reset Redis cache for new day
-            redisValueCommands.set(COA_REQUEST_COUNT_CACHE_KEY, 0L)
-                    .subscribe().with(
-                            success -> LoggingUtil.logDebug(log, M_COA, "Redis COA count reset for new day"),
-                            error -> LoggingUtil.logWarn(log, M_COA, "Failed to reset Redis COA count: %s", error.getMessage())
-                    );
+                    // Reset Redis cache for new day
+                    redisValueCommands.set(COA_REQUEST_COUNT_CACHE_KEY, 0L)
+                            .subscribe().with(
+                                    success -> LoggingUtil.logDebug(log, M_COA, "Redis COA count reset for new day"),
+                                    error -> LoggingUtil.logWarn(log, M_COA, "Failed to reset Redis COA count: %s", error.getMessage())
+                            );
+                }
+            }
         }
 
-        // Increment daily count in memory
+        // Increment daily count in memory (lock-free AtomicLong)
         long newCount = dailyCoaRequestCount.incrementAndGet();
 
         // Increment Redis cache (fire and forget for performance)
