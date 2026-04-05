@@ -48,7 +48,6 @@ public class LoggingUtil {
      * Level check avoids buildMessage() allocation when WARN is suppressed.
      */
     public static void logWarn(Logger logger, String method, String message, Object... args) {
-        if (!logger.isWarnEnabled()) return;
         logger.warn(buildMessage(method, message, args));
     }
 
@@ -57,7 +56,6 @@ public class LoggingUtil {
      * Level check avoids buildMessage() allocation when ERROR is suppressed.
      */
     public static void logError(Logger logger, String method, Throwable e, String message, Object... args) {
-        if (!logger.isErrorEnabled()) return;
         String fullMessage = buildMessage(method, message, args);
         if (e != null) {
             logger.error(fullMessage, e);
