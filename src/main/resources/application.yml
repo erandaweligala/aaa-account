@@ -48,7 +48,7 @@ quarkus:
     console:
       format: "[%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}] %-5p [%c][%t][%X{traceId}][%X{userName}][%X{sessionId}] %s%e%n"
       async:
-        queue-length: 4096
+        queue-length: 16384              # Increased for 3500 TPS: ~10 log calls/tx = 35k/s burst headroom
         overflow: discard
       enabled: true
 
