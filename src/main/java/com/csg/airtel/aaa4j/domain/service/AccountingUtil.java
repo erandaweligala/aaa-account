@@ -823,6 +823,13 @@ public class AccountingUtil {
      * @return Uni of UpdateResult with failure status
      */
     private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request,Session sessionData) {
+        // For STOP requests, the NAS is already terminating the session — no COA needed from AAA side.
+        // Sending COA here would redundantly disconnect other active sessions that belong to the same user.
+        if (AccountingRequestDto.ActionType.STOP.equals(request.actionType())) {
+            LoggingUtil.logWarn(log, M_UPDATE, "No valid balance found for user: %s during STOP. Skipping COA to avoid disconnecting unrelated sessions.", request.username());
+            return Uni.createFrom().item(UpdateResult.failure("No valid balance found", sessionData));
+        }
+
         LoggingUtil.logWarn(log, M_UPDATE, "No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
         // Send COA disconnect for all existing sessions
