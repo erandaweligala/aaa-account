@@ -79,8 +79,6 @@ public class BucketService {
         return nonExpiredBalances;
     }
 
-    //todo implement Balance.priority < userData.balances.prority if send COA disconnect
-    
     public Uni<ApiResponse<Balance>> addBucketBalance(String userName, BalanceWrapper balance) {
         // Input validation
         if (userName == null || userName.isBlank()) {
@@ -94,44 +92,54 @@ public class BucketService {
 
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
-                    UserSessionData updatedUserData;
-
-                    if (userData == null ) {
+                    if (userData == null) {
                         // Create new entry without session section, only with balance details
                         LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance", userName);
                         List<Balance> newBalances = new ArrayList<>();
                         newBalances.add(singleBalance);
                         String groupId = null;
-                        if(singleBalance.isGroup()){
+                        if (singleBalance.isGroup()) {
                             groupId = singleBalance.getBucketUsername();
                         }
 
-                        updatedUserData = UserSessionData.builder()
+                        UserSessionData newUserData = UserSessionData.builder()
                                 .concurrency(balance.getConcurrency())
                                 .groupId(groupId)
                                 .userName(userName)
                                 .balance(Collections.unmodifiableList(newBalances))
                                 .sessions(Collections.emptyList())
                                 .build();
-                    } else {
-                        // Create defensive copy with null-safe handling for existing user
-                        List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
 
-                        // Remove expired balances before adding new one
-                        List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
-
-                        List<Balance> newBalances = new ArrayList<>(nonExpiredBalances);
-                        newBalances.add(singleBalance);
-
-                        // Use immutable builder/wither pattern
-                        updatedUserData = userData.toBuilder()
-                                .balance(Collections.unmodifiableList(newBalances))
-                                .build();
+                        return cacheClient.updateUserAndRelatedCaches(userName, newUserData, userName)
+                                .onItem().transform(result -> createSuccessResponse(singleBalance, "Bucket Added Successfully"));
                     }
 
-                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData,userName)
-                            /*.call(() -> coaService.clearAllSessionsAndSendCOA(userData,userName)) no need to disconnect*/
-                            .onItem().transform(result -> createSuccessResponse(singleBalance,"Bucket Added Successfully"));
+                    // Existing user: create defensive copy with null-safe handling
+                    List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
+                    List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
+                    List<Balance> newBalances = new ArrayList<>(nonExpiredBalances);
+                    newBalances.add(singleBalance);
+
+                    UserSessionData updatedUserData = userData.toBuilder()
+                            .balance(Collections.unmodifiableList(newBalances))
+                            .build();
+
+                    // If new balance has higher priority (lower number) than any existing balance, send COA disconnect
+                    final boolean needsCOA = singleBalance.getPriority() != null &&
+                            nonExpiredBalances.stream()
+                                    .filter(b -> b.getPriority() != null)
+                                    .anyMatch(b -> singleBalance.getPriority() < b.getPriority());
+
+                    if (needsCOA) {
+                        LoggingUtil.logInfo(log, M_ADD, "New balance priority %d is higher than existing, triggering COA disconnect for user %s",
+                                singleBalance.getPriority(), userName);
+                    }
+
+                    return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
+                            .call(() -> needsCOA
+                                    ? coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    : Uni.createFrom().item(updatedUserData))
+                            .onItem().transform(result -> createSuccessResponse(singleBalance, "Bucket Added Successfully"));
                 })
                 .onFailure().recoverWithItem(throwable -> {
                     LoggingUtil.logError(log, M_ADD, throwable, "Failed to add balance for user %s: %s",
@@ -164,8 +172,6 @@ public class BucketService {
 
         return cacheClient.getUserData(userName)
                 .onItem().transformToUni(userData -> {
-                    UserSessionData updatedUserData;
-
                     if (userData == null) {
                         LoggingUtil.logInfo(log, M_ADD, "User data not found for user %s, creating new entry with balance list", userName);
                         String groupId = null;
@@ -176,25 +182,45 @@ public class BucketService {
                             }
                         }
 
-                        updatedUserData = UserSessionData.builder()
+                        UserSessionData newUserData = UserSessionData.builder()
                                 .concurrency(balanceWrapper.getConcurrency())
                                 .groupId(groupId)
                                 .userName(userName)
                                 .balance(Collections.unmodifiableList(newBalances))
                                 .sessions(Collections.emptyList())
                                 .build();
-                    } else {
-                        List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
-                        List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
-                        List<Balance> combined = new ArrayList<>(nonExpiredBalances);
-                        combined.addAll(newBalances);
 
-                        updatedUserData = userData.toBuilder()
-                                .balance(Collections.unmodifiableList(combined))
-                                .build();
+                        return cacheClient.updateUserAndRelatedCaches(userName, newUserData, userName)
+                                .onItem().transform(result -> {
+                                    LoggingUtil.logInfo(log, M_ADD, "Bucket list added successfully for user %s, count: %d", userName, newBalances.size());
+                                    return createSuccessResponseList(newBalances, "Bucket List Added Successfully");
+                                });
+                    }
+
+                    List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
+                    List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
+                    List<Balance> combined = new ArrayList<>(nonExpiredBalances);
+                    combined.addAll(newBalances);
+
+                    UserSessionData updatedUserData = userData.toBuilder()
+                            .balance(Collections.unmodifiableList(combined))
+                            .build();
+
+                    // If any new balance has higher priority (lower number) than any existing balance, send COA disconnect
+                    final boolean needsCOA = newBalances.stream()
+                            .filter(nb -> nb.getPriority() != null)
+                            .anyMatch(nb -> nonExpiredBalances.stream()
+                                    .filter(eb -> eb.getPriority() != null)
+                                    .anyMatch(eb -> nb.getPriority() < eb.getPriority()));
+
+                    if (needsCOA) {
+                        LoggingUtil.logInfo(log, M_ADD, "New balance list contains higher priority balance, triggering COA disconnect for user %s", userName);
                     }
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
+                            .call(() -> needsCOA
+                                    ? coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    : Uni.createFrom().item(updatedUserData))
                             .onItem().transform(result -> {
                                 LoggingUtil.logInfo(log, M_ADD, "Bucket list added successfully for user %s, count: %d", userName, newBalances.size());
                                 return createSuccessResponseList(newBalances, "Bucket List Added Successfully");
