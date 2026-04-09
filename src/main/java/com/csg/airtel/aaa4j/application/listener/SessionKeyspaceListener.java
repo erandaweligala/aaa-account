@@ -17,15 +17,6 @@ import org.jboss.logging.Logger;
  * Listens for Redis keyspace expiry notifications to implement event-driven
  * absolute session timeout.
  *
- * <h2>How it works</h2>
- * <ol>
- *   <li>On startup, enables Redis keyspace notifications ({@code Ex}) via CONFIG SET.</li>
- *   <li>Subscribes to {@code __keyevent@0__:expired}.</li>
- *   <li>Filters events whose key matches the {@code session:ttl:} prefix.</li>
- *   <li>Parses {@code userId} and {@code sessionId} from the key.</li>
- *   <li>Delegates to {@link AbsoluteSessionTerminatorService} to clean up the session.</li>
- * </ol>
- *
  * <h2>Redis prerequisite</h2>
  * <p>Keyspace notifications are enabled automatically at startup via
  * {@code CONFIG SET notify-keyspace-events Ex}. No manual Redis configuration is required.</p>
@@ -61,12 +52,7 @@ public class SessionKeyspaceListener {
         subscribeToExpiredEvents();
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-
     private void enableKeyspaceNotifications() {
-        // "E" = Keyevent events, "x" = Expired events
         reactiveRedisDataSource.execute("CONFIG", "SET", "notify-keyspace-events", "Ex")
                 .subscribe().with(
                         result -> LoggingUtil.logInfo(log, M_LISTEN,

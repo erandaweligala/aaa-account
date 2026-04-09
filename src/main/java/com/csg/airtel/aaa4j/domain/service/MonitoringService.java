@@ -130,10 +130,6 @@ public class MonitoringService {
      * Updates the daily COA request count.
      * Resets the counter if a new day has started (00:00).
      * Syncs the count with Redis for distributed tracking.
-     *
-     * Uses double-checked locking: the volatile read of currentDay is lock-free on the
-     * hot path (same-day case), and synchronization is only acquired for the rare
-     * day-rollover case, eliminating thread contention at high TPS.
      */
     private void updateDailyCoaCount() {
         LocalDate today = LocalDate.now();

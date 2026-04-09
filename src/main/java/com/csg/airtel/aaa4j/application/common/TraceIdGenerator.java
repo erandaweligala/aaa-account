@@ -18,7 +18,7 @@ public final class TraceIdGenerator {
 	private static final char[] HEX_CHARS = "0123456789abcdef".toCharArray();
 
 	private TraceIdGenerator() {
-		// Utility class; do not instantiate
+
 	}
 
 	/**

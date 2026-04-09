@@ -50,11 +50,14 @@ public class AccountingConsumer {
     }
 
     private void setMdcContext(AccountingRequestDto request) {
-        MDC.put(LoggingUtil.TRACE_ID, request.eventId());
-        MDC.put(LoggingUtil.USER_NAME, request.username());
-        MDC.put(LoggingUtil.SESSION_ID, request.sessionId());
+        MDC.put(LoggingUtil.TRACE_ID,   nvl(request.eventId(),   "no-event-id"));
+        MDC.put(LoggingUtil.USER_NAME,  nvl(request.username(),  "unknown"));
+        MDC.put(LoggingUtil.SESSION_ID, nvl(request.sessionId(), "no-session"));
     }
 
+    private String nvl(String value, String fallback) {
+        return value != null ? value : fallback;
+    }
     private void clearMdcContext() {
         MDC.remove(LoggingUtil.TRACE_ID);
         MDC.remove(LoggingUtil.USER_NAME);

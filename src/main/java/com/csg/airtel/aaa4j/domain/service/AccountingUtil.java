@@ -825,6 +825,11 @@ public class AccountingUtil {
     private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request,Session sessionData) {
         LoggingUtil.logWarn(log, M_UPDATE, "No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
+        if (AccountingRequestDto.ActionType.STOP.equals(request.actionType())) {
+            LoggingUtil.logWarn(log, M_UPDATE, "No valid balance found for user: %s during STOP. Skipping COA to avoid disconnecting unrelated sessions.", request.username());
+            return Uni.createFrom().item(UpdateResult.failure("No valid balance found", sessionData));
+        }
+
         // Send COA disconnect for all existing sessions
         return coaService.clearAllSessionsAndSendCOA(userData, request.username(), null, request)
                 .onItem().transform(updatedUserData -> {

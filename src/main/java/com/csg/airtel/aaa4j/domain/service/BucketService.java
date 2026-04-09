@@ -79,6 +79,8 @@ public class BucketService {
         return nonExpiredBalances;
     }
 
+    //todo implement Balance.priority < userData.balances.prority if send COA disconnect
+    
     public Uni<ApiResponse<Balance>> addBucketBalance(String userName, BalanceWrapper balance) {
         // Input validation
         if (userName == null || userName.isBlank()) {
@@ -279,9 +281,10 @@ public class BucketService {
                             .balance(Collections.unmodifiableList(balanceList))
                             .build();
 
+                    boolean finalExpiryChanged = expiryChanged;
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
                             .call(() -> {
-                                if (expiryChanged && userData.getSessions() != null && !userData.getSessions().isEmpty()) {
+                                if (finalExpiryChanged && userData.getSessions() != null && !userData.getSessions().isEmpty()) {
                                     LoggingUtil.logInfo(log, M_UPDATE,
                                             "Balance expiry changed for user %s serviceId %s, initiating COA Disconnect for %d active session(s)",
                                             userName, serviceId, userData.getSessions().size());
