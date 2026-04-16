@@ -40,6 +40,10 @@ public class AccountingConsumer {
 
         setMdcContext(request);
 
+        LoggingUtil.logInfo(LOG, METHOD_CONSUME,
+                "Consuming accounting event: eventId=%s, sessionId=%s, username=%s",
+                request.eventId(), request.sessionId(), request.username());
+
         return accountingHandlerFactory.getHandler(request, request.eventId())
                 .onFailure().recoverWithUni(failure -> {
                     LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
