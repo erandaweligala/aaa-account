@@ -39,15 +39,15 @@ public class MonitoringService {
         LoggingUtil.logInfo(log, M_INIT, "Initializing MonitoringService with Micrometer metrics");
 
         // Initialize counters
-        this.sessionsCreatedCounter = Counter.builder("sessions.created.total")
+        this.sessionsCreatedCounter = Counter.builder("open_session_count")
                 .description("Total number of sessions created")
                 .register(registry);
 
-        this.sessionsTerminatedCounter = Counter.builder("sessions.terminated.total")
+        this.sessionsTerminatedCounter = Counter.builder("session_terminated_count")
                 .description("Total number of sessions terminated")
                 .register(registry);
 
-        this.coaRequestsCounter = Counter.builder("coa.requests.total")
+        this.coaRequestsCounter = Counter.builder("disconnect_request_success_count")
                 .description("Total number of COA (Change of Authorization) requests sent")
                 .register(registry);
 
