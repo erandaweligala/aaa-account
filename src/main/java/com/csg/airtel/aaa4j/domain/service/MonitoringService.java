@@ -14,7 +14,6 @@ import org.jboss.logging.Logger;
 
 import java.time.LocalDate;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 @ApplicationScoped
 public class MonitoringService {
@@ -23,8 +22,6 @@ public class MonitoringService {
     private static final String M_RECORD = "recordMetric";
     private static final String M_DAILY = "dailyCount";
     private static final String M_RESET = "dailyReset";
-    private static final String M_TPS = "tpsUpdate";
-    private static final int TPS_WINDOW_SECONDS = 10;
 
     private static final String REDIS_KEY_SESSION_CREATED    = "dailyOpenSessionCount";
     private static final String REDIS_KEY_SESSION_TERMINATED = "dailySessionTerminatedCount";
@@ -42,11 +39,6 @@ public class MonitoringService {
     private final AtomicLong dailySessionTerminatedCount;
     private final AtomicLong dailyDisconnectSuccessCount;
     private final AtomicLong dailyDisconnectFailureCount;
-
-    // TPS tracking: total requests consumed and the last snapshot for delta calculation
-    private final AtomicLong totalRequestsConsumed;
-    private final AtomicLong tpsSnapshotCount;
-    private final AtomicReference<Double> currentAvgTps;
 
     private volatile LocalDate currentDay;
 
@@ -80,11 +72,6 @@ public class MonitoringService {
         this.dailyDisconnectFailureCount = new AtomicLong(0);
         this.currentDay = LocalDate.now();
 
-        // TPS tracking fields
-        this.totalRequestsConsumed = new AtomicLong(0);
-        this.tpsSnapshotCount      = new AtomicLong(0);
-        this.currentAvgTps         = new AtomicReference<>(0.0);
-
         // Prometheus Gauges for 24-hour window counts
         Gauge.builder("open_session_daily_count", dailySessionCreatedCount, AtomicLong::get)
                 .description("Sessions opened in the current 24-hour window (resets at 00:00)")
@@ -100,10 +87,6 @@ public class MonitoringService {
 
         Gauge.builder("disconnect_request_failure_daily_count", dailyDisconnectFailureCount, AtomicLong::get)
                 .description("Failed disconnect requests in the current 24-hour window (resets at 00:00)")
-                .register(registry);
-
-        Gauge.builder("avg_consumed_tps", this.currentAvgTps, ref -> ref.get())
-                .description("Average consumed requests per second over the last " + TPS_WINDOW_SECONDS + " seconds")
                 .register(registry);
 
         this.redisValueCommands = reactiveRedisDataSource.value(String.class, Long.class);
@@ -171,19 +154,6 @@ public class MonitoringService {
         } catch (Exception e) {
             LoggingUtil.logWarn(log, M_RECORD, "Failed to record disconnect failure metric: %s", e.getMessage());
         }
-    }
-
-    public void recordRequestConsumed() {
-        totalRequestsConsumed.incrementAndGet();
-    }
-
-    @Scheduled(every = "10s")
-    void updateAvgTps() {
-        long current  = totalRequestsConsumed.get();
-        long previous = tpsSnapshotCount.getAndSet(current);
-        double tps    = (current - previous) / (double) TPS_WINDOW_SECONDS;
-        currentAvgTps.set(tps);
-        LoggingUtil.logInfo(log, M_TPS, "Avg consumed TPS (last %ds): %.2f", TPS_WINDOW_SECONDS, tps);
     }
 
     /**
@@ -280,13 +250,5 @@ public class MonitoringService {
 
     public Uni<Long> getDailyDisconnectFailureCount() {
         return getDailyCount(REDIS_KEY_DISCONNECT_FAILURE, dailyDisconnectFailureCount);
-    }
-
-    public double getAvgConsumedTps() {
-        return currentAvgTps.get();
-    }
-
-    public long getTotalRequestsConsumed() {
-        return totalRequestsConsumed.get();
     }
 }

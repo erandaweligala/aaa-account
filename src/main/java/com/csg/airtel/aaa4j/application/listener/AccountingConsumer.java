@@ -3,7 +3,7 @@ package com.csg.airtel.aaa4j.application.listener;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
-import com.csg.airtel.aaa4j.domain.service.MonitoringService;
+import io.quarkus.scheduler.Scheduled;
 import io.smallrye.mutiny.Uni;
 
 import jakarta.enterprise.context.ApplicationScoped;
@@ -14,18 +14,23 @@ import org.eclipse.microprofile.reactive.messaging.Message;
 import org.jboss.logging.Logger;
 import org.slf4j.MDC;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 @ApplicationScoped
 public class AccountingConsumer {
     private static final Logger LOG = Logger.getLogger(AccountingConsumer.class);
     private static final String METHOD_CONSUME = "consumeAccountingEvent";
+    private static final String METHOD_TPS     = "tps";
+    private static final int    TPS_WINDOW_SEC = 10;
+
+    private final AtomicLong totalConsumed   = new AtomicLong(0);
+    private final AtomicLong lastSnapshot    = new AtomicLong(0);
 
     final AccountingHandlerFactory accountingHandlerFactory;
-    final MonitoringService monitoringService;
 
     @Inject
-    public AccountingConsumer(AccountingHandlerFactory accountingHandlerFactory, MonitoringService monitoringService) {
+    public AccountingConsumer(AccountingHandlerFactory accountingHandlerFactory) {
         this.accountingHandlerFactory = accountingHandlerFactory;
-        this.monitoringService = monitoringService;
     }
 
     /**
@@ -41,7 +46,7 @@ public class AccountingConsumer {
         AccountingRequestDto request = message.getPayload();
 
         setMdcContext(request);
-        monitoringService.recordRequestConsumed();
+        totalConsumed.incrementAndGet();
 
         return accountingHandlerFactory.getHandler(request, request.eventId())
                 .onFailure().recoverWithUni(failure -> {
@@ -50,6 +55,14 @@ public class AccountingConsumer {
                     return Uni.createFrom().voidItem();
                 })
                 .onTermination().invoke(this::clearMdcContext);
+    }
+
+    @Scheduled(every = "10s")
+    void logAvgTps() {
+        long current  = totalConsumed.get();
+        long previous = lastSnapshot.getAndSet(current);
+        double tps    = (current - previous) / (double) TPS_WINDOW_SEC;
+        LoggingUtil.logInfo(LOG, METHOD_TPS, "avg_tps=%.2f window=%ds total=%d", tps, TPS_WINDOW_SEC, current);
     }
 
     private void setMdcContext(AccountingRequestDto request) {
@@ -61,10 +74,10 @@ public class AccountingConsumer {
     private String nvl(String value, String fallback) {
         return value != null ? value : fallback;
     }
+
     private void clearMdcContext() {
         MDC.remove(LoggingUtil.TRACE_ID);
         MDC.remove(LoggingUtil.USER_NAME);
         MDC.remove(LoggingUtil.SESSION_ID);
     }
 }
-
