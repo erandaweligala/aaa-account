@@ -4,7 +4,6 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
 import io.smallrye.mutiny.Uni;
-import io.smallrye.mutiny.infrastructure.Infrastructure;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -14,10 +13,19 @@ import org.eclipse.microprofile.reactive.messaging.Message;
 import org.jboss.logging.Logger;
 import org.slf4j.MDC;
 
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicLong;
+
 @ApplicationScoped
 public class AccountingConsumer {
     private static final Logger LOG = Logger.getLogger(AccountingConsumer.class);
     private static final String METHOD_CONSUME = "consumeAccountingEvent";
+    private static final int PROGRESS_INTERVAL = 1000;
+
+    private final AtomicLong totalProcessed    = new AtomicLong(0);
+    private final AtomicLong lastProgressCount = new AtomicLong(0);
+    private final AtomicLong lastProgressTime  = new AtomicLong(System.currentTimeMillis());
+    private final long startEpochMs = System.currentTimeMillis();
 
     final AccountingHandlerFactory accountingHandlerFactory;
 
@@ -46,7 +54,37 @@ public class AccountingConsumer {
                             "Failed processing session: %s", request.sessionId());
                     return Uni.createFrom().voidItem();
                 })
-                .onTermination().invoke(this::clearMdcContext);
+                .onTermination().invoke(() -> {
+                    logTpsProgress();
+                    clearMdcContext();
+                });
+    }
+
+    private void logTpsProgress() {
+        long total = totalProcessed.incrementAndGet();
+        long prev = lastProgressCount.get();
+        if (total - prev >= PROGRESS_INTERVAL && lastProgressCount.compareAndSet(prev, total)) {
+            long currentTime = System.currentTimeMillis();
+            long elapsed = currentTime - lastProgressTime.getAndSet(currentTime);
+            double tps = elapsed > 0 ? ((total - prev) * 1000.0 / elapsed) : 0;
+
+            long elapsedSinceStart = currentTime - startEpochMs;
+            double overallTps = elapsedSinceStart > 0 ? (total * 1000.0 / elapsedSinceStart) : 0;
+
+            LOG.infof("[%s]TPS Progress: %d processed | Current: %.0f msg/s | Overall: %.0f msg/s | Elapsed: %s",
+                    METHOD_CONSUME, total, tps, overallTps, formatDuration(Duration.ofMillis(elapsedSinceStart)));
+
+            lastProgressTime.set(currentTime);
+        }
+    }
+
+    private static String formatDuration(Duration d) {
+        long h = d.toHours();
+        long m = d.toMinutesPart();
+        long s = d.toSecondsPart();
+        return h > 0
+                ? String.format("%dh %02dm %02ds", h, m, s)
+                : String.format("%dm %02ds", m, s);
     }
 
     private void setMdcContext(AccountingRequestDto request) {
