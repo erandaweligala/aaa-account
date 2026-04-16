@@ -27,18 +27,21 @@ public class MonitoringService {
     private static final String REDIS_KEY_SESSION_TERMINATED = "dailySessionTerminatedCount";
     private static final String REDIS_KEY_DISCONNECT_SUCCESS = "coaRequestCount";
     private static final String REDIS_KEY_DISCONNECT_FAILURE = "dailyDisconnectFailureCount";
+    private static final String REDIS_KEY_EVENTS_CONSUMED    = "dailyAccountingEventsConsumed";
 
     // Lifetime Micrometer counters exposed to Prometheus
     private final Counter sessionsCreatedCounter;
     private final Counter sessionsTerminatedCounter;
     private final Counter disconnectSuccessCounter;
     private final Counter disconnectFailureCounter;
+    private final Counter accountingEventsConsumedCounter;
 
     // 24-hour window counters (00:00–23:59), reset by scheduler at midnight
     private final AtomicLong dailySessionCreatedCount;
     private final AtomicLong dailySessionTerminatedCount;
     private final AtomicLong dailyDisconnectSuccessCount;
     private final AtomicLong dailyDisconnectFailureCount;
+    private final AtomicLong dailyAccountingEventsConsumedCount;
 
     private volatile LocalDate currentDay;
 
@@ -65,11 +68,16 @@ public class MonitoringService {
                 .description("Total number of failed COA disconnect requests (NAK or HTTP error)")
                 .register(registry);
 
+        this.accountingEventsConsumedCounter = Counter.builder("accounting_events_consumed_count")
+                .description("Total number of accounting events consumed from Kafka (use rate() for TPS)")
+                .register(registry);
+
         // Daily AtomicLong counters reset at 00:00 by scheduler
-        this.dailySessionCreatedCount    = new AtomicLong(0);
-        this.dailySessionTerminatedCount = new AtomicLong(0);
-        this.dailyDisconnectSuccessCount = new AtomicLong(0);
-        this.dailyDisconnectFailureCount = new AtomicLong(0);
+        this.dailySessionCreatedCount           = new AtomicLong(0);
+        this.dailySessionTerminatedCount        = new AtomicLong(0);
+        this.dailyDisconnectSuccessCount        = new AtomicLong(0);
+        this.dailyDisconnectFailureCount        = new AtomicLong(0);
+        this.dailyAccountingEventsConsumedCount = new AtomicLong(0);
         this.currentDay = LocalDate.now();
 
         // Prometheus Gauges for 24-hour window counts
@@ -87,6 +95,10 @@ public class MonitoringService {
 
         Gauge.builder("disconnect_request_failure_daily_count", dailyDisconnectFailureCount, AtomicLong::get)
                 .description("Failed disconnect requests in the current 24-hour window (resets at 00:00)")
+                .register(registry);
+
+        Gauge.builder("accounting_events_consumed_daily_count", dailyAccountingEventsConsumedCount, AtomicLong::get)
+                .description("Accounting events consumed in the current 24-hour window (resets at 00:00)")
                 .register(registry);
 
         this.redisValueCommands = reactiveRedisDataSource.value(String.class, Long.class);
@@ -156,6 +168,17 @@ public class MonitoringService {
         }
     }
 
+    public void recordAccountingEventConsumed() {
+        try {
+            accountingEventsConsumedCounter.increment();
+            incrementDailyCount(REDIS_KEY_EVENTS_CONSUMED, dailyAccountingEventsConsumedCount);
+            LoggingUtil.logDebug(log, M_RECORD, "Accounting event consumed metric recorded. Total: %.0f, Daily: %d",
+                    accountingEventsConsumedCounter.count(), dailyAccountingEventsConsumedCount.get());
+        } catch (Exception e) {
+            LoggingUtil.logWarn(log, M_RECORD, "Failed to record accounting event consumed metric: %s", e.getMessage());
+        }
+    }
+
     /**
      * Resets all 24-hour window counters at midnight (00:00:00).
      * Both in-memory AtomicLong values and Redis keys are cleared.
@@ -163,20 +186,23 @@ public class MonitoringService {
     @Scheduled(cron = "0 0 0 * * ?")
     void resetDailyCounters() {
         LoggingUtil.logInfo(log, M_RESET,
-                "Resetting daily metric counters at midnight. Previous counts — created: %d, terminated: %d, success: %d, failure: %d",
+                "Resetting daily metric counters at midnight. Previous counts — created: %d, terminated: %d, success: %d, failure: %d, eventsConsumed: %d",
                 dailySessionCreatedCount.get(), dailySessionTerminatedCount.get(),
-                dailyDisconnectSuccessCount.get(), dailyDisconnectFailureCount.get());
+                dailyDisconnectSuccessCount.get(), dailyDisconnectFailureCount.get(),
+                dailyAccountingEventsConsumedCount.get());
 
         dailySessionCreatedCount.set(0);
         dailySessionTerminatedCount.set(0);
         dailyDisconnectSuccessCount.set(0);
         dailyDisconnectFailureCount.set(0);
+        dailyAccountingEventsConsumedCount.set(0);
         currentDay = LocalDate.now();
 
         resetRedisKey(REDIS_KEY_SESSION_CREATED);
         resetRedisKey(REDIS_KEY_SESSION_TERMINATED);
         resetRedisKey(REDIS_KEY_DISCONNECT_SUCCESS);
         resetRedisKey(REDIS_KEY_DISCONNECT_FAILURE);
+        resetRedisKey(REDIS_KEY_EVENTS_CONSUMED);
 
         LoggingUtil.logInfo(log, M_RESET, "Daily metric counters reset successfully for date: %s", currentDay);
     }

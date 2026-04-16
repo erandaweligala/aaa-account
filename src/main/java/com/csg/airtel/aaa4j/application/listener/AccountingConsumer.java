@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.application.listener;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.service.AccountingHandlerFactory;
+import com.csg.airtel.aaa4j.domain.service.MonitoringService;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
 
@@ -20,10 +21,13 @@ public class AccountingConsumer {
     private static final String METHOD_CONSUME = "consumeAccountingEvent";
 
     final AccountingHandlerFactory accountingHandlerFactory;
+    final MonitoringService monitoringService;
 
     @Inject
-    public AccountingConsumer(AccountingHandlerFactory accountingHandlerFactory) {
+    public AccountingConsumer(AccountingHandlerFactory accountingHandlerFactory,
+                              MonitoringService monitoringService) {
         this.accountingHandlerFactory = accountingHandlerFactory;
+        this.monitoringService = monitoringService;
     }
 
     /**
@@ -43,6 +47,8 @@ public class AccountingConsumer {
         LoggingUtil.logInfo(LOG, METHOD_CONSUME,
                 "Consuming accounting event: eventId=%s, sessionId=%s, username=%s",
                 request.eventId(), request.sessionId(), request.username());
+
+        monitoringService.recordAccountingEventConsumed();
 
         return accountingHandlerFactory.getHandler(request, request.eventId())
                 .onFailure().recoverWithUni(failure -> {
