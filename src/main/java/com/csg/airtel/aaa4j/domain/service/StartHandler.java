@@ -156,9 +156,12 @@ public class StartHandler {
     }
 
     private boolean sessionAlreadyExists(UserSessionData userSessionData, String sessionId) {
-        return userSessionData.getSessions()
-                .stream()
-                .anyMatch(session -> session.getSessionId().equals(sessionId));
+        for (Session session : userSessionData.getSessions()) {
+            if (session.getSessionId().equals(sessionId)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Uni<Void> processSessionWithHighestPriority(

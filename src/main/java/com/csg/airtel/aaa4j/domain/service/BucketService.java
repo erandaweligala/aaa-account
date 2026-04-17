@@ -46,12 +46,11 @@ public class BucketService {
      * @param balances list of balances to filter
      * @return filtered list containing only non-expired balances
      */
-    private List<Balance> removeExpiredBalances(List<Balance> balances) {
+    private List<Balance> removeExpiredBalances(List<Balance> balances, LocalDateTime now) {
         if (balances == null || balances.isEmpty()) {
             return balances;
         }
 
-        LocalDateTime now = LocalDateTime.now();
         List<Balance> nonExpiredBalances = new ArrayList<>();
 
         for (Balance balance : balances) {
@@ -115,8 +114,9 @@ public class BucketService {
                     }
 
                     // Existing user: create defensive copy with null-safe handling
+                    LocalDateTime now = LocalDateTime.now();
                     List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
-                    List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
+                    List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances, now);
                     List<Balance> newBalances = new ArrayList<>(nonExpiredBalances);
                     newBalances.add(singleBalance);
 
@@ -197,8 +197,9 @@ public class BucketService {
                                 });
                     }
 
+                    LocalDateTime now = LocalDateTime.now();
                     List<Balance> existingBalances = Objects.requireNonNullElse(userData.getBalance(), List.of());
-                    List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances);
+                    List<Balance> nonExpiredBalances = removeExpiredBalances(existingBalances, now);
                     List<Balance> combined = new ArrayList<>(nonExpiredBalances);
                     combined.addAll(newBalances);
 
@@ -206,12 +207,24 @@ public class BucketService {
                             .balance(Collections.unmodifiableList(combined))
                             .build();
 
-                    // If any new balance has higher priority (lower number) than any existing balance, send COA disconnect
-                    final boolean needsCOA = newBalances.stream()
-                            .filter(nb -> nb.getPriority() != null)
-                            .anyMatch(nb -> nonExpiredBalances.stream()
-                                    .filter(eb -> eb.getPriority() != null)
-                                    .anyMatch(eb -> nb.getPriority() < eb.getPriority()));
+                    // Find the minimum (highest) priority among existing balances in one pass,
+                    // then check whether any new balance beats it — O(n+m) instead of O(n*m).
+                    int minExistingPriority = Integer.MAX_VALUE;
+                    for (Balance eb : nonExpiredBalances) {
+                        if (eb.getPriority() != null && eb.getPriority() < minExistingPriority) {
+                            minExistingPriority = eb.getPriority();
+                        }
+                    }
+                    final int existingMin = minExistingPriority;
+                    boolean needsCOA = false;
+                    if (existingMin < Integer.MAX_VALUE) {
+                        for (Balance nb : newBalances) {
+                            if (nb.getPriority() != null && nb.getPriority() < existingMin) {
+                                needsCOA = true;
+                                break;
+                            }
+                        }
+                    }
 
                     if (needsCOA) {
                         LoggingUtil.logInfo(log, M_ADD, "New balance list contains higher priority balance, triggering COA disconnect for user %s", userName);
@@ -274,12 +287,13 @@ public class BucketService {
                         return Uni.createFrom().item(createErrorResponse(USER_NOT_FOUND));
                     }
 
+                    LocalDateTime now = LocalDateTime.now();
                     List<Balance> existingBalances = userData.getBalance() != null
                             ? new ArrayList<>(userData.getBalance())
                             : new ArrayList<>();
 
                     // Remove expired balances
-                    List<Balance> balanceList = removeExpiredBalances(existingBalances);
+                    List<Balance> balanceList = removeExpiredBalances(existingBalances, now);
 
                     // Check if serviceExpiry or bucketExpiryDate changed compared to cached balance
                     boolean expiryChanged = false;

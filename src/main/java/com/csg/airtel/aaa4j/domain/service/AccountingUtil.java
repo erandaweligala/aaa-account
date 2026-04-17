@@ -558,9 +558,12 @@ public class AccountingUtil {
         }
 
         if (todayRecord == null) {
-            // Evict oldest records if history exceeds max size to prevent unbounded growth
-            while (history.size() >= AppConstant.CONSUMPTION_HISTORY_MAX_SIZE) {
-                history.remove(0);
+            // Evict oldest records if history exceeds max size to prevent unbounded growth.
+            // subList().clear() removes a contiguous range in one O(n) pass instead of
+            // calling remove(0) repeatedly (each of which shifts the whole array).
+            int excess = history.size() - AppConstant.CONSUMPTION_HISTORY_MAX_SIZE + 1;
+            if (excess > 0) {
+                history.subList(0, excess).clear();
             }
             // Create new daily record
             todayRecord = new ConsumptionRecord(today, bytesConsumed, 1);
