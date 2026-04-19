@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxGraphModel dx="1654" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1980" pageHeight="1300" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <!-- TITLE -->
+    <mxCell id="title" value="AAA Account Service — Accounting Event Sequence Diagram (START Flow)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="10" y="5" width="1940" height="30" as="geometry" />
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ PARTICIPANTS ═══════════════════════════════════════ -->
+
+    <!-- P1: Kafka Source -->
+    <mxCell id="p1" value="&lt;b&gt;Kafka&lt;/b&gt;&#xa;(accounting-dc-2)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="10" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P2: AccountingConsumer -->
+    <mxCell id="p2" value="&lt;b&gt;AccountingConsumer&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="200" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P3: AccountingHandlerFactory -->
+    <mxCell id="p3" value="&lt;b&gt;AccountingHandler&lt;/b&gt;&#xa;&lt;b&gt;Factory&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="390" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P4: StartHandler -->
+    <mxCell id="p4" value="&lt;b&gt;StartHandler&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="580" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P5: CacheClient (Redis) -->
+    <mxCell id="p5" value="&lt;b&gt;CacheClient&lt;/b&gt;&#xa;(Redis)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="770" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P6: UserBucketRepository (Oracle DB) -->
+    <mxCell id="p6" value="&lt;b&gt;UserBucketRepo&lt;/b&gt;&#xa;(Oracle DB)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="960" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P7: AccountingUtil -->
+    <mxCell id="p7" value="&lt;b&gt;AccountingUtil&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1150" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P8: COAService -->
+    <mxCell id="p8" value="&lt;b&gt;COAService&lt;/b&gt;&#xa;+ CoAHttpClient" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1340" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P9: SessionLifecycleManager -->
+    <mxCell id="p9" value="&lt;b&gt;SessionLifecycle&lt;/b&gt;&#xa;&lt;b&gt;Manager&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1530" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- P10: AccountProducer -->
+    <mxCell id="p10" value="&lt;b&gt;AccountProducer&lt;/b&gt;&#xa;(Kafka Out)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+      <mxGeometry x="1720" y="40" width="140" height="55" as="geometry" />
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ LIFELINES ═══════════════════════════════════════ -->
+
+    <mxCell id="l1" style="endArrow=none;dashed=1;html=1;strokeColor=#b85450;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="80" y="95" as="sourcePoint" />
+        <mxPoint x="80" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l2" style="endArrow=none;dashed=1;html=1;strokeColor=#6c8ebf;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="270" y="95" as="sourcePoint" />
+        <mxPoint x="270" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l3" style="endArrow=none;dashed=1;html=1;strokeColor=#6c8ebf;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="460" y="95" as="sourcePoint" />
+        <mxPoint x="460" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l4" style="endArrow=none;dashed=1;html=1;strokeColor=#82b366;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="95" as="sourcePoint" />
+        <mxPoint x="650" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l5" style="endArrow=none;dashed=1;html=1;strokeColor=#d6b656;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="840" y="95" as="sourcePoint" />
+        <mxPoint x="840" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l6" style="endArrow=none;dashed=1;html=1;strokeColor=#666666;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1030" y="95" as="sourcePoint" />
+        <mxPoint x="1030" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l7" style="endArrow=none;dashed=1;html=1;strokeColor=#82b366;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1220" y="95" as="sourcePoint" />
+        <mxPoint x="1220" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l8" style="endArrow=none;dashed=1;html=1;strokeColor=#b85450;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1410" y="95" as="sourcePoint" />
+        <mxPoint x="1410" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l9" style="endArrow=none;dashed=1;html=1;strokeColor=#9673a6;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1600" y="95" as="sourcePoint" />
+        <mxPoint x="1600" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="l10" style="endArrow=none;dashed=1;html=1;strokeColor=#b85450;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1790" y="95" as="sourcePoint" />
+        <mxPoint x="1790" y="1220" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ SECTION 1: Event Reception ═══════════════════════════════════════ -->
+
+    <mxCell id="sec1_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;" vertex="1" parent="1">
+      <mxGeometry x="10" y="115" width="1930" height="165" as="geometry" />
+    </mxCell>
+    <mxCell id="sec1_lbl" value="1. Event Reception" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=11;fontColor=#6c8ebf;" vertex="1" parent="1">
+      <mxGeometry x="15" y="118" width="160" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- m1: Kafka → AccountingConsumer -->
+    <mxCell id="m1" value="consume(AccountingRequestDto)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="80" y="150" as="sourcePoint" />
+        <mxPoint x="270" y="150" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m2: AccountingConsumer → HandlerFactory -->
+    <mxCell id="m2" value="getHandler(&quot;START&quot;)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="270" y="195" as="sourcePoint" />
+        <mxPoint x="460" y="195" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m3: HandlerFactory → AccountingConsumer (return) -->
+    <mxCell id="m3" value="return StartHandler" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="460" y="225" as="sourcePoint" />
+        <mxPoint x="270" y="225" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m4: AccountingConsumer → StartHandler -->
+    <mxCell id="m4" value="processAccountingStart(request)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="270" y="265" as="sourcePoint" />
+        <mxPoint x="650" y="265" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ SECTION 2: Cache Lookup ═══════════════════════════════════════ -->
+
+    <mxCell id="sec2_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;opacity=30;" vertex="1" parent="1">
+      <mxGeometry x="10" y="290" width="1930" height="120" as="geometry" />
+    </mxCell>
+    <mxCell id="sec2_lbl" value="2. Cache Lookup" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=11;fontColor=#d6b656;" vertex="1" parent="1">
+      <mxGeometry x="15" y="293" width="160" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- m5: StartHandler → CacheClient -->
+    <mxCell id="m5" value="getUserData(username)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="320" as="sourcePoint" />
+        <mxPoint x="840" y="320" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m6: CacheClient → StartHandler (MISS) -->
+    <mxCell id="m6" value="return null [CACHE MISS]" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;fontSize=10;strokeColor=#b85450;fontColor=#b85450;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="840" y="360" as="sourcePoint" />
+        <mxPoint x="650" y="360" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- cache HIT note -->
+    <mxCell id="note_hit" value="[alt] CACHE HIT → skip DB fetch, use cached UserSessionData" style="text;html=1;strokeColor=#d6b656;fillColor=#fff2cc;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="860" y="340" width="360" height="30" as="geometry" />
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ SECTION 3: DB Fetch ═══════════════════════════════════════ -->
+
+    <mxCell id="sec3_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;opacity=40;" vertex="1" parent="1">
+      <mxGeometry x="10" y="420" width="1930" height="120" as="geometry" />
+    </mxCell>
+    <mxCell id="sec3_lbl" value="3. DB Fetch (on CACHE MISS)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=11;fontColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="15" y="423" width="210" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- m7: StartHandler → OracleDB -->
+    <mxCell id="m7" value="getServiceBucketsByUserName(username) [QUERY_BALANCE]" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="450" as="sourcePoint" />
+        <mxPoint x="1030" y="450" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m8: OracleDB → StartHandler (return) -->
+    <mxCell id="m8" value="return ServiceBucketInfo[] (bucketId, quota, priority, expiry, concurrency…)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1030" y="490" as="sourcePoint" />
+        <mxPoint x="650" y="490" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m8b: StartHandler → CacheClient (store new data) -->
+    <mxCell id="m8b" value="storeUserData(userId, UserSessionData)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;strokeColor=#d6b656;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="525" as="sourcePoint" />
+        <mxPoint x="840" y="525" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ SECTION 4: Balance Processing ═══════════════════════════════════════ -->
+
+    <mxCell id="sec4_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;" vertex="1" parent="1">
+      <mxGeometry x="10" y="555" width="1930" height="185" as="geometry" />
+    </mxCell>
+    <mxCell id="sec4_lbl" value="4. Balance Selection &amp; Session Update" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=11;fontColor=#82b366;" vertex="1" parent="1">
+      <mxGeometry x="15" y="558" width="230" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- m9: StartHandler → AccountingUtil: findBalance -->
+    <mxCell id="m9" value="findBalanceWithHighestPriority(balances) [checks priority, expiry, timeWindow]" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="585" as="sourcePoint" />
+        <mxPoint x="1220" y="585" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m10: AccountingUtil → StartHandler (return) -->
+    <mxCell id="m10" value="return selectedBalance (highest priority valid balance)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1220" y="620" as="sourcePoint" />
+        <mxPoint x="650" y="620" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m11: StartHandler → AccountingUtil: updateSessionAndBalance -->
+    <mxCell id="m11" value="updateSessionAndBalance(request, userData) [calculates delta, checks consumptionLimit]" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="660" as="sourcePoint" />
+        <mxPoint x="1220" y="660" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m12: AccountingUtil → StartHandler (return) -->
+    <mxCell id="m12" value="return updatedUserData (new session attached, balance updated)" style="html=1;verticalAlign=bottom;endArrow=open;dashed=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1220" y="700" as="sourcePoint" />
+        <mxPoint x="650" y="700" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ SECTION 5: CoA Disconnect (opt) ═══════════════════════════════════════ -->
+
+    <mxCell id="sec5_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;opacity=30;dashed=1;" vertex="1" parent="1">
+      <mxGeometry x="10" y="750" width="1930" height="100" as="geometry" />
+    </mxCell>
+    <mxCell id="sec5_lbl" value="5. [opt] CoA Disconnect — if quota &lt; 0 OR bucket changed" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=11;fontColor=#b85450;" vertex="1" parent="1">
+      <mxGeometry x="15" y="753" width="360" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- m13: StartHandler → COAService -->
+    <mxCell id="m13" value="clearAllSessionsAndSendCOA(sessions)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;strokeColor=#b85450;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="782" as="sourcePoint" />
+        <mxPoint x="1410" y="782" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m14: COAService self-loop: HTTP to NAS -->
+    <mxCell id="m14" value="[HTTP/2 async] sendDisconnect(nasIp, sessionId) → NAS" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;strokeColor=#b85450;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1410" y="822" as="sourcePoint" />
+        <mxPoint x="1410" y="838" as="targetPoint" />
+        <Array as="points">
+          <mxPoint x="1470" y="822" />
+          <mxPoint x="1470" y="838" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ SECTION 6: Cache + Session Update ═══════════════════════════════════════ -->
+
+    <mxCell id="sec6_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;opacity=30;" vertex="1" parent="1">
+      <mxGeometry x="10" y="865" width="1930" height="140" as="geometry" />
+    </mxCell>
+    <mxCell id="sec6_lbl" value="6. Cache Update &amp; Session Lifecycle Registration" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=11;fontColor=#9673a6;" vertex="1" parent="1">
+      <mxGeometry x="15" y="868" width="310" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- m15: StartHandler → CacheClient: updateUserAndRelatedCaches -->
+    <mxCell id="m15" value="updateUserAndRelatedCaches(userData) [SET user:username + group:username in Redis]" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="895" as="sourcePoint" />
+        <mxPoint x="840" y="895" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m16: StartHandler → SessionLifecycleManager -->
+    <mxCell id="m16" value="onSessionCreated(session)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="935" as="sourcePoint" />
+        <mxPoint x="1600" y="935" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m17: SessionLifecycleManager self-loop -->
+    <mxCell id="m17" value="registerSession(expiryIndex) + setAbsoluteTimeout(ttlKey)" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;strokeColor=#9673a6;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1600" y="975" as="sourcePoint" />
+        <mxPoint x="1600" y="990" as="targetPoint" />
+        <Array as="points">
+          <mxPoint x="1670" y="975" />
+          <mxPoint x="1670" y="990" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ SECTION 7: Kafka Event Production ═══════════════════════════════════════ -->
+
+    <mxCell id="sec7_bg" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;opacity=20;" vertex="1" parent="1">
+      <mxGeometry x="10" y="1015" width="1930" height="190" as="geometry" />
+    </mxCell>
+    <mxCell id="sec7_lbl" value="7. Produce Downstream Kafka Events" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=11;fontColor=#b85450;" vertex="1" parent="1">
+      <mxGeometry x="15" y="1018" width="280" height="20" as="geometry" />
+    </mxCell>
+
+    <!-- m18: StartHandler → AccountProducer: DB write -->
+    <mxCell id="m18" value="produceDBWriteEvent(balance) → topic: dctodr-dc" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="1045" as="sourcePoint" />
+        <mxPoint x="1790" y="1045" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m19: StartHandler → AccountProducer: CDR -->
+    <mxCell id="m19" value="produceAccountingCDREvent(cdr) → topic: cdr-event-dc" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="1085" as="sourcePoint" />
+        <mxPoint x="1790" y="1085" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m20: StartHandler → AccountProducer: Quota notification (opt) -->
+    <mxCell id="m20" value="[opt] produceQuotaNotificationEvent() → topic: quota-notifications-dc" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;strokeColor=#FF8800;fontColor=#FF8800;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="1125" as="sourcePoint" />
+        <mxPoint x="1790" y="1125" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- m21: StartHandler → AccountProducer: rejection (opt) -->
+    <mxCell id="m21" value="[opt] produceAccountingResponseEvent(rejection) → topic: accounting-response-dc" style="html=1;verticalAlign=bottom;endArrow=block;endFill=1;fontSize=10;strokeColor=#990000;fontColor=#990000;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="650" y="1165" as="sourcePoint" />
+        <mxPoint x="1790" y="1165" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ NOTES: INTERIM / STOP differences ═══════════════════════════════════════ -->
+
+    <mxCell id="note_flows" value="&lt;b&gt;Other Handler Flows (same core path):&lt;/b&gt;&#xa;&#xa;• &lt;b&gt;INTERIM&lt;/b&gt;: InterimHandler.handleInterim() — identical steps 2–7; additionally calls SessionLifecycleManager.onSessionActivity() to refresh idle timeout in sorted-set expiry index.&#xa;• &lt;b&gt;STOP&lt;/b&gt;: StopHandler.stopProcessing() — steps 2–7 but removes session from list; calls onSessionTerminated() (removes from index + TTL key); no COA disconnect." style="text;html=1;strokeColor=#82b366;fillColor=#f9ffe0;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="10" y="1218" width="1000" height="70" as="geometry" />
+    </mxCell>
+
+    <!-- ═══════════════════════════════════════ NOTES: HTTP API ═══════════════════════════════════════ -->
+
+    <mxCell id="note_http" value="&lt;b&gt;HTTP API Flow (BucketResource):&lt;/b&gt;&#xa;&#xa;PATCH /cache/addBucket/{userName} → CacheClient.getUserData() → [add balance] → if new priority &gt; existing priority: COAService.clearAllSessionsAndSendCOA() → CacheClient.updateUserAndRelatedCaches()&#xa;Other endpoints: updateBucket (expiry), patchStatus, patchServiceStatus, deleteService — all follow the same: read cache → mutate → write cache pattern." style="text;html=1;strokeColor=#6c8ebf;fillColor=#f0f8ff;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="1020" y="1218" width="920" height="70" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>
