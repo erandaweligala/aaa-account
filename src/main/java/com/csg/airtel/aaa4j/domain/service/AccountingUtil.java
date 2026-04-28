@@ -209,10 +209,6 @@ public class AccountingUtil {
             AccountingRequestDto request,
             String bucketId) {
 
-        // Clear any stale ThreadLocal values from the calling thread before starting.
-        // The .eventually() cleanup below may run on a different thread (e.g. Vert.x event loop)
-        // when COA paths use .merge() for parallel HTTP calls, leaving the calling thread's
-        // ThreadLocal populated. Clearing here guarantees a fresh state for every request.
         clearTemporalCache();
 
         // Wrap in deferred Uni to ensure ThreadLocal cleanup runs even if synchronous code throws
@@ -558,9 +554,10 @@ public class AccountingUtil {
         }
 
         if (todayRecord == null) {
-            // Evict oldest records if history exceeds max size to prevent unbounded growth
-            while (history.size() >= AppConstant.CONSUMPTION_HISTORY_MAX_SIZE) {
-                history.remove(0);
+
+            int excess = history.size() - AppConstant.CONSUMPTION_HISTORY_MAX_SIZE + 1;
+            if (excess > 0) {
+                history.subList(0, excess).clear();
             }
             // Create new daily record
             todayRecord = new ConsumptionRecord(today, bytesConsumed, 1);

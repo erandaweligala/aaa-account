@@ -186,6 +186,7 @@ mp:
   messaging:
     outgoing:
       db-write-events:
+        allow.auto.create.topics: false
         bootstrap.servers: localhost2:9092
         connector: smallrye-kafka
         topic: dctodr-dc

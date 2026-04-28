@@ -54,37 +54,7 @@ public class AccountingConsumer {
                             "Failed processing session: %s", request.sessionId());
                     return Uni.createFrom().voidItem();
                 })
-                .onTermination().invoke(() -> {
-                    logTpsProgress();
-                    clearMdcContext();
-                });
-    }
-
-    private void logTpsProgress() {
-        long total = totalProcessed.incrementAndGet();
-        long prev = lastProgressCount.get();
-        if (total - prev >= PROGRESS_INTERVAL && lastProgressCount.compareAndSet(prev, total)) {
-            long currentTime = System.currentTimeMillis();
-            long elapsed = currentTime - lastProgressTime.getAndSet(currentTime);
-            double tps = elapsed > 0 ? ((total - prev) * 1000.0 / elapsed) : 0;
-
-            long elapsedSinceStart = currentTime - startEpochMs;
-            double overallTps = elapsedSinceStart > 0 ? (total * 1000.0 / elapsedSinceStart) : 0;
-
-            LOG.infof("[%s]TPS Progress: %d processed | Current: %.0f msg/s | Overall: %.0f msg/s | Elapsed: %s",
-                    METHOD_CONSUME, total, tps, overallTps, formatDuration(Duration.ofMillis(elapsedSinceStart)));
-
-            lastProgressTime.set(currentTime);
-        }
-    }
-
-    private static String formatDuration(Duration d) {
-        long h = d.toHours();
-        long m = d.toMinutesPart();
-        long s = d.toSecondsPart();
-        return h > 0
-                ? String.format("%dh %02dm %02ds", h, m, s)
-                : String.format("%dm %02ds", m, s);
+                .onTermination().invoke(this::clearMdcContext);
     }
 
     private void setMdcContext(AccountingRequestDto request) {
