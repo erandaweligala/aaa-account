@@ -1,9 +1,11 @@
 package com.csg.airtel.aaa4j.domain.produce;
 
+import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.ThresholdExpiryEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
+import com.csg.airtel.aaa4j.domain.model.cdr.Payload;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.service.FailoverPathLogger;
 import com.csg.airtel.aaa4j.domain.service.SessionLifecycleManager;
@@ -20,6 +22,7 @@ import org.eclipse.microprofile.reactive.messaging.Emitter;
 import org.eclipse.microprofile.reactive.messaging.Message;
 import org.jboss.logging.Logger;
 
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 
@@ -64,7 +67,13 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
+        Map<String, String> mdc = LoggingUtil.withCorrelation(
+                LoggingUtil.captureMdc(),
+                request.getEventId(),
+                request.getUserName(),
+                request.getSessionId());
+        LoggingUtil.runWithMdc(mdc, () ->
+                LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId()));
         return Uni.createFrom().emitter(em -> {
             Message<DBWriteRequest> message = Message.of(request)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -72,11 +81,14 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
+                        LoggingUtil.runWithMdc(mdc, () ->
+                                LOG.infof("Successfully sent accounting DB create event for session: %s, %d ms",
+                                        request.getSessionId(), System.currentTimeMillis() - startTime));
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
+                        LoggingUtil.runWithMdc(mdc, () ->
+                                LOG.errorf("Send failed: %s", throwable.getMessage()));
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -103,7 +115,12 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceAccountingResponseEvent process");
+        Map<String, String> mdc = LoggingUtil.withCorrelation(
+                LoggingUtil.captureMdc(),
+                event.traceId(),
+                event.userName(),
+                event.sessionId());
+        LoggingUtil.runWithMdc(mdc, () -> LOG.infof("Start produceAccountingResponseEvent process"));
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -111,11 +128,14 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
+                        LoggingUtil.runWithMdc(mdc, () ->
+                                LOG.infof("Successfully sent accounting response event for session: %s, %d ms",
+                                        event.sessionId(), System.currentTimeMillis() - startTime));
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("Send failed: %s", throwable.getMessage());
+                        LoggingUtil.runWithMdc(mdc, () ->
+                                LOG.errorf("Send failed: %s", throwable.getMessage()));
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -139,19 +159,26 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingCDREvent")
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Accounting CDR Event process");
+        Payload payload = event.getPayload();
+        String userName = payload != null && payload.getUser() != null ? payload.getUser().getUserName() : null;
+        String sessionId = payload != null && payload.getSession() != null ? payload.getSession().getSessionId() : null;
+        Map<String, String> mdc = LoggingUtil.withCorrelation(LoggingUtil.captureMdc(), null, userName, sessionId);
+        LoggingUtil.runWithMdc(mdc, () -> LOG.infof("Start produce Accounting CDR Event process"));
         return Uni.createFrom().emitter(em -> {
             Message<AccountingCDREvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
-                            .withKey(event.getPayload().getSession().getSessionId())
+                            .withKey(sessionId)
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting CDR event for session: %s, %d ms", event.getPayload().getSession().getSessionId(),System.currentTimeMillis()-startTime);
+                        LoggingUtil.runWithMdc(mdc, () ->
+                                LOG.infof("Successfully sent accounting CDR event for session: %s, %d ms",
+                                        sessionId, System.currentTimeMillis() - startTime));
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
-                        LOG.errorf("CDR Send failed: %s", throwable.getMessage());
+                        LoggingUtil.runWithMdc(mdc, () ->
+                                LOG.errorf("CDR Send failed: %s", throwable.getMessage()));
                         em.fail(throwable);
                         return CompletableFuture.completedFuture(null);
                     });
@@ -269,8 +296,14 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
     public Uni<Void> produceQuotaNotificationEvent(ThresholdExpiryEvent event) {
 
-        LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
-                event.data().serviceLineNumber(), event.meta().eventType());
+        Map<String, String> mdc = LoggingUtil.withCorrelation(
+                LoggingUtil.captureMdc(),
+                event.meta() != null ? event.meta().eventId() : null,
+                event.data() != null ? event.data().serviceLineNumber() : null,
+                null);
+        LoggingUtil.runWithMdc(mdc, () ->
+                LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
+                        event.data().serviceLineNumber(), event.meta().eventType()));
         /*
         return Uni.createFrom().emitter(em -> {
             Message<ThresholdExpiryEvent> message = Message.of(event)

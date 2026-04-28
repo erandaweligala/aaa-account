@@ -11,6 +11,7 @@ import org.jboss.logging.Logger;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.BiFunction;
@@ -470,6 +471,15 @@ public class CdrMappingUtil {
             BiFunction<AccountingRequestDto, Session, AccountingCDREvent> cdrBuilder,
             String serviceId,
             String bucketId) {
+        // Snapshot the caller's MDC up front: the success/failure callbacks below run after
+        // the Kafka ack, by which point we may be on the kafka-producer-network-thread (no
+        // Vert.x context) or back on an event-loop thread whose duplicated context has lost
+        // the original traceId/userName/sessionId set by the consumer.
+        Map<String, String> mdc = LoggingUtil.withCorrelation(
+                LoggingUtil.captureMdc(),
+                null,
+                request.username(),
+                request.sessionId());
         try {
             AccountingCDREvent cdrEvent = cdrBuilder.apply(request, session);
             // Update the accounting section with the provided serviceId and bucketId
@@ -482,11 +492,14 @@ public class CdrMappingUtil {
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, M_CDR, "CDR event sent successfully for session: %s", request.sessionId()),
-                            failure -> LoggingUtil.logError(log, M_CDR, failure, "Failed to send CDR event for session: %s", request.sessionId())
+                            success -> LoggingUtil.runWithMdc(mdc, () ->
+                                    LoggingUtil.logInfo(log, M_CDR, "CDR event sent successfully for session: %s", request.sessionId())),
+                            failure -> LoggingUtil.runWithMdc(mdc, () ->
+                                    LoggingUtil.logError(log, M_CDR, failure, "Failed to send CDR event for session: %s", request.sessionId()))
                     );
         } catch (Exception e) {
-            LoggingUtil.logError(log, M_CDR, e, "Error building CDR event for session: %s", request.sessionId());
+            LoggingUtil.runWithMdc(mdc, () ->
+                    LoggingUtil.logError(log, M_CDR, e, "Error building CDR event for session: %s", request.sessionId()));
         }
     }
 
