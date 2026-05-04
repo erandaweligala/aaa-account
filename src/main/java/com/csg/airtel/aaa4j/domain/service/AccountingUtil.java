@@ -79,6 +79,7 @@ public class AccountingUtil {
         }
         CACHED_NOW.remove();
         CACHED_TODAY.remove();
+        TIME_WINDOW_CACHE.clear();
     }
 
     /**
