@@ -275,7 +275,7 @@ class BucketServiceTest {
                 .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
 
         doReturn(Uni.createFrom().item(userData))
-                .when(coaService).clearAllSessionsAndSendCOA(any(), anyString(), any());
+                .when(coaService).clearAllSessionsAndSendCOA(any(), anyString(), any(), any());
 
         // 2. Act
         ApiResponse<String> response = bucketService.updateUserStatus(USER_NAME, "BARRED")
@@ -283,7 +283,7 @@ class BucketServiceTest {
 
         // 3. Assert
         assertEquals(Response.Status.OK, response.getStatus());
-        verify(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), isNull());
+        verify(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), isNull(), any());
     }
 
     @Test
@@ -326,7 +326,7 @@ class BucketServiceTest {
 
         // Mock COA service - Important: must return a Uni containing UserSessionData
         doReturn(Uni.createFrom().item(userData))
-                .when(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), eq(sessionId));
+                .when(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), eq(sessionId), any());
 
         // 2. Act
         ApiResponse<Balance> response = bucketService.terminateSessions(USER_NAME, sessionId)
@@ -337,7 +337,7 @@ class BucketServiceTest {
         assertEquals(Response.Status.OK, response.getStatus());
         assertEquals("Terminated successfully", response.getMessage());
 
-        verify(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), eq(sessionId));
+        verify(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), eq(sessionId), any());
     }
 
     @Test
@@ -356,7 +356,7 @@ class BucketServiceTest {
         assertEquals("User not found", response.getMessage());
 
         // Verify COA was NEVER called
-        verify(coaService, never()).clearAllSessionsAndSendCOA(any(), anyString(), anyString());
+        verify(coaService, never()).clearAllSessionsAndSendCOA(any(), anyString(), anyString(), any());
     }
 
     @Test
@@ -464,7 +464,7 @@ class BucketServiceTest {
         // 3. Assert
         assertEquals(Response.Status.OK, response.getStatus());
         // Verify COA was NOT called because sessions list was empty
-        verify(coaService, times(0)).clearAllSessionsAndSendCOA(any(), any(), any());
+        verify(coaService, times(0)).clearAllSessionsAndSendCOA(any(), any(), any(), any());
     }
 
     @Test
@@ -505,7 +505,7 @@ class BucketServiceTest {
                 .when(cacheClient).updateUserAndRelatedCaches(anyString(), any(), anyString());
 
         doReturn(Uni.createFrom().item(userData))
-                .when(coaService).clearAllSessionsAndSendCOA(any(), anyString(), any());
+                .when(coaService).clearAllSessionsAndSendCOA(any(), anyString(), any(), any());
 
         // 2. Act
         ApiResponse<String> response = bucketService.updateServiceStatus(USER_NAME, SERVICE_ID, "Barred")
@@ -526,7 +526,7 @@ class BucketServiceTest {
         }), eq(USER_NAME));
 
         // Verify COA was sent
-        verify(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), isNull());
+        verify(coaService).clearAllSessionsAndSendCOA(any(), eq(USER_NAME), isNull(), any());
     }
 
     @Test
@@ -555,7 +555,7 @@ class BucketServiceTest {
 
         // 3. Assert
         assertEquals(Response.Status.OK, response.getStatus());
-        verify(coaService, never()).clearAllSessionsAndSendCOA(any(), anyString(), any());
+        verify(coaService, never()).clearAllSessionsAndSendCOA(any(), anyString(), any(), any());
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -143,7 +144,8 @@ public class StartHandler {
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                     createSession(request),
-                    request.username());
+                    request.username(),
+                    CoaDisconnectScenario.DATA_BALANCE_EXHAUSTED);
         }
 
         if (sessionAlreadyExists(userSessionData, request.sessionId())) {
@@ -173,7 +175,8 @@ public class StartHandler {
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                     createSession(request),
-                    request.username());
+                    request.username(),
+                    CoaDisconnectScenario.NO_VALID_BALANCE);
         }
 
         Session newSession = createSessionWithBalance(request, highestPriorityBalance);
@@ -225,7 +228,8 @@ public class StartHandler {
                                 AccountingResponseEvent.EventType.COA,
                                 AccountingResponseEvent.ResponseAction.DISCONNECT),
                         createSession(request),
-                        request.username());
+                        request.username(),
+                        CoaDisconnectScenario.MAX_CONCURRENT_SESSIONS);
             }
         }
 
@@ -261,7 +265,8 @@ public class StartHandler {
                                             AccountingResponseEvent.EventType.COA,
                                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                                     newSession,
-                                    request.username());
+                                    request.username(),
+                                    CoaDisconnectScenario.MAX_CONCURRENT_SESSIONS);
                         }
                         addSessionToGroupData(groupSessionData, newSession);
                         return updateBothCaches(request.username(), userSessionData, groupId, groupSessionData);
@@ -337,7 +342,8 @@ public class StartHandler {
                         AccountingResponseEvent.EventType.COA,
                         AccountingResponseEvent.ResponseAction.DISCONNECT),
                 createSession(request),
-                request.username());
+                request.username(),
+                CoaDisconnectScenario.NO_SERVICE_BUCKETS);
     }
 
     private Uni<Void> handleZeroQuota(AccountingRequestDto request) {
@@ -347,7 +353,8 @@ public class StartHandler {
                         AccountingResponseEvent.EventType.COA,
                         AccountingResponseEvent.ResponseAction.DISCONNECT),
                 createSession(request),
-                request.username());
+                request.username(),
+                CoaDisconnectScenario.ZERO_DATA_QUOTA);
     }
 
     private BucketProcessingResult processBucketsAndCreateBalances(
@@ -416,7 +423,8 @@ public class StartHandler {
                         AccountingResponseEvent.EventType.COA,
                         AccountingResponseEvent.ResponseAction.DISCONNECT),
                 createSession(request),
-                request.username());
+                request.username(),
+                CoaDisconnectScenario.NO_VALID_BALANCE);
     }
 
     @SuppressWarnings("java:S107")

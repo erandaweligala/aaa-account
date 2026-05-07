@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -117,7 +118,8 @@ public class AbstractAccountingHandler {
                                         AccountingResponseEvent.EventType.COA,
                                         AccountingResponseEvent.ResponseAction.DISCONNECT),
                                 sessionCreator.apply(request),
-                                request.username());
+                                request.username(),
+                                CoaDisconnectScenario.NO_SERVICE_BUCKETS);
                     }
 
                     int bucketCount = serviceBuckets.size();

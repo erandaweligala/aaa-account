@@ -68,7 +68,7 @@ class AbstractAccountingHandlerTest {
         // Mock repository returning empty list to trigger the coaService flow
         when(userRepository.getServiceBucketsByUserName("testUser"))
                 .thenReturn(Uni.createFrom().item(Collections.emptyList()));
-        when(coaService.produceAccountingResponseEvent(any(), any(), anyString()))
+        when(coaService.produceAccountingResponseEvent(any(), any(), anyString(), any()))
                 .thenReturn(Uni.createFrom().voidItem());
 
         AbstractAccountingHandler.AccountingRequestProcessor processor = (data, req, id) -> Uni.createFrom().voidItem();
@@ -81,7 +81,7 @@ class AbstractAccountingHandlerTest {
         result.subscribe().withSubscriber(UniAssertSubscriber.create())
                 .assertCompleted();
         verify(userRepository).getServiceBucketsByUserName("testUser");
-        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("testUser"));
+        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("testUser"), any());
     }
 
     /**

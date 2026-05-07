@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -13,6 +14,8 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDate;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 @ApplicationScoped
@@ -27,6 +30,11 @@ public class MonitoringService {
     private static final String REDIS_KEY_SESSION_TERMINATED = "dailySessionTerminatedCount";
     private static final String REDIS_KEY_DISCONNECT_SUCCESS = "coaRequestCount";
     private static final String REDIS_KEY_DISCONNECT_FAILURE = "dailyDisconnectFailureCount";
+    private static final String REDIS_KEY_COA_INITIATED_PREFIX = "dailyCoaInitiatedCount:";
+
+    private static final String METRIC_COA_INITIATED_TOTAL = "coa_disconnect_request_initiated_count";
+    private static final String METRIC_COA_INITIATED_DAILY = "coa_disconnect_request_initiated_daily_count";
+    private static final String TAG_SCENARIO = "scenario";
 
     // Lifetime Micrometer counters exposed to Prometheus
     private final Counter sessionsCreatedCounter;
@@ -39,6 +47,10 @@ public class MonitoringService {
     private final AtomicLong dailySessionTerminatedCount;
     private final AtomicLong dailyDisconnectSuccessCount;
     private final AtomicLong dailyDisconnectFailureCount;
+
+    // Per-scenario lifetime counters and 24-hour window counters for COA-Disconnect requests initiated
+    private final Map<CoaDisconnectScenario, Counter> coaInitiatedCounters;
+    private final Map<CoaDisconnectScenario, AtomicLong> dailyCoaInitiatedCounts;
 
     private volatile LocalDate currentDay;
 
@@ -88,6 +100,24 @@ public class MonitoringService {
         Gauge.builder("disconnect_request_failure_daily_count", dailyDisconnectFailureCount, AtomicLong::get)
                 .description("Failed disconnect requests in the current 24-hour window (resets at 00:00)")
                 .register(registry);
+
+        // Per-scenario COA-Disconnect initiated counters (lifetime + daily window)
+        this.coaInitiatedCounters = new EnumMap<>(CoaDisconnectScenario.class);
+        this.dailyCoaInitiatedCounts = new EnumMap<>(CoaDisconnectScenario.class);
+        for (CoaDisconnectScenario scenario : CoaDisconnectScenario.values()) {
+            Counter lifetime = Counter.builder(METRIC_COA_INITIATED_TOTAL)
+                    .description("Total number of COA-Disconnect requests initiated, tagged by scenario")
+                    .tag(TAG_SCENARIO, scenario.label())
+                    .register(registry);
+            coaInitiatedCounters.put(scenario, lifetime);
+
+            AtomicLong dailyCount = new AtomicLong(0);
+            dailyCoaInitiatedCounts.put(scenario, dailyCount);
+            Gauge.builder(METRIC_COA_INITIATED_DAILY, dailyCount, AtomicLong::get)
+                    .description("COA-Disconnect requests initiated in the current 24-hour window (resets at 00:00), tagged by scenario")
+                    .tag(TAG_SCENARIO, scenario.label())
+                    .register(registry);
+        }
 
         this.redisValueCommands = reactiveRedisDataSource.value(String.class, Long.class);
 
@@ -145,6 +175,37 @@ public class MonitoringService {
         }
     }
 
+    /**
+     * Records a COA-Disconnect request initiation for a given business scenario.
+     * Increments both the cumulative and daily Prometheus counters tagged with the scenario,
+     * and increments the per-scenario daily count in Redis.
+     */
+    public void recordCOADisconnectInitiated(CoaDisconnectScenario scenario) {
+        if (scenario == null) {
+            return;
+        }
+        try {
+            Counter counter = coaInitiatedCounters.get(scenario);
+            AtomicLong dailyCount = dailyCoaInitiatedCounts.get(scenario);
+            if (counter == null || dailyCount == null) {
+                return;
+            }
+            counter.increment();
+            dailyCount.incrementAndGet();
+            String redisKey = REDIS_KEY_COA_INITIATED_PREFIX + scenario.label();
+            redisValueCommands.incr(redisKey)
+                    .subscribe().with(
+                            v -> LoggingUtil.logDebug(log, M_DAILY, "Redis key %s incremented", redisKey),
+                            error -> LoggingUtil.logWarn(log, M_DAILY, "Failed to increment Redis key %s: %s", redisKey, error.getMessage())
+                    );
+            LoggingUtil.logDebug(log, M_RECORD, "COA-Disconnect initiated metric recorded for scenario %s. Total: %.0f, Daily: %d",
+                    scenario.label(), counter.count(), dailyCount.get());
+        } catch (Exception e) {
+            LoggingUtil.logWarn(log, M_RECORD, "Failed to record COA-Disconnect initiated metric for scenario %s: %s",
+                    scenario, e.getMessage());
+        }
+    }
+
     public void recordDisconnectRequestFailure() {
         try {
             disconnectFailureCounter.increment();
@@ -171,6 +232,10 @@ public class MonitoringService {
         dailySessionTerminatedCount.set(0);
         dailyDisconnectSuccessCount.set(0);
         dailyDisconnectFailureCount.set(0);
+        for (Map.Entry<CoaDisconnectScenario, AtomicLong> entry : dailyCoaInitiatedCounts.entrySet()) {
+            entry.getValue().set(0);
+            resetRedisKey(REDIS_KEY_COA_INITIATED_PREFIX + entry.getKey().label());
+        }
         currentDay = LocalDate.now();
 
         resetRedisKey(REDIS_KEY_SESSION_CREATED);
@@ -250,5 +315,13 @@ public class MonitoringService {
 
     public Uni<Long> getDailyDisconnectFailureCount() {
         return getDailyCount(REDIS_KEY_DISCONNECT_FAILURE, dailyDisconnectFailureCount);
+    }
+
+    public Uni<Long> getDailyCoaInitiatedCount(CoaDisconnectScenario scenario) {
+        AtomicLong fallback = dailyCoaInitiatedCounts.get(scenario);
+        if (fallback == null) {
+            return Uni.createFrom().item(0L);
+        }
+        return getDailyCount(REDIS_KEY_COA_INITIATED_PREFIX + scenario.label(), fallback);
     }
 }

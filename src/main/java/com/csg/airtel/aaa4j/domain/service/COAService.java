@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.cdr.AccountingCDREvent;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
@@ -41,7 +42,7 @@ public class COAService {
         this.coaHttpClient = coaHttpClient;
     }
 
-    public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username,String sessionId) {
+    public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username, String sessionId, CoaDisconnectScenario scenario) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null || sessions.isEmpty()) {
             return Uni.createFrom().voidItem();
@@ -61,6 +62,7 @@ public class COAService {
                 .onItem().transformToUni(session -> {
                         // Generate CoA Request CDR before sending the disconnect event
                         generateAndSendCoaRequestCDR(session, username);
+                        monitoringService.recordCOADisconnectInitiated(scenario);
                         return accountProducer.produceAccountingResponseEvent(
                                         MappingUtil.createResponse(
                                                 session.getSessionId(),
@@ -174,9 +176,10 @@ public class COAService {
      * @param username the username associated with the session
      * @return Uni<Void> after the disconnect request is sent
      */
-    public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username) {
+    public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username, CoaDisconnectScenario scenario) {
         // Generate CoA Request CDR before sending the disconnect request
         generateAndSendCoaRequestCDR(session, username);
+        monitoringService.recordCOADisconnectInitiated(scenario);
         return coaHttpClient.sendDisconnect(event)
                 .onItem().invoke(response -> {
                     if (response.isAck()) {
@@ -216,11 +219,11 @@ public class COAService {
      * @param sessionId specific session to disconnect (null for all sessions)
      * @return Uni<UserSessionData> with sessions removed/kept based on NAK/ACK responses
      */
-    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId) {
-        return clearAllSessionsAndSendCOA(userSessionData, username, sessionId, null);
+    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId, CoaDisconnectScenario scenario) {
+        return clearAllSessionsAndSendCOA(userSessionData, username, sessionId, null, scenario);
     }
 
-    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId, AccountingRequestDto accountingRequestDto) {
+    public Uni<UserSessionData> clearAllSessionsAndSendCOA(UserSessionData userSessionData, String username, String sessionId, AccountingRequestDto accountingRequestDto, CoaDisconnectScenario scenario) {
         List<Session> sessions = userSessionData.getSessions();
         if (sessions == null && accountingRequestDto != null) {
             Session sessionFromRequest = new Session();
@@ -272,6 +275,7 @@ public class COAService {
 
                     // Generate CoA Request CDR before sending the HTTP disconnect
                     generateAndSendCoaRequestCDR(session, username);
+                    monitoringService.recordCOADisconnectInitiated(scenario);
 
                     // Send HTTP request and track ACK/NAK result
                     return coaHttpClient.sendDisconnect(request)
