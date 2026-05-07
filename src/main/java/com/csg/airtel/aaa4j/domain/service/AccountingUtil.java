@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.constant.AppConstant;
 import com.csg.airtel.aaa4j.domain.model.*;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.ConsumptionRecord;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
@@ -694,7 +695,8 @@ public class AccountingUtil {
                     MappingUtil.createResponse(request, "Maximum number of concurrency sessions exceeded",
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
-                    sessionData, request.username()).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded",sessionData));
+                    sessionData, request.username(),
+                    CoaDisconnectScenario.MAX_CONCURRENT_SESSIONS).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded",sessionData));
         }
         LoggingUtil.logDebug(log, M_UPDATE, "Processing balance update with combined data - balances: %d, sessions: %d",
                 combinedBalances.size(), combinedSessions.size());
@@ -834,7 +836,7 @@ public class AccountingUtil {
         }
 
         // Send COA disconnect for all existing sessions
-        return coaService.clearAllSessionsAndSendCOA(userData, request.username(), null, request)
+        return coaService.clearAllSessionsAndSendCOA(userData, request.username(), null, request, CoaDisconnectScenario.NO_VALID_BALANCE)
                 .onItem().transform(updatedUserData -> {
                     LoggingUtil.logDebug(log, M_UPDATE, "Successfully sent COA disconnect for user: %s due to no valid balance",
                             request.username());
@@ -1102,7 +1104,7 @@ public class AccountingUtil {
         String bucketUsername = foundBalance.getBucketUsername();
 
         // Clear all sessions and send COA disconnect for all sessions
-        return coaService.clearAllSessionsAndSendCOA(userData, username, null, request)
+        return coaService.clearAllSessionsAndSendCOA(userData, username, null, request, CoaDisconnectScenario.BUCKET_CHANGE_OR_QUOTA_EXHAUSTED)
                 .onItem().transformToUni(updatedUserData ->
                         extractCoaCacheAndDBUpdate(
                                 request,
@@ -1171,7 +1173,7 @@ public class AccountingUtil {
                 username, foundBalance.getBucketId());
 
         // Clear all sessions and send COA disconnect for all sessions due to consumption limit
-        return coaService.clearAllSessionsAndSendCOA(userData, username, null, request)
+        return coaService.clearAllSessionsAndSendCOA(userData, username, null, request, CoaDisconnectScenario.CONSUMPTION_LIMIT_EXCEEDED)
                 .onItem().transformToUni(updatedUserData ->
                         extractCoaCacheAndDBUpdate(
                                 request,

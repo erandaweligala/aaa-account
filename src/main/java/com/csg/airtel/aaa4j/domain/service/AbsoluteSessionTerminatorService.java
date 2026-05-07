@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.domain.service;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.DBWriteRequest;
 import com.csg.airtel.aaa4j.domain.model.EventType;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
@@ -96,7 +97,7 @@ public class AbsoluteSessionTerminatorService {
                 "Removing absolute timeout session %s for user %s", sessionId, userId);
 
         // Send CoA disconnect via HTTP; fall back to original userData if CoA itself fails
-        return coaService.clearAllSessionsAndSendCOA(userData, userId, sessionId)
+        return coaService.clearAllSessionsAndSendCOA(userData, userId, sessionId, CoaDisconnectScenario.ABSOLUTE_SESSION_TIMEOUT)
                 .onFailure().recoverWithItem(userData)
                 .onItem().transformToUni(updatedUserData -> {
 

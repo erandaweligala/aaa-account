@@ -1,6 +1,7 @@
 package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import com.csg.airtel.aaa4j.domain.model.response.ApiResponse;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
@@ -137,7 +138,7 @@ public class BucketService {
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
                             .call(() -> needsCOA
-                                    ? coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    ? coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null, CoaDisconnectScenario.BALANCE_PRIORITY_CHANGE)
                                     : Uni.createFrom().item(updatedUserData))
                             .onItem().transform(result -> createSuccessResponse(singleBalance, "Bucket Added Successfully"));
                 })
@@ -219,7 +220,7 @@ public class BucketService {
 
                     return cacheClient.updateUserAndRelatedCaches(userName, updatedUserData, userName)
                             .call(() -> needsCOA
-                                    ? coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    ? coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null, CoaDisconnectScenario.BALANCE_PRIORITY_CHANGE)
                                     : Uni.createFrom().item(updatedUserData))
                             .onItem().transform(result -> {
                                 LoggingUtil.logInfo(log, M_ADD, "Bucket list added successfully for user %s, count: %d", userName, newBalances.size());
@@ -314,7 +315,7 @@ public class BucketService {
                                     LoggingUtil.logInfo(log, M_UPDATE,
                                             "Balance expiry changed for user %s serviceId %s, initiating COA Disconnect for %d active session(s)",
                                             userName, serviceId, userData.getSessions().size());
-                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null, CoaDisconnectScenario.BALANCE_EXPIRY_CHANGED)
                                             .replaceWithVoid();
                                 }
                                 return Uni.createFrom().voidItem();
@@ -360,7 +361,7 @@ public class BucketService {
                     if (userData == null) {
                         return Uni.createFrom().item(createErrorResponse(USER_NOT_FOUND));
                     }
-                   return coaService.clearAllSessionsAndSendCOA(userData,userName,sessionId)
+                   return coaService.clearAllSessionsAndSendCOA(userData, userName, sessionId, CoaDisconnectScenario.MANUAL_TERMINATION)
                            .onItem().transform(updatedUserData -> {
                                LoggingUtil.logInfo(log, M_TERMINATE, "Sessions Terminated successfully for user %s, updated session count: %d",
                                        userName, updatedUserData != null && updatedUserData.getSessions() != null ?
@@ -397,7 +398,7 @@ public class BucketService {
                     }
 
                     // Send HTTP CoA disconnect (non-blocking, cache cleared after ACK)
-                    return coaService.clearAllSessionsAndSendCOA(userData, userName, sessionId)
+                    return coaService.clearAllSessionsAndSendCOA(userData, userName, sessionId, CoaDisconnectScenario.MANUAL_TERMINATION)
                             .onItem().transform(updatedUserData -> {
                                 LoggingUtil.logInfo(log, M_TERMINATE, "HTTP CoA disconnect sent successfully for user %s, updated session count: %d",
                                         userName, updatedUserData != null && updatedUserData.getSessions() != null ?
@@ -451,7 +452,7 @@ public class BucketService {
                                 if (userData.getSessions() != null && !userData.getSessions().isEmpty()) {
                                     LoggingUtil.logInfo(log, M_STATUS, "User status changed from %s to %s, sending COA to update %d active sessions for user %s",
                                             oldStatus, status, userData.getSessions().size(), userName);
-                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null, CoaDisconnectScenario.USER_STATUS_CHANGED)
                                             .replaceWithVoid();
                                 }
                                 return Uni.createFrom().voidItem();
@@ -540,7 +541,7 @@ public class BucketService {
                                     LoggingUtil.logInfo(log, M_SVC_STATUS,
                                             "Service status changed from %s to %s for serviceId %s, sending COA to update %d active sessions for user %s",
                                             previousStatus, status, serviceId, userData.getSessions().size(), userName);
-                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                                    return coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null, CoaDisconnectScenario.SERVICE_STATUS_CHANGED)
                                             .replaceWithVoid();
                                 }
                                 return Uni.createFrom().voidItem();
@@ -629,7 +630,7 @@ public class BucketService {
                             LoggingUtil.logInfo(log, M_DELETE_SVC,
                                     "Sending CoA disconnect for %d sessions linked to serviceId %s for user %s",
                                     matchingSessions.size(), serviceId, userName);
-                            coaUni = coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null)
+                            coaUni = coaService.clearAllSessionsAndSendCOA(updatedUserData, userName, null, CoaDisconnectScenario.SERVICE_DELETED)
                                     .replaceWithVoid();
                         } else {
                             coaUni = Uni.createFrom().voidItem();

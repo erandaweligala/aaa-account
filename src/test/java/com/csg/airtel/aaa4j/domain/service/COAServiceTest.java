@@ -2,6 +2,7 @@ package com.csg.airtel.aaa4j.domain.service;
 
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
+import com.csg.airtel.aaa4j.domain.model.coa.CoaDisconnectScenario;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
@@ -60,7 +61,7 @@ class COAServiceTest {
         when(accountProducer.produceAccountingResponseEvent(any()))
                 .thenReturn(Uni.createFrom().failure(new RuntimeException("Final Error")));
 
-        coaService.clearAllSessionsAndSendCOAMassageQue(userSessionData, "user", "S1")
+        coaService.clearAllSessionsAndSendCOAMassageQue(userSessionData, "user", "S1", CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem(java.time.Duration.ofSeconds(2));
 
@@ -73,7 +74,7 @@ class COAServiceTest {
 
     @Test
     void testQueue_EmptySessions() {
-        coaService.clearAllSessionsAndSendCOAMassageQue(UserSessionData.builder().build(), "u", null)
+        coaService.clearAllSessionsAndSendCOAMassageQue(UserSessionData.builder().build(), "u", null, CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .assertCompleted();
         verifyNoInteractions(accountProducer);
@@ -86,7 +87,7 @@ class COAServiceTest {
                 .thenReturn(Uni.createFrom().failure(new RuntimeException("Final Failure")));
 
         UniAssertSubscriber<Void> subscriber = coaService
-                .clearAllSessionsAndSendCOAMassageQue(userSessionData, "user", "S1")
+                .clearAllSessionsAndSendCOAMassageQue(userSessionData, "user", "S1", CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create());
 
         // Wait for retries to exhaust
@@ -105,7 +106,7 @@ class COAServiceTest {
         when(accountProducer.produceAccountingResponseEvent(any()))
                 .thenReturn(Uni.createFrom().failure(new RuntimeException("Permanent Error")));
 
-        UniAssertSubscriber<Void> subscriber = coaService.clearAllSessionsAndSendCOAMassageQue(userSessionData, "user", "S1")
+        UniAssertSubscriber<Void> subscriber = coaService.clearAllSessionsAndSendCOAMassageQue(userSessionData, "user", "S1", CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create());
 
         // Wait for retries to exhaust
@@ -129,7 +130,7 @@ class COAServiceTest {
 
         when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
 
-        UserSessionData result = coaService.clearAllSessionsAndSendCOA(userSessionData, "user", null)
+        UserSessionData result = coaService.clearAllSessionsAndSendCOA(userSessionData, "user", null, CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem().getItem();
 
@@ -140,7 +141,7 @@ class COAServiceTest {
 
     @Test
     void testHttp_FilteringNoMatch() {
-        UserSessionData result = coaService.clearAllSessionsAndSendCOA(userSessionData, "user", "NON_EXISTENT")
+        UserSessionData result = coaService.clearAllSessionsAndSendCOA(userSessionData, "user", "NON_EXISTENT", CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .awaitItem().getItem();
 
@@ -169,7 +170,7 @@ class COAServiceTest {
         when(coaHttpClient.sendDisconnect(any())).thenReturn(Uni.createFrom().item(nak));
 
         // Execute the service method
-        coaService.produceAccountingResponseEvent(event, session1, "user")
+        coaService.produceAccountingResponseEvent(event, session1, "user", CoaDisconnectScenario.MAX_CONCURRENT_SESSIONS)
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .assertCompleted();
 
@@ -194,7 +195,7 @@ class COAServiceTest {
 
         // Execute
         UniAssertSubscriber<UserSessionData> subscriber = coaService
-                .clearAllSessionsAndSendCOA(userSessionData, "testUser", null)
+                .clearAllSessionsAndSendCOA(userSessionData, "testUser", null, CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create());
 
         // Assert
@@ -215,7 +216,7 @@ class COAServiceTest {
                 .thenReturn(Uni.createFrom().failure(new RuntimeException("Connection Refused")));
 
         UniAssertSubscriber<UserSessionData> subscriber = coaService
-                .clearAllSessionsAndSendCOA(userSessionData, "testUser", null)
+                .clearAllSessionsAndSendCOA(userSessionData, "testUser", null, CoaDisconnectScenario.MANUAL_TERMINATION)
                 .subscribe().withSubscriber(UniAssertSubscriber.create());
 
         UserSessionData result = subscriber.awaitItem().getItem();

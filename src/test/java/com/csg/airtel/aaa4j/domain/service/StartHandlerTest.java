@@ -61,11 +61,11 @@ class StartHandlerTest {
 
         when(utilCache.getUserData("newUser")).thenReturn(Uni.createFrom().nullItem());
         when(userRepository.getServiceBucketsByUserName("newUser")).thenReturn(Uni.createFrom().item(List.of()));
-        when(coaService.produceAccountingResponseEvent(any(), any(), anyString())).thenReturn(Uni.createFrom().voidItem());
+        when(coaService.produceAccountingResponseEvent(any(), any(), anyString(), any())).thenReturn(Uni.createFrom().voidItem());
 
         startHandler.processAccountingStart(request, "trace-1").await().indefinitely();
 
-        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("newUser"));
+        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("newUser"), any());
     }
 
     @Test
@@ -91,11 +91,11 @@ class StartHandlerTest {
         data.setBalance(new ArrayList<>()); // Empty balance = 0 available
 
         when(utilCache.getUserData("user1")).thenReturn(Uni.createFrom().item(data));
-        when(coaService.produceAccountingResponseEvent(any(), any(), anyString())).thenReturn(Uni.createFrom().voidItem());
+        when(coaService.produceAccountingResponseEvent(any(), any(), anyString(), any())).thenReturn(Uni.createFrom().voidItem());
 
         startHandler.processAccountingStart(request, "trace-1").await().indefinitely();
 
-        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("user1"));
+        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("user1"), any());
     }
 
     @Test
@@ -185,11 +185,11 @@ class StartHandlerTest {
         when(utilCache.getUserData("user2")).thenReturn(Uni.createFrom().nullItem());
         when(userRepository.getServiceBucketsByUserName("user2")).thenReturn(Uni.createFrom().item(List.of(bucket)));
         when(accountingUtil.findBalanceWithHighestPriority(any(), any())).thenReturn(Uni.createFrom().item(b));
-        when(coaService.produceAccountingResponseEvent(any(), any(), anyString())).thenReturn(Uni.createFrom().voidItem());
+        when(coaService.produceAccountingResponseEvent(any(), any(), anyString(), any())).thenReturn(Uni.createFrom().voidItem());
 
         startHandler.processAccountingStart(req, "t1").await().indefinitely();
 
-        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("user2"));
+        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("user2"), any());
     }
 
     // 4. Coverage for: handleNoValidBalance (New User)
@@ -202,11 +202,11 @@ class StartHandlerTest {
         when(utilCache.getUserData("user3")).thenReturn(Uni.createFrom().nullItem());
         when(userRepository.getServiceBucketsByUserName("user3")).thenReturn(Uni.createFrom().item(List.of(bucket)));
         when(accountingUtil.findBalanceWithHighestPriority(any(), any())).thenReturn(Uni.createFrom().nullItem());
-        when(coaService.produceAccountingResponseEvent(any(), any(), anyString())).thenReturn(Uni.createFrom().voidItem());
+        when(coaService.produceAccountingResponseEvent(any(), any(), anyString(), any())).thenReturn(Uni.createFrom().voidItem());
 
         startHandler.processAccountingStart(req, "t1").await().indefinitely();
 
-        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("user3"));
+        verify(coaService).produceAccountingResponseEvent(any(), any(), eq("user3"), any());
     }
 
     // 5. Coverage for: handleExistingUserSession -> processSessionWithHighestPriority -> null check
