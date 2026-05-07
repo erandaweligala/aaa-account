@@ -30,6 +30,7 @@ public class MonitoringService {
     private static final String REDIS_KEY_SESSION_TERMINATED = "dailySessionTerminatedCount";
     private static final String REDIS_KEY_DISCONNECT_SUCCESS = "coaRequestCount";
     private static final String REDIS_KEY_DISCONNECT_FAILURE = "dailyDisconnectFailureCount";
+    private static final String REDIS_KEY_COA_SYSTEM_FAILURE = "dailyCoaSystemFailureCount";
     private static final String REDIS_KEY_COA_INITIATED_PREFIX = "dailyCoaInitiatedCount:";
 
     private static final String METRIC_COA_INITIATED_TOTAL = "coa_disconnect_request_initiated_count";
@@ -41,12 +42,14 @@ public class MonitoringService {
     private final Counter sessionsTerminatedCounter;
     private final Counter disconnectSuccessCounter;
     private final Counter disconnectFailureCounter;
+    private final Counter coaSystemFailureCounter;
 
     // 24-hour window counters (00:00–23:59), reset by scheduler at midnight
     private final AtomicLong dailySessionCreatedCount;
     private final AtomicLong dailySessionTerminatedCount;
     private final AtomicLong dailyDisconnectSuccessCount;
     private final AtomicLong dailyDisconnectFailureCount;
+    private final AtomicLong dailyCoaSystemFailureCount;
 
     // Per-scenario lifetime counters and 24-hour window counters for COA-Disconnect requests initiated
     private final Map<CoaDisconnectScenario, Counter> coaInitiatedCounters;
@@ -74,7 +77,11 @@ public class MonitoringService {
                 .register(registry);
 
         this.disconnectFailureCounter = Counter.builder("disconnect_request_failure_count")
-                .description("Total number of failed COA disconnect requests (NAK or HTTP error)")
+                .description("Total number of COA disconnect requests rejected by NAS with NAK")
+                .register(registry);
+
+        this.coaSystemFailureCounter = Counter.builder("coa_system_failure_count")
+                .description("Total number of COA disconnect system failures (HTTP errors, producer errors, exceptions)")
                 .register(registry);
 
         // Daily AtomicLong counters reset at 00:00 by scheduler
@@ -82,6 +89,7 @@ public class MonitoringService {
         this.dailySessionTerminatedCount = new AtomicLong(0);
         this.dailyDisconnectSuccessCount = new AtomicLong(0);
         this.dailyDisconnectFailureCount = new AtomicLong(0);
+        this.dailyCoaSystemFailureCount  = new AtomicLong(0);
         this.currentDay = LocalDate.now();
 
         // Prometheus Gauges for 24-hour window counts
@@ -98,7 +106,11 @@ public class MonitoringService {
                 .register(registry);
 
         Gauge.builder("disconnect_request_failure_daily_count", dailyDisconnectFailureCount, AtomicLong::get)
-                .description("Failed disconnect requests in the current 24-hour window (resets at 00:00)")
+                .description("NAK disconnect responses in the current 24-hour window (resets at 00:00)")
+                .register(registry);
+
+        Gauge.builder("coa_system_failure_daily_count", dailyCoaSystemFailureCount, AtomicLong::get)
+                .description("COA system failures in the current 24-hour window (resets at 00:00)")
                 .register(registry);
 
         // Per-scenario COA-Disconnect initiated counters (lifetime + daily window)
@@ -210,10 +222,25 @@ public class MonitoringService {
         try {
             disconnectFailureCounter.increment();
             incrementDailyCount(REDIS_KEY_DISCONNECT_FAILURE, dailyDisconnectFailureCount);
-            LoggingUtil.logDebug(log, M_RECORD, "Disconnect failure metric recorded. Total: %.0f, Daily: %d",
+            LoggingUtil.logDebug(log, M_RECORD, "Disconnect NAK metric recorded. Total: %.0f, Daily: %d",
                     disconnectFailureCounter.count(), dailyDisconnectFailureCount.get());
         } catch (Exception e) {
-            LoggingUtil.logWarn(log, M_RECORD, "Failed to record disconnect failure metric: %s", e.getMessage());
+            LoggingUtil.logWarn(log, M_RECORD, "Failed to record disconnect NAK metric: %s", e.getMessage());
+        }
+    }
+
+    /**
+     * Records a COA system failure (HTTP error, producer error, or unexpected exception).
+     * This is tracked separately from NAK responses, which represent valid business-level rejections.
+     */
+    public void recordCOASystemFailure() {
+        try {
+            coaSystemFailureCounter.increment();
+            incrementDailyCount(REDIS_KEY_COA_SYSTEM_FAILURE, dailyCoaSystemFailureCount);
+            LoggingUtil.logDebug(log, M_RECORD, "COA system failure metric recorded. Total: %.0f, Daily: %d",
+                    coaSystemFailureCounter.count(), dailyCoaSystemFailureCount.get());
+        } catch (Exception e) {
+            LoggingUtil.logWarn(log, M_RECORD, "Failed to record COA system failure metric: %s", e.getMessage());
         }
     }
 
@@ -224,14 +251,16 @@ public class MonitoringService {
     @Scheduled(cron = "0 0 0 * * ?")
     void resetDailyCounters() {
         LoggingUtil.logInfo(log, M_RESET,
-                "Resetting daily metric counters at midnight. Previous counts — created: %d, terminated: %d, success: %d, failure: %d",
+                "Resetting daily metric counters at midnight. Previous counts — created: %d, terminated: %d, success: %d, nak: %d, systemFailure: %d",
                 dailySessionCreatedCount.get(), dailySessionTerminatedCount.get(),
-                dailyDisconnectSuccessCount.get(), dailyDisconnectFailureCount.get());
+                dailyDisconnectSuccessCount.get(), dailyDisconnectFailureCount.get(),
+                dailyCoaSystemFailureCount.get());
 
         dailySessionCreatedCount.set(0);
         dailySessionTerminatedCount.set(0);
         dailyDisconnectSuccessCount.set(0);
         dailyDisconnectFailureCount.set(0);
+        dailyCoaSystemFailureCount.set(0);
         for (Map.Entry<CoaDisconnectScenario, AtomicLong> entry : dailyCoaInitiatedCounts.entrySet()) {
             entry.getValue().set(0);
             resetRedisKey(REDIS_KEY_COA_INITIATED_PREFIX + entry.getKey().label());
@@ -242,6 +271,7 @@ public class MonitoringService {
         resetRedisKey(REDIS_KEY_SESSION_TERMINATED);
         resetRedisKey(REDIS_KEY_DISCONNECT_SUCCESS);
         resetRedisKey(REDIS_KEY_DISCONNECT_FAILURE);
+        resetRedisKey(REDIS_KEY_COA_SYSTEM_FAILURE);
 
         LoggingUtil.logInfo(log, M_RESET, "Daily metric counters reset successfully for date: %s", currentDay);
     }
@@ -301,6 +331,10 @@ public class MonitoringService {
         return disconnectFailureCounter.count();
     }
 
+    public double getCOASystemFailureCount() {
+        return coaSystemFailureCounter.count();
+    }
+
     public Uni<Long> getDailyCoaRequestCount() {
         return getDailyCount(REDIS_KEY_DISCONNECT_SUCCESS, dailyDisconnectSuccessCount);
     }
@@ -315,6 +349,10 @@ public class MonitoringService {
 
     public Uni<Long> getDailyDisconnectFailureCount() {
         return getDailyCount(REDIS_KEY_DISCONNECT_FAILURE, dailyDisconnectFailureCount);
+    }
+
+    public Uni<Long> getDailyCOASystemFailureCount() {
+        return getDailyCount(REDIS_KEY_COA_SYSTEM_FAILURE, dailyCoaSystemFailureCount);
     }
 
     public Uni<Long> getDailyCoaInitiatedCount(CoaDisconnectScenario scenario) {

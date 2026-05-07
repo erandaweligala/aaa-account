@@ -67,6 +67,8 @@ class COAServiceTest {
 
         // Even if retries exhaust, recoverWithNull makes it complete
         verify(monitoringService, never()).recordCOARequest();
+        verify(monitoringService, never()).recordDisconnectRequestFailure();
+        verify(monitoringService, atLeastOnce()).recordCOASystemFailure();
     }
 
 
@@ -174,8 +176,10 @@ class COAServiceTest {
                 .subscribe().withSubscriber(UniAssertSubscriber.create())
                 .assertCompleted();
 
-        // Verification
+        // Verification: NAK is a business failure, not a system failure
         verify(monitoringService, never()).recordCOARequest();
+        verify(monitoringService, times(1)).recordDisconnectRequestFailure();
+        verify(monitoringService, never()).recordCOASystemFailure();
        // verify(accountProducer, never()).produceAccountingCDREvent(any());
     }
 
@@ -207,6 +211,8 @@ class COAServiceTest {
         assertEquals("S1", result.getSessions().get(0).getSessionId());
 
         verify(monitoringService, times(1)).recordCOARequest();
+        verify(monitoringService, times(1)).recordDisconnectRequestFailure();
+        verify(monitoringService, never()).recordCOASystemFailure();
         //verify(accountProducer, times(1)).produceAccountingCDREvent(any());
     }
 
@@ -221,8 +227,11 @@ class COAServiceTest {
 
         UserSessionData result = subscriber.awaitItem().getItem();
 
-        // recoverWithItem(new CoAResult(..., false)) results in all sessions being treated as NAK
+        // recoverWithItem(new CoAResult(..., false)) results in all sessions being removed
         assertTrue(result.getSessions().isEmpty());
+        // HTTP errors are system failures, not NAKs
+        verify(monitoringService, times(2)).recordCOASystemFailure();
+        verify(monitoringService, never()).recordDisconnectRequestFailure();
     }
 
 }
