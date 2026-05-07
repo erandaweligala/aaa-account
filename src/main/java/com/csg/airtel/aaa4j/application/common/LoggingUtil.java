@@ -1,10 +1,6 @@
 package com.csg.airtel.aaa4j.application.common;
 
 import org.jboss.logging.Logger;
-import org.slf4j.MDC;
-
-import java.util.HashMap;
-import java.util.Map;
 
 public class LoggingUtil {
 
@@ -29,64 +25,6 @@ public class LoggingUtil {
 
     private LoggingUtil() {
         // Private constructor to prevent instantiation
-    }
-
-    /**
-     * Snapshot the current SLF4J MDC. Safe to invoke off any thread; returns null
-     * when no MDC values are present (mirrors {@link MDC#getCopyOfContextMap()}).
-     */
-    public static Map<String, String> captureMdc() {
-        return MDC.getCopyOfContextMap();
-    }
-
-    /**
-     * Replace the current MDC with the given snapshot. Null/empty clears MDC.
-     */
-    public static void applyMdc(Map<String, String> snapshot) {
-        if (snapshot == null || snapshot.isEmpty()) {
-            MDC.clear();
-        } else {
-            MDC.setContextMap(snapshot);
-        }
-    }
-
-    /**
-     * Returns a snapshot containing the supplied trace/user/session values, layered on top
-     * of any existing snapshot. Used by async producers to backfill MDC values that may
-     * have been lost when the call crossed a fault-tolerance interceptor or Kafka network
-     * thread boundary, where Quarkus's VertxMDC has no context to read from.
-     */
-    public static Map<String, String> withCorrelation(Map<String, String> base, String traceId, String userName, String sessionId) {
-        Map<String, String> result = base != null ? new HashMap<>(base) : new HashMap<>();
-        if (traceId != null && isBlank(result.get(TRACE_ID))) {
-            result.put(TRACE_ID, traceId);
-        }
-        if (userName != null && isBlank(result.get(USER_NAME))) {
-            result.put(USER_NAME, userName);
-        }
-        if (sessionId != null && isBlank(result.get(SESSION_ID))) {
-            result.put(SESSION_ID, sessionId);
-        }
-        return result;
-    }
-
-    /**
-     * Run {@code action} with {@code snapshot} applied to MDC, restoring whatever MDC state
-     * existed before. Use this when invoking logging in a callback that may run on a thread
-     * (Kafka producer network thread, fault-tolerance pool) where the original MDC is absent.
-     */
-    public static void runWithMdc(Map<String, String> snapshot, Runnable action) {
-        Map<String, String> previous = MDC.getCopyOfContextMap();
-        try {
-            applyMdc(snapshot);
-            action.run();
-        } finally {
-            applyMdc(previous);
-        }
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isEmpty();
     }
 
     /**

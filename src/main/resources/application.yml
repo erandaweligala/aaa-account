@@ -10,8 +10,8 @@ quarkus:
 
   datasource:
     db-kind: oracle
-    username: "${DB_USER}"
-    password: "${DB_PASSWORD}"
+    username: aaa
+    password: Aaa!89nky78D
     reactive:
       #url: oracle:thin:@localhost:1521/FREEPDB1
       url: oracle:thin:@localhost:1524/ORCL
@@ -176,9 +176,9 @@ idle-session:
 
   # Process 1000 sessions per batch (increased for scale)
 
-#kafka:
-#  bootstrap:
-#    servers: localhost:9092
+kafka:
+  bootstrap:
+    servers: localhost:9092
 
 
 # Kafka Producer/Consumer Configuration - Optimized for 3500 TPS (10 pods x 1 core / 2GB, ~350 TPS/pod)
@@ -249,7 +249,7 @@ mp:
     incoming:
       accounting-events:
         connector: smallrye-kafka
-        topic: accounting-dc-2
+        topic: accounting-dc
         group.id: accounting-consumer-group
         value.deserializer: io.quarkus.kafka.client.serialization.ObjectMapperDeserializer
         key.deserializer: org.apache.kafka.common.serialization.StringDeserializer
