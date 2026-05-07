@@ -102,6 +102,31 @@ class MonitoringServiceTest {
         assertEquals(3.0, monitoringService.getDisconnectFailureCount());
     }
 
+    // ---- recordCOASystemFailure ----
+
+    @Test
+    void testRecordCOASystemFailure() {
+        monitoringService.recordCOASystemFailure();
+        assertEquals(1.0, monitoringService.getCOASystemFailureCount());
+        verify(redisValueCommands).incr("dailyCoaSystemFailureCount");
+    }
+
+    @Test
+    void testRecordCOASystemFailure_doesNotAffectNakCounter() {
+        monitoringService.recordCOASystemFailure();
+        monitoringService.recordCOASystemFailure();
+        assertEquals(2.0, monitoringService.getCOASystemFailureCount());
+        assertEquals(0.0, monitoringService.getDisconnectFailureCount());
+    }
+
+    @Test
+    void testGetDailyCOASystemFailureCount_FromRedis() {
+        when(redisValueCommands.get("dailyCoaSystemFailureCount")).thenReturn(Uni.createFrom().item(4L));
+        monitoringService.getDailyCOASystemFailureCount()
+                .subscribe().withSubscriber(UniAssertSubscriber.create())
+                .awaitItem().assertItem(4L);
+    }
+
     // ---- getDailyCoaRequestCount (success count) ----
 
     @Test
@@ -233,5 +258,6 @@ class MonitoringServiceTest {
         verify(redisValueCommands).set("dailySessionTerminatedCount", 0L);
         verify(redisValueCommands).set("coaRequestCount", 0L);
         verify(redisValueCommands).set("dailyDisconnectFailureCount", 0L);
+        verify(redisValueCommands).set("dailyCoaSystemFailureCount", 0L);
     }
 }

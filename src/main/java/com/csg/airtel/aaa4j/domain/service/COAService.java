@@ -83,7 +83,7 @@ public class COAService {
                                 .onFailure().invoke(failure -> {
                                     LoggingUtil.logDebug(log, M_COA, "Failed to produce disconnect event for session: %s",
                                             session.getSessionId());
-                                    monitoringService.recordDisconnectRequestFailure();
+                                    monitoringService.recordCOASystemFailure();
                                 })
                                 .onFailure().recoverWithNull();
                 })
@@ -195,7 +195,7 @@ public class COAService {
                 })
                 .onFailure().invoke(failure -> {
                         LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
-                        monitoringService.recordDisconnectRequestFailure();
+                        monitoringService.recordCOASystemFailure();
                         generateAndSendCoaResponseCDR(session, username, "FAILED");
                 })
                 .replaceWithVoid();
@@ -295,9 +295,9 @@ public class COAService {
                             })
                             .onFailure().invoke(failure -> {
                                     LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
-                                    monitoringService.recordDisconnectRequestFailure();
+                                    monitoringService.recordCOASystemFailure();
                             })
-                            .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // NAK on failure
+                            .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // treat HTTP failure as session removed
                 })
                 .merge() // Parallel execution for all sessions
                 .collect().asList()
