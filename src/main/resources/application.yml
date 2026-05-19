@@ -180,6 +180,13 @@ idle-session:
 
   # Process 1000 sessions per batch (increased for scale)
 
+log-retention:
+  enabled: true
+  directory: /var/log/dte
+  file-pattern: "accounting-service-*.log*"
+  retention-days: 7
+  cron: "0 0 2 * * ?"        # Daily at 02:00 - delete log files older than retention-days
+
 kafka:
   bootstrap:
     servers: localhost:9092
