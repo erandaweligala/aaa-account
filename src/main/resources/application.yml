@@ -64,6 +64,7 @@ quarkus:
         max-file-size: 100M
         max-backup-index: 15
         rotate-on-boot: true
+        file-suffix: .yyyy-MM-dd
       enabled: true
       level: ERROR
 
