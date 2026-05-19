@@ -49,6 +49,8 @@ public class UserBucketRepository {
     public static final String CONCURRENCY = "CONCURRENCY";
     public static final String STATUS = "STATUS";
     public static final String TEMPLATE_ID = "TEMPLATE_ID";
+    public static final String CYCLE_START_DATE = "CYCLE_START_DATE";
+    public static final String RECURRING_FLAG = "RECURRING_FLAG";
 
     final Pool client;
 
@@ -114,6 +116,11 @@ public class UserBucketRepository {
             // Service dates
             info.setServiceStartDate(row.getLocalDateTime(COL_SERVICE_START_DATE));
             info.setExpiryDate(row.getLocalDateTime(COL_EXPIRY_DATE));
+
+            if(row.getLong(RECURRING_FLAG) == 1){
+            info.setNextCycleStartDate(row.getLocalDateTime(CYCLE_START_DATE));
+            }
+            info.setRecurring(row.getLong(RECURRING_FLAG) == 1);
 
             // Bucket configuration
             info.setRule(row.getString(COL_RULE));

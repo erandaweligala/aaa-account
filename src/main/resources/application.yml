@@ -90,6 +90,10 @@ quarkus:
       jvm: true
       system: true
       http-server: true
+      redis:
+        enabled: true
+      kafka:
+        enabled: true
     export:
       prometheus:
         enabled: true
@@ -189,7 +193,7 @@ mp:
         allow.auto.create.topics: false
         bootstrap.servers: localhost2:9092
         connector: smallrye-kafka
-        topic: dctodr-dc
+        topic: accounting-db-dc
         value.serializer: io.quarkus.kafka.client.serialization.ObjectMapperSerializer
         key.serializer: org.apache.kafka.common.serialization.StringSerializer
         acks: all

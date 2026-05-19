@@ -27,5 +27,7 @@ public class Balance {
     private List<ConsumptionRecord> consumptionHistory = new ArrayList<>();
     private boolean isGroup;
     private long usage;
+    private boolean isRecurring;
+    private LocalDateTime cycleStartDate;
 
 }

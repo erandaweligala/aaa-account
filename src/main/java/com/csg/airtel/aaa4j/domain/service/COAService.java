@@ -23,7 +23,6 @@ import java.util.Objects;
 import java.util.Set;
 
 
-
 @ApplicationScoped
 public class COAService {
     private static final Logger log = Logger.getLogger(COAService.class);
@@ -179,23 +178,23 @@ public class COAService {
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event, Session session, String username, CoaDisconnectScenario scenario) {
         // Generate CoA Request CDR before sending the disconnect request
         generateAndSendCoaRequestCDR(session, username);
-        monitoringService.recordCOADisconnectInitiated(scenario);
+       /** monitoringService.recordCOADisconnectInitiated(scenario); */
         return coaHttpClient.sendDisconnect(event)
                 .onItem().invoke(response -> {
                     if (response.isAck()) {
                         LoggingUtil.logInfo(log, M_COA, "CoA disconnect ACK received for rejected session: %s", session.getSessionId());
-                        monitoringService.recordCOARequest();
+                        /**  monitoringService.recordCOARequest(); */
                         generateAndSendCoaResponseCDR(session, username, "ACK");
                     } else {
                         LoggingUtil.logWarn(log, M_COA, "CoA disconnect NAK/Failed for rejected session: %s, status: %s",
                                 session.getSessionId(), response.status());
-                        monitoringService.recordDisconnectRequestFailure();
+                        /** monitoringService.recordDisconnectRequestFailure(); */
                         generateAndSendCoaResponseCDR(session, username, response.status());
                     }
                 })
                 .onFailure().invoke(failure -> {
                         LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
-                        monitoringService.recordCOASystemFailure();
+                       /** monitoringService.recordCOASystemFailure(); */
                         generateAndSendCoaResponseCDR(session, username, "FAILED");
                 })
                 .replaceWithVoid();
@@ -275,14 +274,14 @@ public class COAService {
 
                     // Generate CoA Request CDR before sending the HTTP disconnect
                     generateAndSendCoaRequestCDR(session, username);
-                    monitoringService.recordCOADisconnectInitiated(scenario);
+                    //monitoringService.recordCOADisconnectInitiated(scenario);
 
                     // Send HTTP request and track ACK/NAK result
                     return coaHttpClient.sendDisconnect(request)
                             .onItem().transform(response -> {
                                 if (response.isAck()) {
                                     LoggingUtil.logInfo(log, M_COA, "CoA disconnect ACK received for session: %s", session.getSessionId());
-                                    monitoringService.recordCOARequest();
+                                  //  monitoringService.recordCOARequest();
                                     generateAndSendCoaResponseCDR(session, username, "ACK");
                                     return new CoAResult(session.getSessionId(), true);
                                 } else {

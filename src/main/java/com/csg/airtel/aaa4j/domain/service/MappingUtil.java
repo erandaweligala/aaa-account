@@ -99,6 +99,8 @@ public class MappingUtil {
         balance.setGroup(bucket.isGroup());
         balance.setUnlimited(bucket.isUnlimited());
         balance.setUsage(bucket.getUsage());
+        balance.setCycleStartDate(bucket.getNextCycleStartDate());
+        balance.setRecurring(bucket.isRecurring());
         return balance;
     }
 

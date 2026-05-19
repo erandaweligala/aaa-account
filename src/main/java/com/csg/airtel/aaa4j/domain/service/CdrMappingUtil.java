@@ -73,8 +73,8 @@ public class CdrMappingUtil {
                     "Interim-Update",
                     EventTypes.ACCOUNTING_INTERIM.name(),
                     request.sessionTime(),
-                    (long) request.inputOctets(),
-                    (long) request.outputOctets(),
+                    Integer.toUnsignedLong(request.inputOctets()),
+                    Integer.toUnsignedLong(request.outputOctets()),
                     request.inputGigaWords(),
                     request.outputGigaWords()
             );
@@ -85,8 +85,8 @@ public class CdrMappingUtil {
                     "Stop",
                     EventTypes.ACCOUNTING_STOP.name(),
                     request.sessionTime(),
-                    (long) request.inputOctets(),
-                    (long) request.outputOctets(),
+                    Integer.toUnsignedLong(request.inputOctets()),
+                    Integer.toUnsignedLong(request.outputOctets()),
                     request.inputGigaWords(),
                     request.outputGigaWords()
             );

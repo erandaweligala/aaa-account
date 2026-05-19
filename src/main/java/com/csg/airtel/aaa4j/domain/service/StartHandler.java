@@ -149,7 +149,7 @@ public class StartHandler {
         }
 
         if (sessionAlreadyExists(userSessionData, request.sessionId())) {
-            LoggingUtil.logInfo(log, M_VALIDATE_BALANCE, "Session already exists for user: %s, sessionId: %s",
+            LoggingUtil.logWarn(log, M_VALIDATE_BALANCE, "Session already exists for user: %s, sessionId: %s",
                     request.username(), request.sessionId());
             return Uni.createFrom().voidItem();
         }
@@ -354,7 +354,7 @@ public class StartHandler {
                         AccountingResponseEvent.ResponseAction.DISCONNECT),
                 createSession(request),
                 request.username(),
-                CoaDisconnectScenario.ZERO_DATA_QUOTA);
+                CoaDisconnectScenario.NO_VALID_BALANCE);
     }
 
     private BucketProcessingResult processBucketsAndCreateBalances(

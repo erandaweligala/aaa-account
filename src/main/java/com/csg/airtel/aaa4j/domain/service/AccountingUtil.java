@@ -118,9 +118,9 @@ public class AccountingUtil {
     /**
      * Check if a balance is eligible for selection .
      *
-     * @param balance the balance to check
+     * @param balance    the balance to check
      * @param timeWindow the time window string
-     * @param now current time (cached to avoid multiple calls)
+     * @param now        current time (cached to avoid multiple calls)
      * @return true if balance is eligible, false otherwise
      */
     private boolean isBalanceEligible(Balance balance, String timeWindow, LocalDateTime now) {
@@ -174,8 +174,12 @@ public class AccountingUtil {
             if (!isBalanceEligible(balance, timeWindow, now)) {
                 continue;
             }
-
-            LocalDateTime serviceStartDate = balance.getServiceStartDate();
+            LocalDateTime serviceStartDate;
+            if (!balance.isRecurring()) {
+                serviceStartDate = balance.getServiceStartDate();
+            } else {
+                serviceStartDate = balance.getCycleStartDate();
+            }
 
             if (!serviceStartDate.isAfter(now) && activeStatus.equals(balance.getServiceStatus())) {
                 long priority = balance.getPriority();
@@ -199,10 +203,10 @@ public class AccountingUtil {
 
     /**
      *
-     * @param userData get user session data
+     * @param userData    get user session data
      * @param sessionData get individual session Data
-     * @param request packet request
-     * @param bucketId bucket id
+     * @param request     packet request
+     * @param bucketId    bucket id
      * @return update results
      */
     public Uni<UpdateResult> updateSessionAndBalance(
@@ -273,15 +277,15 @@ public class AccountingUtil {
                 ? groupData.getSessions()
                 : userData.getSessions();
 
-         userData.setSessions(sessionsToCheck);
+        userData.setSessions(sessionsToCheck);
         // Add session if not already present (using efficient loop instead of stream)
         if (!containsSession(sessionsToCheck, session.getSessionId())) {
             userData.getSessions().add(session);
         }
 
         List<Session> combinedSessions = userData.getSessions();
-        if(foundBalance != null && !foundBalance.isGroup()) {
-             combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
+        if (foundBalance != null && !foundBalance.isGroup()) {
+            combinedSessions = getCombinedSessionsSync(userData.getSessions(), groupData);
         }
 
         // Find session using efficient loop instead of stream
@@ -301,7 +305,7 @@ public class AccountingUtil {
 
     /**
      *
-     * @param sessions list of sessions to search
+     * @param sessions  list of sessions to search
      * @param sessionId the session ID to find
      * @return true if session exists, false otherwise
      */
@@ -321,7 +325,7 @@ public class AccountingUtil {
      * Find a session by ID from a list.
      * Uses efficient loop instead of stream for better performance.
      *
-     * @param sessions list of sessions to search
+     * @param sessions  list of sessions to search
      * @param sessionId the session ID to find
      * @return the session with matching ID, or null if not found
      */
@@ -346,15 +350,15 @@ public class AccountingUtil {
     }
 
     private long calculateTotalUsage(AccountingRequestDto request) {
-        long totalGigaWords = (long) request.outputGigaWords() + (long) request.inputGigaWords();
-        long totalOctets = (long) request.inputOctets() + (long) request.outputOctets();
+        long totalGigaWords = Integer.toUnsignedLong(request.outputGigaWords()) + Integer.toUnsignedLong(request.inputGigaWords());
+        long totalOctets = Integer.toUnsignedLong(request.inputOctets()) + Integer.toUnsignedLong(request.outputOctets());
         return calculateTotalOctets(totalOctets, totalGigaWords);
     }
 
     /**
      * Calculate which window period we're currently in, based on the service start date.
      *
-     * @param serviceStartDate when the service started
+     * @param serviceStartDate       when the service started
      * @param consumptionLimitWindow window duration in days (e.g., 30)
      * @return the current window period number (1, 2, 3, etc.)
      */
@@ -376,7 +380,7 @@ public class AccountingUtil {
     /**
      * Calculate the start and end dates for a fixed window period.
      *
-     * @param serviceStartDate when the service started
+     * @param serviceStartDate       when the service started
      * @param consumptionLimitWindow window duration in days
      * @return array with [windowStartDate, windowEndDate]
      */
@@ -397,7 +401,7 @@ public class AccountingUtil {
 
     /**
      *
-     * @param balance balance containing consumption history
+     * @param balance         balance containing consumption history
      * @param windowStartDate start date of the consumption window
      */
     private void cleanupOldConsumptionRecords(Balance balance, LocalDate windowStartDate) {
@@ -417,7 +421,7 @@ public class AccountingUtil {
     /**
      * Calculate total consumption within the time window using daily aggregated records.
      *
-     * @param balance balance containing consumption history and serviceStartDate
+     * @param balance    balance containing consumption history and serviceStartDate
      * @param windowDays number of days for the consumption limit window (e.g., 30)
      * @return total bytes consumed within the current fixed window period
      */
@@ -426,9 +430,13 @@ public class AccountingUtil {
         if (history == null || history.isEmpty()) {
             return 0L;
         }
-
+        LocalDateTime serviceStartDateTime;
         // Get service start date from balance
-        LocalDateTime serviceStartDateTime = balance.getServiceStartDate();
+        if (!balance.isRecurring()) {
+            serviceStartDateTime = balance.getServiceStartDate();
+        } else {
+            serviceStartDateTime = balance.getCycleStartDate();
+        }
         if (serviceStartDateTime == null) {
             LoggingUtil.logDebug(log, M_CONSUMPTION, "Service start date is null for bucket %s, falling back to rolling window",
                     balance.getBucketId());
@@ -466,7 +474,7 @@ public class AccountingUtil {
      * Fallback method: Calculate consumption using rolling window (legacy behavior).
      * Used when serviceStartDate is not available.
      *
-     * @param history consumption history
+     * @param history    consumption history
      * @param windowDays number of days to look back
      * @return total bytes consumed in rolling window
      */
@@ -488,9 +496,9 @@ public class AccountingUtil {
      * Check if consumption limit is exceeded using daily aggregated records with fixed windows.
      * Cleanup is based on the current fixed window period, not rolling window.
      *
-     * @param balance balance to check
+     * @param balance             balance to check
      * @param previousConsumption previous consumption value
-     * @param usageDelta delta usage to add
+     * @param usageDelta          delta usage to add
      * @return true if limit is exceeded, false otherwise
      */
     private boolean isConsumptionLimitExceeded(Balance balance, long previousConsumption, long usageDelta) {
@@ -503,7 +511,13 @@ public class AccountingUtil {
         }
 
         // Clean up old records based on fixed window bounds
-        LocalDateTime serviceStartDateTime = balance.getServiceStartDate();
+        LocalDateTime serviceStartDateTime;
+        // Get service start date from balance
+        if (!balance.isRecurring()) {
+            serviceStartDateTime = balance.getServiceStartDate();
+        } else {
+            serviceStartDateTime = balance.getCycleStartDate();
+        }
         if (serviceStartDateTime != null) {
             LocalDate serviceStartDate = serviceStartDateTime.toLocalDate();
             LocalDate[] windowBounds = calculateFixedWindowBounds(serviceStartDate, consumptionLimitWindow);
@@ -534,7 +548,7 @@ public class AccountingUtil {
      * Instead of recording each request separately (2880 records for 30 days),
      * aggregate consumption by day (30 records for 30 days).
      *
-     * @param balance balance to update
+     * @param balance       balance to update
      * @param bytesConsumed bytes consumed in this update
      */
     private void recordConsumption(Balance balance, long bytesConsumed) {
@@ -581,7 +595,7 @@ public class AccountingUtil {
      * Synchronously combine balances from user and group data.
      *
      * @param userBalances user's balances
-     * @param groupData group bucket data (may be null)
+     * @param groupData    group bucket data (may be null)
      * @return combined list of balances without duplicates
      */
     private List<Balance> getCombinedBalancesSync(
@@ -636,7 +650,7 @@ public class AccountingUtil {
      * Synchronously combine sessions from user and group data.
      *
      * @param userSessions user's sessions
-     * @param groupData group bucket data (may be null)
+     * @param groupData    group bucket data (may be null)
      * @return combined list of sessions
      */
     private List<Session> getCombinedSessionsSync(List<Session> userSessions, UserSessionData groupData) {
@@ -665,13 +679,13 @@ public class AccountingUtil {
      * Process balance update with combined sessions and balances from user and group.
      * This method extends the regular processBalanceUpdate by considering group bucket sessions.
      *
-     * @param userData user session data
-     * @param sessionData current session data
-     * @param request accounting request
-     * @param foundBalance balance found with highest priority
+     * @param userData         user session data
+     * @param sessionData      current session data
+     * @param request          accounting request
+     * @param foundBalance     balance found with highest priority
      * @param combinedBalances combined balances from user and group
      * @param combinedSessions combined sessions from user and group
-     * @param totalUsage total usage for current request
+     * @param totalUsage       total usage for current request
      * @return Uni of UpdateResult
      */
     private Uni<UpdateResult> processBalanceUpdateWithCombinedData(
@@ -684,7 +698,7 @@ public class AccountingUtil {
             long totalUsage) {
 
         if (foundBalance == null) {
-            return handleNoValidBalance(userData, request,sessionData);
+            return handleNoValidBalance(userData, request, sessionData);
         }
 
 
@@ -697,7 +711,7 @@ public class AccountingUtil {
                             AccountingResponseEvent.EventType.COA,
                             AccountingResponseEvent.ResponseAction.DISCONNECT),
                     sessionData, request.username(),
-                    CoaDisconnectScenario.MAX_CONCURRENT_SESSIONS).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded",sessionData));
+                    CoaDisconnectScenario.MAX_CONCURRENT_SESSIONS).replaceWith(UpdateResult.failure("Maximum number of concurrency sessions exceeded", sessionData));
         }
         LoggingUtil.logDebug(log, M_UPDATE, "Processing balance update with combined data - balances: %d, sessions: %d",
                 combinedBalances.size(), combinedSessions.size());
@@ -720,11 +734,12 @@ public class AccountingUtil {
         return finalizeBalanceUpdate(userData, sessionData, request, context.getEffectiveBalance(),
                 newQuota, context.getPreviousUsageBucketId(), totalUsage);
     }
+
     private boolean isCheckConcurrency(UserSessionData userData, Session sessionData, AccountingRequestDto request, Balance foundBalance, List<Session> combinedSessions) {
 
-        if(sessionData == null) return false;
+        if (sessionData == null) return false;
 
-        boolean hasMatchingNasPortId = hasMatchingNasPortId(userData.getSessions(), request.nasPortId(),sessionData);
+        boolean hasMatchingNasPortId = hasMatchingNasPortId(userData.getSessions(), request.nasPortId(), sessionData);
 
         if (foundBalance.isGroup()) {
             return checkGroupConcurrency(sessionData, request, combinedSessions, hasMatchingNasPortId);
@@ -736,11 +751,11 @@ public class AccountingUtil {
     /**
      * Check if request has matching NAS Port ID in user sessions.
      *
-     * @param userSessions list of user sessions
+     * @param userSessions     list of user sessions
      * @param requestNasPortId NAS Port ID from request
      * @return true if matching NAS Port ID found, false otherwise
      */
-    private boolean hasMatchingNasPortId(List<Session> userSessions, String requestNasPortId,Session sessionData) {
+    private boolean hasMatchingNasPortId(List<Session> userSessions, String requestNasPortId, Session sessionData) {
         if (userSessions == null || requestNasPortId == null) {
             return false;
         }
@@ -756,8 +771,8 @@ public class AccountingUtil {
     /**
      * Check concurrency limit for individual user.
      *
-     * @param userData user session data
-     * @param request accounting request
+     * @param userData             user session data
+     * @param request              accounting request
      * @param hasMatchingNasPortId whether request has matching NAS Port ID
      * @return true if concurrency limit exceeded, false otherwise
      */
@@ -779,9 +794,9 @@ public class AccountingUtil {
     /**
      * Check concurrency limit for group user.
      *
-     * @param sessionData current session data
-     * @param request accounting request
-     * @param combinedSessions combined sessions from user and group
+     * @param sessionData          current session data
+     * @param request              accounting request
+     * @param combinedSessions     combined sessions from user and group
      * @param hasMatchingNasPortId whether request has matching NAS Port ID
      * @return true if concurrency limit exceeded, false otherwise
      */
@@ -825,10 +840,10 @@ public class AccountingUtil {
      * Sends COA disconnect request for all existing sessions and returns failure.
      *
      * @param userData user session data containing active sessions
-     * @param request accounting request
+     * @param request  accounting request
      * @return Uni of UpdateResult with failure status
      */
-    private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request,Session sessionData) {
+    private Uni<UpdateResult> handleNoValidBalance(UserSessionData userData, AccountingRequestDto request, Session sessionData) {
         LoggingUtil.logWarn(log, M_UPDATE, "No valid balance found for user: %s. Disconnecting all sessions.", request.username());
 
         if (AccountingRequestDto.ActionType.STOP.equals(request.actionType())) {
@@ -841,12 +856,12 @@ public class AccountingUtil {
                 .onItem().transform(updatedUserData -> {
                     LoggingUtil.logDebug(log, M_UPDATE, "Successfully sent COA disconnect for user: %s due to no valid balance",
                             request.username());
-                    return UpdateResult.failure("No valid balance found",sessionData);
+                    return UpdateResult.failure("No valid balance found", sessionData);
                 })
                 .onFailure().invoke(err ->
                         LoggingUtil.logError(log, M_UPDATE, err, "Error sending COA disconnect for user: %s with no valid balance",
                                 request.username()))
-                .onFailure().recoverWithItem(UpdateResult.failure("No valid balance found",sessionData));
+                .onFailure().recoverWithItem(UpdateResult.failure("No valid balance found", sessionData));
     }
 
     /**
@@ -958,7 +973,7 @@ public class AccountingUtil {
                 request.username(), balance.getBucketId());
 
         UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
-                balance, previousUsageBucketId,null);
+                balance, previousUsageBucketId, null);
 
         return handleConsumptionLimitExceeded(userData, request, balance, result);
     }
@@ -978,13 +993,13 @@ public class AccountingUtil {
         updateSessionData(sessionData, balance, totalUsage, request.sessionTime());
 
         UpdateResult result = UpdateResult.success(newQuota, balance.getBucketId(),
-                balance, previousUsageBucketId,sessionData);
+                balance, previousUsageBucketId, sessionData);
 
         if (shouldDisconnectSession(result, balance, previousUsageBucketId)) {
             return handleSessionDisconnect(userData, request, balance, result);
         }
 
-        return updateCacheForNormalOperation(userData, request, balance, result,sessionData);
+        return updateCacheForNormalOperation(userData, request, balance, result, sessionData);
     }
 
 
@@ -1039,7 +1054,8 @@ public class AccountingUtil {
         // Check and notify quota thresholds asynchronously
         quotaNotificationService.checkAndNotifyThresholds(userData, previousBalance, oldQuota, newQuota)
                 .subscribe().with(
-                        unused -> {},
+                        unused -> {
+                        },
                         failure -> LoggingUtil.logError(log, M_UPDATE, failure, "Failed to check thresholds for bucket %s",
                                 previousBalance.getBucketId())
                 );
@@ -1067,7 +1083,8 @@ public class AccountingUtil {
         // Check and notify quota thresholds asynchronously
         quotaNotificationService.checkAndNotifyThresholds(userData, foundBalance, oldQuota, newQuota)
                 .subscribe().with(
-                        unused -> {},
+                        unused -> {
+                        },
                         failure -> LoggingUtil.logError(log, M_UPDATE, failure, "Failed to check thresholds for bucket %s",
                                 foundBalance.getBucketId())
                 );
@@ -1078,7 +1095,7 @@ public class AccountingUtil {
     private void updateSessionData(Session sessionData, Balance foundBalance, long totalUsage, Integer sessionTime) {
         Long previousTotalUsageQuotaValue = sessionData.getPreviousTotalUsageQuotaValue();
         sessionData.setPreviousTotalUsageQuotaValue(totalUsage);
-        sessionData.setSessionUsage(totalUsage-previousTotalUsageQuotaValue);
+        sessionData.setSessionUsage(totalUsage - previousTotalUsageQuotaValue);
         sessionData.setSessionTime(sessionTime);
         sessionData.setPreviousUsageBucketId(foundBalance.getBucketId());
         sessionData.setServiceId(foundBalance.getServiceId());
@@ -1089,7 +1106,7 @@ public class AccountingUtil {
     }
 
     private boolean shouldDisconnectSession(UpdateResult result, Balance foundBalance, String previousUsageBucketId) {
-        return (result.newQuota() <= 0 && !foundBalance.isUnlimited()) || !foundBalance.getBucketId().equals(previousUsageBucketId) ;
+        return (result.newQuota() <= 0 && !foundBalance.isUnlimited()) || !foundBalance.getBucketId().equals(previousUsageBucketId);
     }
 
     /**
@@ -1123,42 +1140,42 @@ public class AccountingUtil {
                 .replaceWith(result);
     }
 
-    private Uni<Void> extractCoaCacheAndDBUpdate(AccountingRequestDto request, Balance foundBalance, UserSessionData updatedUserData, String username, String bucketUsername,boolean isDBUpdate) {
-            if (!foundBalance.isGroup()) {
-                updatedUserData.getBalance().removeIf(Balance::isGroup);
-            } else {
-                updatedUserData.getBalance().removeIf(rs -> !rs.isGroup());
-                updatedUserData.setUserName(null);
-            }
-            if(request.actionType().equals(AccountingRequestDto.ActionType.STOP)){
-                updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
-            }
+    private Uni<Void> extractCoaCacheAndDBUpdate(AccountingRequestDto request, Balance foundBalance, UserSessionData updatedUserData, String username, String bucketUsername, boolean isDBUpdate) {
+        if (!foundBalance.isGroup()) {
+            updatedUserData.getBalance().removeIf(Balance::isGroup);
+        } else {
+            updatedUserData.getBalance().removeIf(rs -> !rs.isGroup());
+            updatedUserData.setUserName(null);
+        }
+        if (request.actionType().equals(AccountingRequestDto.ActionType.STOP)) {
+            updatedUserData.getSessions().removeIf(rs -> rs.getSessionId().equals(request.sessionId()));
+        }
 
         LoggingUtil.logTrace(log, M_CACHE, "Successfully cleared all sessions for user: %s, remaining sessions: %d",
                 username, updatedUserData.getSessions() != null ?
-                updatedUserData.getSessions().size() : 0);
-        if(isDBUpdate) {
+                        updatedUserData.getSessions().size() : 0);
+        if (isDBUpdate) {
             return updateBalanceInDatabase(foundBalance, foundBalance.getQuota(),
                     request.sessionId(), username)
-                    .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username()))
+                    .chain(() -> cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData, request.username()))
                     .onFailure().invoke(err ->
                             LoggingUtil.logError(log, M_CACHE, err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
                     .replaceWithVoid();
-        }else {
-           return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData,request.username())
+        } else {
+            return cacheClient.updateUserAndRelatedCaches(bucketUsername, updatedUserData, request.username())
                     .onFailure().invoke(err ->
                             LoggingUtil.logError(log, M_CACHE, err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
-                                .replaceWithVoid();
+                    .replaceWithVoid();
         }
     }
 
     /**
      * Handle consumption limit exceeded scenario.
      *
-     * @param userData user session data
-     * @param request accounting request
+     * @param userData     user session data
+     * @param request      accounting request
      * @param foundBalance balance that exceeded the limit
-     * @param result update result
+     * @param result       update result
      * @return Uni<UpdateResult>
      */
     private Uni<UpdateResult> handleConsumptionLimitExceeded(
@@ -1196,8 +1213,8 @@ public class AccountingUtil {
             UserSessionData userData,
             AccountingRequestDto request,
             Balance foundBalance,
-            UpdateResult result,Session currentSession) {
-        return getUpdateResultUni(userData, request, foundBalance, result,currentSession);
+            UpdateResult result, Session currentSession) {
+        return getUpdateResultUni(userData, request, foundBalance, result, currentSession);
     }
 
 
@@ -1221,13 +1238,13 @@ public class AccountingUtil {
         return null;
     }
 
-    private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success,Session currentSession) {
+    private Uni<UpdateResult> getUpdateResultUni(UserSessionData userData, AccountingRequestDto request, Balance foundBalance, UpdateResult success, Session currentSession) {
 
         return extractCoaCacheAndDBUpdate(request, foundBalance,
-                userData, request.username(), foundBalance.getBucketUsername(),false)
+                userData, request.username(), foundBalance.getBucketUsername(), false)
                 .onFailure().invoke(err ->
-                            LoggingUtil.logError(log, M_CACHE, err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
-                    .replaceWith(success);
+                        LoggingUtil.logError(log, M_CACHE, err, ERROR_UPDATING_CACHE_FOR_USER_S, request.username()))
+                .replaceWith(success);
 
     }
 
@@ -1236,12 +1253,12 @@ public class AccountingUtil {
      * If session is not null, it will be added/updated in the group's sessions list.
      *
      * @param existingGroupData existing group data from cache (may be null)
-     * @param balance the balance to update
-     * @param session the session to add/update (may be null)
+     * @param balance           the balance to update
+     * @param session           the session to add/update (may be null)
      * @return UserSessionData with updated balance and sessions
      */
-    public UserSessionData prepareGroupDataWithSession(UserSessionData existingGroupData, Balance balance, Session session,AccountingRequestDto request,UserSessionData currentUserData) {
-        currentUserData.getBalance().removeIf(rs ->!rs.isGroup() || rs.getBucketId().equals(balance.getBucketId()));
+    public UserSessionData prepareGroupDataWithSession(UserSessionData existingGroupData, Balance balance, Session session, AccountingRequestDto request, UserSessionData currentUserData) {
+        currentUserData.getBalance().removeIf(rs -> !rs.isGroup() || rs.getBucketId().equals(balance.getBucketId()));
         final UserSessionData userSessionGroupData = currentUserData;
         userSessionGroupData.getBalance().add(balance);
 
@@ -1258,7 +1275,7 @@ public class AccountingUtil {
             }
 
             // Add the current session
-            if(!AccountingRequestDto.ActionType.STOP.equals(request.actionType())) {
+            if (!AccountingRequestDto.ActionType.STOP.equals(request.actionType())) {
                 groupSessions.add(session);
             }
             userSessionGroupData.setSessions(groupSessions);
@@ -1283,9 +1300,9 @@ public class AccountingUtil {
         long previousUsage = previousUsageObj == null ? 0L : previousUsageObj;
         long usageDelta = totalUsage - previousUsage;
         //  bucket is unlimited quota calculation
-        if(foundBalance.isUnlimited()){
+        if (foundBalance.isUnlimited()) {
             foundBalance.setUsage(foundBalance.getUsage() + usageDelta);
-           return totalUsage;
+            return totalUsage;
         }
         if (usageDelta < 0) {
             usageDelta = 0;
@@ -1315,10 +1332,10 @@ public class AccountingUtil {
     /**
      * Update balance in database.
      *
-     * @param balance balance to update
-     * @param newQuota new quota value
+     * @param balance   balance to update
+     * @param newQuota  new quota value
      * @param sessionId session ID
-     * @param userName username
+     * @param userName  username
      * @return Uni<Void>
      */
     private Uni<Void> updateBalanceInDatabase(Balance balance, long newQuota, String sessionId,
@@ -1327,13 +1344,13 @@ public class AccountingUtil {
         // Update balance with new quota
         balance.setQuota(Math.max(newQuota, 0));
 
-        DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(balance,userName,sessionId,EventType.UPDATE_EVENT);
+        DBWriteRequest dbWriteRequest = MappingUtil.createDBWriteRequest(balance, userName, sessionId, EventType.UPDATE_EVENT);
 
-       return accountProducer.produceDBWriteEvent(dbWriteRequest)
+        return accountProducer.produceDBWriteEvent(dbWriteRequest)
                 .onFailure().invoke(throwable ->
-            LoggingUtil.logDebug(log, M_CACHE, "Failed to produce DB write event for balance update, session: %s",
-                    sessionId)
-        );
+                        LoggingUtil.logDebug(log, M_CACHE, "Failed to produce DB write event for balance update, session: %s",
+                                sessionId)
+                );
     }
 
     private long calculateTotalOctets(long octets, long gigawords) {
@@ -1413,7 +1430,6 @@ public class AccountingUtil {
     }
 
 
-
     /**
      * Get complete group bucket data including balances and sessions.
      *
@@ -1429,7 +1445,7 @@ public class AccountingUtil {
 
         return cacheClient.getUserData(groupId)
                 .onFailure().invoke(throwable ->
-                    LoggingUtil.logDebug(log, M_BALANCE, "Failed to fetch group bucket data for groupId: %s", groupId)
+                        LoggingUtil.logDebug(log, M_BALANCE, "Failed to fetch group bucket data for groupId: %s", groupId)
                 )
                 .onFailure().recoverWithNull();
     }

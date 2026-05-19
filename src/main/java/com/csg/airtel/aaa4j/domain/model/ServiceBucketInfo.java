@@ -19,6 +19,8 @@ public class ServiceBucketInfo {
     private long usage;
     private LocalDateTime expiryDate;
     private LocalDateTime serviceStartDate;
+    private LocalDateTime nextCycleStartDate;
+    private boolean isRecurring;
     private String planId;
     private String status;
     private long bucketId;

@@ -13,19 +13,11 @@ import org.eclipse.microprofile.reactive.messaging.Message;
 import org.jboss.logging.Logger;
 import org.slf4j.MDC;
 
-import java.time.Duration;
-import java.util.concurrent.atomic.AtomicLong;
 
 @ApplicationScoped
 public class AccountingConsumer {
     private static final Logger LOG = Logger.getLogger(AccountingConsumer.class);
     private static final String METHOD_CONSUME = "consumeAccountingEvent";
-    private static final int PROGRESS_INTERVAL = 1000;
-
-    private final AtomicLong totalProcessed    = new AtomicLong(0);
-    private final AtomicLong lastProgressCount = new AtomicLong(0);
-    private final AtomicLong lastProgressTime  = new AtomicLong(System.currentTimeMillis());
-    private final long startEpochMs = System.currentTimeMillis();
 
     final AccountingHandlerFactory accountingHandlerFactory;
 
