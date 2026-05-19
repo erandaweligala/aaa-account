@@ -1,0 +1,746 @@
+@startuml AAA4J-class-diagram
+' Auto-generated class diagram for com.csg.airtel.aaa4j
+skinparam dpi 110
+skinparam classFontSize 11
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+left to right direction
+skinparam shadowing false
+skinparam class {
+  BackgroundColor #FDFDFD
+  BorderColor #555555
+  ArrowColor #444444
+}
+hide empty members
+
+package "application" {
+  package "common" as application_common {
+    class LoggingUtil {
+      + TRACE_ID : String
+      + USER_NAME : String
+      + SESSION_ID : String
+      - SB_POOL : ThreadLocal
+      - SB_SOFT_CAP : int
+      - EMPTY_ARGS : Object[]
+      + logInfo(Logger, String, String, ) : void
+      + logDebug(Logger, String, String, ) : void
+      + logWarn(Logger, String, String, ) : void
+      + logError(Logger, String, Throwable, String, ) : void
+      + logTrace(Logger, String, String, ) : void
+      ... (1 more methods)
+    }
+    class TraceIdGenerator {
+      - TRACE_TIME_FORMATTER : DateTimeFormatter
+      - HEX_CHARS : char[]
+      + generateTraceId() : String
+    }
+  }
+  package "config" as application_config {
+    interface IdleSessionConfig {
+    }
+    class OraclePoolCustomizer {
+      - log : Logger
+      - M_CREATE : String
+      - poolConfig : PoolConfig
+      - corePool : Pool
+      + create(Input) : Pool
+    }
+    interface PoolConfig {
+    }
+    class TimeZoneConfig {
+    }
+    interface WebClientConfig {
+    }
+    class WebClientProvider {
+      - vertx : Vertx
+      - config : WebClientConfig
+      - webClient : WebClient
+      + getClient() : WebClient
+    }
+  }
+  package "listener" as application_listener {
+    class AccountingConsumer {
+      - LOG : Logger
+      - METHOD_CONSUME : String
+      - PROGRESS_INTERVAL : int
+      - totalProcessed : AtomicLong
+      - lastProgressCount : AtomicLong
+      - lastProgressTime : AtomicLong
+      ... (1 more fields)
+      + consumeAccountingEvent(Message) : Uni
+      ... (3 more methods)
+    }
+    class SessionKeyspaceListener {
+      - log : Logger
+      - M_LISTEN : String
+      - EXPIRED_CHANNEL : String
+      - reactiveRedisDataSource : ReactiveRedisDataSource
+      - absoluteSessionTerminatorService : AbsoluteSessionTerminatorService
+      - enableKeyspaceNotifications() : void
+      - subscribeToExpiredEvents() : void
+      - handleExpiredKey(String) : void
+    }
+  }
+  package "resources" as application_resources {
+    class BucketResource {
+      - log : Logger
+      - M_ADD : String
+      - M_ADD_LIST : String
+      - M_UPDATE : String
+      - M_TERMINATE : String
+      - M_STATUS : String
+      ... (3 more fields)
+      + addBucket(String, BalanceWrapper) : Uni
+      + addBucketList(String, BalanceWrapper) : Uni
+      + updateBucket(String, Balance, String) : Uni
+      + terminateViaHttp(String, String) : Uni
+      + userStatusUpdate(String, String) : Uni
+      + serviceStatusUpdate(String, String, String) : Uni
+      + deleteService(String, String) : Uni
+    }
+    class RedisResource {
+      - log : Logger
+      + testConnection() : Uni
+      + interimUpdate(AccountingRequestDto) : Uni
+      + deleteKeyCache(String) : Uni
+      + getKeyCache(String) : Uni
+      + deleteNotification(String, long, String, long) : Uni
+    }
+  }
+}
+
+package "domain" {
+  package "constant" as domain_constant {
+    class AppConstant {
+      + COA_RETRY_INITIAL_BACKOFF_MS : long
+      + COA_RETRY_MAX_BACKOFF_SECONDS : long
+      + COA_RETRY_MAX_ATTEMPTS : int
+      + COA_TIMEOUT_SECONDS : long
+      + DISCONNECT_ACTION : String
+      + CURRENT_BALANCE : String
+      ... (11 more fields)
+    }
+    enum ResponseCodeEnum {
+      EXCEPTION_CONTROLLER_LAYER
+      EXCEPTION_SERVICE_LAYER
+      EXCEPTION_CLIENT_LAYER
+      EXCEPTION_DATABASE_LAYER
+      COA_RESPONSE_PARSING_ERROR
+      COA_DISCONNECT_ERROR
+    }
+    class SQLConstant {
+      + QUERY_BALANCE : String
+      + QUERY_MESSAGE_TEMPLATES : String
+    }
+  }
+  package "model" as domain_model {
+    enum ActionType {
+      START
+      INTERIM_UPDATE
+    }
+    class BalanceUpdateContext {
+    }
+    class DBWriteRequest {
+      - eventId : String
+      - eventType : EventType
+      - timestamp : LocalDateTime
+      - userName : String
+      - sessionId : String
+      - columnValues : Map
+      ... (2 more fields)
+      + getEventType() : EventType
+      + setEventType(EventType) : void
+      + getTimestamp() : LocalDateTime
+      + setTimestamp(LocalDateTime) : void
+      + getColumnValues() : Map
+      + setColumnValues(Object>) : void
+      + getTableName() : String
+      + setTableName(String) : void
+      ... (8 more methods)
+    }
+    enum EventType {
+      CREATE_EVENT
+      UPDATE_EVENT
+    }
+    class MessageTemplate {
+      - superTemplateId : Long
+      - templateId : Long
+      - templateName : String
+      - messageType : String
+      - quotaPercentage : Integer
+      - messageContent : String
+      + toThresholdGlobalTemplates() : ThresholdGlobalTemplates
+      ... (1 more methods)
+    }
+    enum ProcessType {
+      COA
+      DISCONNECT
+    }
+    enum ResponseAction {
+      DISCONNECT
+      FUP_APPLY
+      PACKAGE_UPGRADE
+      INTERNAL_ERROR
+      IGNORE_PROCESSING
+    }
+    class ServiceBucketInfo {
+      - bucketUser : String
+      - serviceId : long
+      - rule : String
+      - priority : long
+      - initialBalance : long
+      - currentBalance : long
+      ... (16 more fields)
+    }
+    class ThresholdGlobalTemplates {
+      - id : String
+      - massage : String
+      - threshold : Long
+      - params : String[]
+    }
+  }
+  package "model.cdr" as domain_model_cdr {
+    class Accounting {
+      - acctStatusType : String
+      - acctSessionTime : Integer
+      - acctInputOctets : Long
+      - acctOutputOctets : Long
+      - acctInputPackets : Integer
+      - acctOutputPackets : Integer
+      ... (6 more fields)
+    }
+    class AccountingCDREvent {
+      - eventId : String
+      - eventType : String
+      - eventVersion : String
+      - eventTimestamp : Instant
+      - source : String
+      - partitionKey : String
+      ... (1 more fields)
+    }
+    class COA {
+      - coaType : String
+      - coaCode : Integer
+      - destinationPort : Integer
+      - coaResponseStatus : String
+    }
+    enum EventTypes {
+      ACCOUNTING_START
+      ACCOUNTING_STOP
+      ACCOUNTING_INTERIM
+      ACCOUNTING_COA
+      COA_DISCONNECT_REQUEST
+      COA_REQUEST
+    }
+    class Network {
+      - framedIpAddress : String
+      - framedProtocol : String
+      - serviceType : String
+      - calledStationId : String
+    }
+    class Payload {
+      - session : SessionCdr
+      - user : User
+      - network : Network
+      - accounting : Accounting
+      - coa : COA
+      - radius : Radius
+    }
+    class Radius {
+      - attributes : List
+    }
+    class RadiusAttribute {
+      - type : Integer
+      - name : String
+      - value : String
+    }
+    class SessionCdr {
+      - sessionId : String
+      - sessionTime : String
+      - startTime : Instant
+      - updateTime : Instant
+      - nasIdentifier : String
+      - nasIpAddress : String
+      ... (3 more fields)
+    }
+    class User {
+      - userName : String
+      - groupId : String
+    }
+  }
+  package "model.coa" as domain_model_coa {
+    enum CoaDisconnectScenario {
+      DATA_BALANCE_EXHAUSTED
+      NO_VALID_BALANCE
+      MAX_CONCURRENT_SESSIONS
+      NO_SERVICE_BUCKETS
+      ZERO_DATA_QUOTA
+      BALANCE_PRIORITY_CHANGE
+      BALANCE_EXPIRY_CHANGED
+      MANUAL_TERMINATION
+      USER_STATUS_CHANGED
+      SERVICE_STATUS_CHANGED
+      SERVICE_DELETED
+      CONSUMPTION_LIMIT_EXCEEDED
+      BUCKET_CHANGE_OR_QUOTA_EXHAUSTED
+      ABSOLUTE_SESSION_TIMEOUT
+    }
+  }
+  package "model.response" as domain_model_response {
+    class ApiResponse {
+      - timestamp : Instant
+      - message : String
+      - status : Status
+      - data : T
+    }
+  }
+  package "model.session" as domain_model_session {
+    class Balance {
+      - initialBalance : Long
+      - quota : Long
+      - serviceExpiry : LocalDateTime
+      - bucketExpiryDate : LocalDateTime
+      - bucketId : String
+      - serviceId : String
+      ... (11 more fields)
+    }
+    class BalanceWrapper {
+      - sessionTimeOut : String
+      - concurrency : long
+      - balance : List
+    }
+    class ConsumptionRecord {
+      - date : LocalDate
+      - bytesConsumed : Long
+      - requestCount : Integer
+      + addConsumption(Long) : void
+    }
+    class QosParam {
+      - normalBandwidth : String
+      - fupBandwidth : String
+    }
+    class Session {
+      - sessionId : String
+      - sessionInitiatedTime : LocalDateTime
+      - sessionStartTime : LocalDateTime
+      - previousUsageBucketId : String
+      - sessionTime : Integer
+      - previousTotalUsageQuotaValue : Long
+      ... (11 more fields)
+    }
+    class UserSessionData {
+      - sessionTimeOut : String
+      - userStatus : String
+      - userName : String
+      - groupId : String
+      - concurrency : long
+      - superTemplateId : long
+      ... (3 more fields)
+    }
+  }
+  package "produce" as domain_produce {
+    class AccountProducer {
+      - LOG : Logger
+      - dbWriteRequestEmitter : Emitter
+      - accountingResponseEmitter : Emitter
+      - accountingCDREventEmitter : Emitter
+      - quotaNotificationEmitter : Emitter
+      - cacheClient : CacheClient
+      ... (1 more fields)
+      + produceDBWriteEvent(DBWriteRequest) : Uni
+      + produceAccountingResponseEvent(AccountingResponseEvent) : Uni
+      + produceAccountingCDREvent(AccountingCDREvent) : Uni
+      + produceQuotaNotificationEvent(ThresholdExpiryEvent) : Uni
+      ... (4 more methods)
+    }
+  }
+  package "service" as domain_service {
+    class AbsoluteSessionTerminatorService {
+      - log : Logger
+      - M_TERMINATE : String
+      - cacheClient : CacheClient
+      - sessionExpiryIndex : SessionExpiryIndex
+      - accountProducer : AccountProducer
+      - monitoringService : MonitoringService
+      ... (1 more fields)
+      + terminateSession(String, String) : Uni
+      ... (3 more methods)
+    }
+    abstract class AbstractAccountingHandler {
+      - log : Logger
+      - NO_SERVICE_BUCKETS_MSG : String
+      - M_NEW_SESSION : String
+      - M_USER_DETAILS : String
+      - cacheUtil : CacheClient
+      - userRepository : UserBucketRepository
+      ... (2 more fields)
+      + handleNewSessionUsage(AccountingRequestDto, String, AccountingRequestProcessor, Session>) : Uni
+      + getUserServicesDetails(AccountingRequestDto, String, AccountingRequestProcessor, Session>) : Uni
+      + findSessionById(List, String) : Session
+      + createDefaultSession(AccountingRequestDto) : Session
+    }
+    class AccountingHandlerFactory {
+      - LOG : Logger
+      + getHandler(AccountingRequestDto, String) : Uni
+    }
+    class AccountingUtil {
+      - log : Logger
+      - CACHED_NOW : ThreadLocal
+      - CACHED_TODAY : ThreadLocal
+      + ERROR_UPDATING_CACHE_FOR_USER_S : String
+      - M_UPDATE : String
+      - M_BALANCE : String
+      ... (8 more fields)
+      + clearTemporalCache() : void
+      + findBalanceWithHighestPriority(List, String) : Uni
+      + updateSessionAndBalance(UserSessionData, Session, AccountingRequestDto, String) : Uni
+      + calculateConsumptionInWindow(Balance, long) : long
+      + prepareGroupDataWithSession(UserSessionData, Balance, Session, AccountingRequestDto, UserSessionData) : UserSessionData
+      + isWithinTimeWindow(String) : boolean
+      ... (52 more methods)
+    }
+    class BucketService {
+      - log : Logger
+      - M_ADD : String
+      - M_UPDATE : String
+      - M_TERMINATE : String
+      - M_STATUS : String
+      - M_SVC_STATUS : String
+      ... (5 more fields)
+      + addBucketBalance(String, BalanceWrapper) : Uni
+      + addBucketListBalance(String, BalanceWrapper) : Uni
+      + updateBucketBalance(String, Balance, String) : Uni
+      + terminateSessions(String, String) : Uni
+      + terminateSessionsViaHttp(String, String) : Uni
+      + updateUserStatus(String, String) : Uni
+      + updateServiceStatus(String, String, String) : Uni
+      + deleteService(String, String) : Uni
+      ... (7 more methods)
+    }
+    class COAService {
+      - log : Logger
+      - M_COA : String
+      - M_CDR : String
+      - accountProducer : AccountProducer
+      - monitoringService : MonitoringService
+      - coaHttpClient : CoAHttpClient
+      + clearAllSessionsAndSendCOAMassageQue(UserSessionData, String, String, CoaDisconnectScenario) : Uni
+      + produceAccountingResponseEvent(AccountingResponseEvent, Session, String, CoaDisconnectScenario) : Uni
+      + clearAllSessionsAndSendCOA(UserSessionData, String, String, CoaDisconnectScenario) : Uni
+      + clearAllSessionsAndSendCOA(UserSessionData, String, String, AccountingRequestDto, CoaDisconnectScenario) : Uni
+      ... (4 more methods)
+    }
+    class CdrMappingUtil {
+      - log : Logger
+      - M_CDR : String
+      + DISCONNECT_REQUEST : String
+      + AAA_SERVICE : String
+      - acctStatusType : String
+      - eventType : String
+      ... (5 more fields)
+      + forStart() : AccountingMetrics
+      + forInterim(AccountingRequestDto) : AccountingMetrics
+      + forStop(AccountingRequestDto) : AccountingMetrics
+      + buildStartCDREvent(AccountingRequestDto, Session) : AccountingCDREvent
+      + buildInterimCDREvent(AccountingRequestDto, Session) : AccountingCDREvent
+      + buildStopCDREvent(AccountingRequestDto, Session) : AccountingCDREvent
+      + buildSessionCdr(AccountingRequestDto, Integer, String) : SessionCdr
+      + buildUserCdr(AccountingRequestDto, String) : User
+      ... (10 more methods)
+    }
+    class FailoverPathLogger {
+      + logFallbackPath(Logger, String, String, Throwable) : void
+    }
+    class InterimHandler {
+      - log : Logger
+      - M_INTERIM : String
+      - M_PROCESS : String
+      - accountingHandler : AbstractAccountingHandler
+      - cacheUtil : CacheClient
+      - accountProducer : AccountProducer
+      ... (2 more fields)
+      + handleInterim(AccountingRequestDto, String) : Uni
+      ... (3 more methods)
+    }
+    class MappingUtil {
+      + USERNAME : String
+      + SESSION_ID : String
+      + NAS_IP : String
+      + FRAMED_IP : String
+      - EMPTY_ATTRIBUTES : Map
+      - EMPTY : String
+      + createResponse(AccountingRequestDto, String, EventType, ResponseAction) : AccountingResponseEvent
+      + createResponse(String, String, String, String, String) : AccountingResponseEvent
+      + createBalance(ServiceBucketInfo) : Balance
+      + createDBWriteRequest(Balance, String, String, EventType) : DBWriteRequest
+    }
+    class MessageTemplateCacheService {
+      - LOG : Logger
+      - templateRepository : MessageTemplateRepository
+      - valueCommands : ReactiveValueCommands
+      - keyCommands : ReactiveKeyCommands
+      - MAX_CACHE_SIZE : int
+      - inMemoryCache : Map
+      + getAllTemplates() : Map
+      + getTemplatesBySuperTemplateId(Long) : Uni
+      + refreshCache() : Uni
+      + getCacheSize() : int
+      ... (2 more methods)
+    }
+    class MonitoringService {
+      - log : Logger
+      - M_INIT : String
+      - M_RECORD : String
+      - M_DAILY : String
+      - M_RESET : String
+      - REDIS_KEY_SESSION_CREATED : String
+      ... (22 more fields)
+      + recordSessionCreated() : void
+      + recordSessionTerminated() : void
+      + recordIdleSessionsTerminated(int) : void
+      + recordCOARequest() : void
+      + recordCOADisconnectInitiated(CoaDisconnectScenario) : void
+      + recordDisconnectRequestFailure() : void
+      + recordCOASystemFailure() : void
+      + getSessionsCreatedCount() : double
+      ... (13 more methods)
+    }
+    class NotificationTrackingService {
+      - LOG : Logger
+      - TRACKING_KEY_PREFIX : String
+      - DEFAULT_TTL : Duration
+      - valueCommands : ReactiveValueCommands
+      + isDuplicateNotification(String, Long, String, Long) : Uni
+      + markNotificationSent(String, Long, String, Long) : Uni
+      + markNotificationSent(String, Long, String, Long, Duration) : Uni
+      + clearNotificationTracking(String, Long, String, Long) : Uni
+      ... (1 more methods)
+    }
+    class QuotaNotificationService {
+      - LOG : Logger
+      - accountProducer : AccountProducer
+      - templateCacheService : MessageTemplateCacheService
+      - notificationTrackingService : NotificationTrackingService
+      + checkAndNotifyThresholds(UserSessionData, Balance, long, long) : Uni
+      + refreshTemplateCache() : Uni
+      ... (4 more methods)
+    }
+    class SessionLifecycleManager {
+      - log : Logger
+      - M_CREATE : String
+      - M_ACTIVITY : String
+      - M_TERMINATE : String
+      - sessionExpiryIndex : SessionExpiryIndex
+      - sessionTtlClient : SessionTtlClient
+      ... (2 more fields)
+      + onSessionCreated(String, Session) : Uni
+      + onSessionActivity(String, String) : Uni
+      + onSessionTerminated(String, String) : Uni
+      ... (2 more methods)
+    }
+    class StartHandler {
+      - log : Logger
+      - M_START : String
+      - M_VALIDATE_BALANCE : String
+      - M_PROCESS_SESSION : String
+      - M_UPDATE_CACHES : String
+      - M_UPDATE_USER_GROUP : String
+      ... (12 more fields)
+      + processAccountingStart(AccountingRequestDto, String) : Uni
+      ... (33 more methods)
+    }
+    class StopHandler {
+      - log : Logger
+      - M_STOP : String
+      - M_PROCESS : String
+      - accountingHandler : AbstractAccountingHandler
+      - cacheUtil : CacheClient
+      - accountProducer : AccountProducer
+      ... (2 more fields)
+      + stopProcessing(AccountingRequestDto, String, String) : Uni
+      + processAccountingStop(UserSessionData, AccountingRequestDto, String) : Uni
+      ... (3 more methods)
+    }
+  }
+}
+
+package "exception" {
+  class BaseException {
+    - description : String
+    - httpStatus : Status
+    - responseCode : String
+    - stackTraceElements : StackTraceElement[]
+    + getDescription() : String
+    + getHttpStatus() : Status
+    + getResponseCode() : String
+    + getStackTraceElements() : StackTraceElement[]
+  }
+  class CoADisconnectException {
+    - DESCRIPTION : String
+  }
+  class CoAResponseParsingException {
+    - DESCRIPTION : String
+  }
+}
+
+package "external" {
+  package "clients" as external_clients {
+    class CacheClient {
+      - log : Logger
+      - M_GET : String
+      - M_STORE : String
+      - M_UPDATE : String
+      - M_BATCH : String
+      - KEY_PREFIX : String
+      ... (4 more fields)
+      + getGroupId(String) : Uni
+      + storeUserData(String, UserSessionData, String) : Uni
+      + getUserData(String) : Uni
+      + updateUserAndRelatedCaches(String, UserSessionData, String) : Uni
+      + deleteKey(String) : Uni
+      + getUserDataBatchAsMap(List) : Uni
+      + getExpiredSessionsWithData(long, int) : Uni
+      + ExpiredSessionsWithData(List, UserSessionData>) : record
+      ... (3 more methods)
+    }
+    class CoAHttpClient {
+      - log : Logger
+      - M_DISCONNECT : String
+      - webClientProvider : WebClientProvider
+      - CONTENT_TYPE_JSON : String
+      - COA_ENDPOINT : String
+      - NAK_STATUS : String
+      ... (1 more fields)
+      + sendDisconnect(AccountingResponseEvent) : Uni
+      ... (4 more methods)
+    }
+    class SessionExpiryIndex {
+      - log : Logger
+      - M_INDEX : String
+      - EXPIRY_INDEX_KEY : String
+      - MEMBER_SEPARATOR : String
+      - sortedSetCommands : ReactiveSortedSetCommands
+      + registerSession(String, String, long) : Uni
+      + updateSessionExpiry(String, String, long) : Uni
+      + removeSession(String, String) : Uni
+      + removeSessions(List) : Uni
+      + getExpiredSessions(long, int) : Multi
+      + getExpiredSessionCount(long) : Uni
+      + getTotalIndexedSessions() : Uni
+      + SessionExpiryEntry(String, String, String) : record
+      ... (2 more methods)
+    }
+    class SessionTtlClient {
+      - log : Logger
+      - M_TTL : String
+      + TTL_KEY_PREFIX : String
+      - SEPARATOR : String
+      - valueCommands : ReactiveValueCommands
+      - keyCommands : ReactiveKeyCommands
+      + setAbsoluteTimeout(String, String, long) : Uni
+      + removeAbsoluteTimeoutKey(String, String) : Uni
+      + isAbsoluteTimeoutKey(String) : boolean
+      + parseKey(String) : String[]
+    }
+  }
+  package "repository" as external_repository {
+    class MessageTemplateRepository {
+      - LOG : Logger
+      - M_QUERY : String
+      - COL_TEMPLATE_ID : String
+      - COL_MESSAGE_TYPE : String
+      - COL_QUOTA_PERCENTAGE : String
+      - COL_MESSAGE_CONTENT : String
+      ... (2 more fields)
+      + getAllActiveTemplates() : Uni
+      ... (1 more methods)
+    }
+    class UserBucketRepository {
+      - log : Logger
+      - M_QUERY : String
+      - COL_BUCKET_ID : String
+      - COL_CURRENT_BALANCE : String
+      - COL_ID : String
+      - COL_RULE : String
+      ... (19 more fields)
+      + getServiceBucketsByUserName(String) : Uni
+      ... (1 more methods)
+    }
+  }
+}
+
+' Inheritance and implementation
+CoADisconnectException --|> BaseException
+CoAResponseParsingException --|> BaseException
+
+' Field-based associations
+OraclePoolCustomizer --> PoolConfig
+WebClientProvider --> WebClientConfig
+SessionKeyspaceListener --> AbsoluteSessionTerminatorService
+BucketResource --> BucketService
+DBWriteRequest --> EventType
+Payload --> SessionCdr
+Payload --> User
+Payload --> Network
+Payload --> Accounting
+Payload --> COA
+Payload --> Radius
+AccountingCDREvent --> Payload
+Radius --> RadiusAttribute
+UserSessionData --> Balance
+UserSessionData --> Session
+UserSessionData --> QosParam
+Balance --> ConsumptionRecord
+BalanceWrapper --> Balance
+AccountProducer --> DBWriteRequest
+AccountProducer --> AccountingCDREvent
+AccountProducer --> CacheClient
+AccountProducer --> SessionLifecycleManager
+InterimHandler --> AbstractAccountingHandler
+InterimHandler --> CacheClient
+InterimHandler --> AccountProducer
+InterimHandler --> AccountingUtil
+InterimHandler --> SessionLifecycleManager
+StopHandler --> AbstractAccountingHandler
+StopHandler --> CacheClient
+StopHandler --> AccountProducer
+StopHandler --> AccountingUtil
+StopHandler --> SessionLifecycleManager
+StartHandler --> CacheClient
+StartHandler --> UserBucketRepository
+StartHandler --> AccountProducer
+StartHandler --> AccountingUtil
+StartHandler --> SessionLifecycleManager
+StartHandler --> COAService
+QuotaNotificationService --> AccountProducer
+QuotaNotificationService --> MessageTemplateCacheService
+QuotaNotificationService --> NotificationTrackingService
+AbstractAccountingHandler --> CacheClient
+AbstractAccountingHandler --> UserBucketRepository
+AbstractAccountingHandler --> COAService
+AbstractAccountingHandler --> SessionLifecycleManager
+MonitoringService --> CoaDisconnectScenario
+SessionLifecycleManager --> SessionExpiryIndex
+SessionLifecycleManager --> SessionTtlClient
+SessionLifecycleManager --> IdleSessionConfig
+SessionLifecycleManager --> MonitoringService
+BucketService --> CacheClient
+BucketService --> COAService
+AccountingUtil --> AccountProducer
+AccountingUtil --> CacheClient
+AccountingUtil --> COAService
+AccountingUtil --> QuotaNotificationService
+COAService --> AccountProducer
+COAService --> MonitoringService
+COAService --> CoAHttpClient
+AbsoluteSessionTerminatorService --> CacheClient
+AbsoluteSessionTerminatorService --> SessionExpiryIndex
+AbsoluteSessionTerminatorService --> AccountProducer
+AbsoluteSessionTerminatorService --> MonitoringService
+AbsoluteSessionTerminatorService --> COAService
+MessageTemplateCacheService --> MessageTemplateRepository
+MessageTemplateCacheService --> ThresholdGlobalTemplates
+CoAHttpClient --> WebClientProvider
+CacheClient --> SessionExpiryIndex
+
+@enduml
