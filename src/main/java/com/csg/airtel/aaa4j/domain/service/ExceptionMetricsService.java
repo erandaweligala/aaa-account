@@ -15,11 +15,9 @@ import org.jboss.logging.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -31,19 +29,21 @@ import java.util.concurrent.atomic.DoubleAdder;
  *
  * <p>Three metrics are published:</p>
  * <ul>
- *   <li>{@code application_exception_count_total{exception_type, layer}} - per-layer counter,
- *       useful for drilling down into where an error surfaced (resource / service / database / client).</li>
- *   <li>{@code application_exception_root_count_total{exception_type}} - aggregated counter
- *       summing every layer where the same root-cause exception type was observed.</li>
- *   <li>{@code application_exception_percentage{exception_type}} - percentage that each
- *       exception type contributes to the total root exception volume (refreshed on each record
- *       and on a 30s schedule for safety).</li>
+ *   <li>{@code application_exception_count{exception_type, layer}} - per-layer counter</li>
+ *   <li>{@code application_exception_root_count{exception_type}} - aggregated counter across layers</li>
+ *   <li>{@code application_exception_percentage{exception_type}} - share of total exception volume</li>
  * </ul>
  *
- * <p>The "root" exception type is resolved by unwrapping {@code Throwable#getCause()} until the
- * deepest cause is reached, so the same underlying failure surfaces as a single bucket even when
- * it has been wrapped at intermediate layers (e.g. a {@code SQLException} re-thrown as a
- * {@code BaseException}).</p>
+ * <p>The "root" exception type is resolved by walking {@code Throwable#getCause()} to the deepest
+ * cause (bounded depth, no allocation), so the same underlying failure surfaces as a single bucket
+ * even when wrapped at intermediate layers.</p>
+ *
+ * <h2>Hot-path overhead</h2>
+ * <p>{@link #recordException(Throwable, Layer)} is intentionally allocation-free on the steady-state
+ * path (once a (type, layer) pair has been observed once): two map lookups, two counter increments,
+ * one {@link AtomicLong#incrementAndGet()} and one {@link DoubleAdder#add(double)}. The percentage
+ * gauge is recomputed only on a 30s schedule rather than after every record, so the recorder never
+ * walks the full type map under load.</p>
  */
 @ApplicationScoped
 public class ExceptionMetricsService {
@@ -56,12 +56,14 @@ public class ExceptionMetricsService {
 
     private static final String METRIC_PER_LAYER = "application_exception_count";
     private static final String METRIC_ROOT_TOTAL = "application_exception_root_count";
-    private static final String METRIC_ROOT_DAILY = "application_exception_root_daily_count";
     private static final String METRIC_PERCENTAGE = "application_exception_percentage";
     private static final String METRIC_TOTAL = "application_exception_total";
 
     private static final String TAG_EXCEPTION_TYPE = "exception_type";
     private static final String TAG_LAYER = "layer";
+
+    /** Hard cap on cause-chain walking; chains deeper than this are vanishingly rare and not worth iterating. */
+    private static final int MAX_CAUSE_DEPTH = 16;
 
     /** Application layers used as the {@code layer} tag value. */
     public enum Layer {
@@ -71,6 +73,8 @@ public class ExceptionMetricsService {
         CLIENT("client"),
         LISTENER("listener"),
         PRODUCER("producer");
+
+        static final Layer[] VALUES = values();
 
         private final String label;
 
@@ -85,13 +89,11 @@ public class ExceptionMetricsService {
 
     private final MeterRegistry registry;
 
-    // (exceptionType + '|' + layer) -> Counter
-    private final ConcurrentMap<String, Counter> perLayerCounters = new ConcurrentHashMap<>();
-    // exceptionType -> Counter (root, aggregated across layers)
+    /** exceptionType -> Counter[layer.ordinal()] — avoids per-call key concatenation. */
+    private final ConcurrentMap<String, Counter[]> perLayerCounters = new ConcurrentHashMap<>();
+    /** exceptionType -> root Counter (aggregated across layers). */
     private final ConcurrentMap<String, Counter> rootCounters = new ConcurrentHashMap<>();
-    // exceptionType -> raw root count mirror used by the percentage gauges
-    private final ConcurrentMap<String, DoubleAdder> rootCountMirror = new ConcurrentHashMap<>();
-    // exceptionType -> daily AtomicLong (resets at 00:00)
+    /** exceptionType -> daily AtomicLong (resets at 00:00). */
     private final ConcurrentMap<String, AtomicLong> dailyRootCounts = new ConcurrentHashMap<>();
 
     private final DoubleAdder totalRootCount = new DoubleAdder();
@@ -118,11 +120,7 @@ public class ExceptionMetricsService {
     }
 
     /**
-     * Records an exception observation. The root cause type is resolved by walking the cause
-     * chain, and per-layer plus root counters are incremented.
-     *
-     * <p>Safe to call from hot paths: failures inside this method are swallowed and logged,
-     * so the caller's error-handling path is never disrupted.</p>
+     * Records an exception observation. Hot-path: zero allocation after warm-up.
      *
      * @param throwable the caught throwable; {@code null} is ignored
      * @param layer     the application layer where the exception was caught; {@code null} is ignored
@@ -134,76 +132,84 @@ public class ExceptionMetricsService {
         try {
             String type = resolveRootCauseType(throwable);
 
-            Counter perLayer = perLayerCounters.computeIfAbsent(
-                    type + '|' + layer.label(),
-                    k -> Counter.builder(METRIC_PER_LAYER)
-                            .description("Application exceptions broken down by root exception type and layer")
-                            .tags(Tags.of(TAG_EXCEPTION_TYPE, type, TAG_LAYER, layer.label()))
-                            .register(registry));
+            Counter[] layerArr = perLayerCounters.get(type);
+            if (layerArr == null) {
+                layerArr = perLayerCounters.computeIfAbsent(type, k -> new Counter[Layer.VALUES.length]);
+            }
+            int idx = layer.ordinal();
+            Counter perLayer = layerArr[idx];
+            if (perLayer == null) {
+                perLayer = Counter.builder(METRIC_PER_LAYER)
+                        .description("Application exceptions broken down by root exception type and layer")
+                        .tags(Tags.of(TAG_EXCEPTION_TYPE, type, TAG_LAYER, layer.label()))
+                        .register(registry);
+                // Benign race: if two threads create it, Micrometer returns the same underlying meter.
+                layerArr[idx] = perLayer;
+            }
             perLayer.increment();
 
-            Counter root = rootCounters.computeIfAbsent(type, k -> Counter.builder(METRIC_ROOT_TOTAL)
-                    .description("Application exceptions aggregated across all layers by root exception type")
-                    .tag(TAG_EXCEPTION_TYPE, type)
-                    .register(registry));
+            Counter root = rootCounters.get(type);
+            if (root == null) {
+                root = rootCounters.computeIfAbsent(type, k -> Counter.builder(METRIC_ROOT_TOTAL)
+                        .description("Application exceptions aggregated across all layers by root exception type")
+                        .tag(TAG_EXCEPTION_TYPE, k)
+                        .register(registry));
+            }
             root.increment();
 
-            rootCountMirror.computeIfAbsent(type, k -> new DoubleAdder()).add(1.0);
-            dailyRootCounts.computeIfAbsent(type, k -> new AtomicLong(0)).incrementAndGet();
+            AtomicLong daily = dailyRootCounts.get(type);
+            if (daily == null) {
+                daily = dailyRootCounts.computeIfAbsent(type, k -> new AtomicLong());
+            }
+            daily.incrementAndGet();
+
             totalRootCount.add(1.0);
-
-            refreshPercentages();
-
-            LoggingUtil.logDebug(log, M_RECORD,
-                    "Recorded exception type=%s layer=%s rootTotal=%s",
-                    type, layer.label(), (long) totalRootCount.sum());
         } catch (Exception e) {
             LoggingUtil.logWarn(log, M_RECORD, "Failed to record exception metric: %s", e.getMessage());
         }
     }
 
     /**
-     * Resolves the deepest (root) cause class name, with a cycle guard.
-     * Returns {@code Throwable#getClass().getSimpleName()} of the deepest cause.
+     * Resolves the deepest (root) cause class name without allocating a cycle-guard set.
+     * Depth-bounded to {@value #MAX_CAUSE_DEPTH} hops.
      */
     static String resolveRootCauseType(Throwable t) {
-        Throwable current = t;
-        Set<Throwable> seen = new HashSet<>();
-        while (current.getCause() != null && current.getCause() != current && seen.add(current)) {
-            current = current.getCause();
+        Throwable cur = t;
+        for (int i = 0; i < MAX_CAUSE_DEPTH; i++) {
+            Throwable cause = cur.getCause();
+            if (cause == null || cause == cur) {
+                break;
+            }
+            cur = cause;
         }
-        String name = current.getClass().getSimpleName();
-        return (name == null || name.isEmpty()) ? current.getClass().getName() : name;
+        String n = cur.getClass().getSimpleName();
+        return (n == null || n.isEmpty()) ? cur.getClass().getName() : n;
     }
 
     /**
-     * Recomputes the percentage gauge rows. Cheap (a single pass over the known exception types)
-     * and synchronized on the gauge so that concurrent updates don't interleave row rewrites.
+     * Recomputes the percentage gauge rows by reading directly from the root counters.
+     * Runs on a 30s schedule — the hot path never touches this work.
      */
-    private void refreshPercentages() {
+    @Scheduled(every = "30s")
+    void refreshPercentages() {
         try {
-            double total = totalRootCount.sum();
-            if (total <= 0.0 || percentageGauge == null) {
+            MultiGauge g = percentageGauge;
+            if (g == null) {
                 return;
             }
-            List<MultiGauge.Row<?>> rows = new ArrayList<>(rootCountMirror.size());
-            for (Map.Entry<String, DoubleAdder> entry : rootCountMirror.entrySet()) {
-                double pct = (entry.getValue().sum() / total) * 100.0;
+            double total = totalRootCount.sum();
+            if (total <= 0.0) {
+                return;
+            }
+            List<MultiGauge.Row<?>> rows = new ArrayList<>(rootCounters.size());
+            for (Map.Entry<String, Counter> entry : rootCounters.entrySet()) {
+                double pct = (entry.getValue().count() / total) * 100.0;
                 rows.add(MultiGauge.Row.of(Tags.of(Tag.of(TAG_EXCEPTION_TYPE, entry.getKey())), pct));
             }
-            percentageGauge.register(rows, true);
+            g.register(rows, true);
         } catch (Exception e) {
             LoggingUtil.logWarn(log, M_REFRESH, "Failed to refresh percentage gauges: %s", e.getMessage());
         }
-    }
-
-    /**
-     * Safety-net refresh in case a burst of {@code recordException} calls raced and the last
-     * {@link #refreshPercentages()} observed stale totals. Cheap to run on a schedule.
-     */
-    @Scheduled(every = "30s")
-    void scheduledRefresh() {
-        refreshPercentages();
     }
 
     /**
@@ -219,18 +225,19 @@ public class ExceptionMetricsService {
 
     /**
      * Returns an immutable snapshot of {@code exceptionType -> {count, percentage, daily}}
-     * suitable for serialising over HTTP. Iteration order is by descending count.
+     * sorted by descending count. Computed on demand — only the REST endpoint calls this.
      */
     public Map<String, ExceptionStats> snapshot() {
         double total = totalRootCount.sum();
-        List<Map.Entry<String, DoubleAdder>> entries = new ArrayList<>(rootCountMirror.entrySet());
-        entries.sort((a, b) -> Double.compare(b.getValue().sum(), a.getValue().sum()));
+        List<Map.Entry<String, Counter>> entries = new ArrayList<>(rootCounters.entrySet());
+        entries.sort((a, b) -> Double.compare(b.getValue().count(), a.getValue().count()));
 
         Map<String, ExceptionStats> out = new LinkedHashMap<>(entries.size());
-        for (Map.Entry<String, DoubleAdder> e : entries) {
-            double count = e.getValue().sum();
+        for (Map.Entry<String, Counter> e : entries) {
+            double count = e.getValue().count();
             double pct = total > 0.0 ? (count / total) * 100.0 : 0.0;
-            long daily = dailyRootCounts.getOrDefault(e.getKey(), new AtomicLong(0)).get();
+            AtomicLong d = dailyRootCounts.get(e.getKey());
+            long daily = d == null ? 0L : d.get();
             out.put(e.getKey(), new ExceptionStats((long) count, pct, daily));
         }
         return Collections.unmodifiableMap(out);

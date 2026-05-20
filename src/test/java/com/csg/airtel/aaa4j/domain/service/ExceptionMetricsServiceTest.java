@@ -31,7 +31,7 @@ class ExceptionMetricsServiceTest {
     }
 
     @Test
-    void recordsRootCauseAcrossLayersAggregatedByExceptionType() {
+    void recordsRootCauseAcrossLayersAggregatedByExceptionType() throws Exception {
         // Same root cause surfaced at three different layers, wrapped at each one
         Throwable rootDbFailure = new IllegalStateException("DB connection lost");
         Throwable wrappedAtService = new RuntimeException("service failed", rootDbFailure);
@@ -43,6 +43,12 @@ class ExceptionMetricsServiceTest {
 
         // Plus a different exception type to make percentages meaningful
         service.recordException(new NullPointerException("oops"), ExceptionMetricsService.Layer.SERVICE);
+
+        // Percentage gauge is refreshed on a 30s schedule rather than per-record to keep the
+        // recorder allocation-free under load; force a refresh here for the assertion below.
+        Method refresh = ExceptionMetricsService.class.getDeclaredMethod("refreshPercentages");
+        refresh.setAccessible(true);
+        refresh.invoke(service);
 
         // Per-layer counters: one per (type, layer)
         Counter dbCounter = registry.find("application_exception_count")
