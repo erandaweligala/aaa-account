@@ -28,6 +28,7 @@ class COAServiceTest {
     @Mock AccountProducer accountProducer;
     @Mock MonitoringService monitoringService;
     @Mock CoAHttpClient coaHttpClient;
+    @Mock ExceptionMetricsService exceptionMetricsService;
 
     @InjectMocks COAService coaService;
 

@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -61,10 +62,13 @@ public class UserBucketRepository {
     final Pool client;
     private final Timer accountingDbExecutionTimer;
     private final AtomicLong lastAccountingDbExecutionTimeMs = new AtomicLong(0);
+    private final ExceptionMetricsService exceptionMetricsService;
 
     @Inject
-    public UserBucketRepository(Pool client,MeterRegistry meterRegistry) {
+    public UserBucketRepository(Pool client, MeterRegistry meterRegistry,
+                                ExceptionMetricsService exceptionMetricsService) {
         this.client = client;
+        this.exceptionMetricsService = exceptionMetricsService;
         this.accountingDbExecutionTimer = Timer.builder("radius.accounting.db.execution.time")
                 .description("Time to complete a  DB execution time")
                 .publishPercentiles(0.5, 0.75, 0.90, 0.95, 0.99)
@@ -113,6 +117,7 @@ public class UserBucketRepository {
                     .onItem().transform(this::mapRowsToServiceBuckets)
                 .onFailure().invoke(error -> {
                     LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s", userName);
+                    exceptionMetricsService.recordException(error, ExceptionMetricsService.Layer.DATABASE);
                 })
                 .onItem().invoke(results -> {
                     Duration duration = Duration.between(startTime, Instant.now());

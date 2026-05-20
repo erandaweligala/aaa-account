@@ -32,13 +32,16 @@ public class COAService {
     private final AccountProducer accountProducer;
     private final MonitoringService monitoringService;
     private final CoAHttpClient coaHttpClient;
+    private final ExceptionMetricsService exceptionMetricsService;
 
     public COAService(AccountProducer accountProducer,
                       MonitoringService monitoringService,
-                      CoAHttpClient coaHttpClient) {
+                      CoAHttpClient coaHttpClient,
+                      ExceptionMetricsService exceptionMetricsService) {
         this.accountProducer = accountProducer;
         this.monitoringService = monitoringService;
         this.coaHttpClient = coaHttpClient;
+        this.exceptionMetricsService = exceptionMetricsService;
     }
 
     public Uni<Void> clearAllSessionsAndSendCOAMassageQue(UserSessionData userSessionData, String username, String sessionId, CoaDisconnectScenario scenario) {
@@ -113,6 +116,7 @@ public class COAService {
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Disconnect CDR event for session: %s, user: %s",
                     session.getSessionId(), username);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE);
         }
     }
 
@@ -137,6 +141,7 @@ public class COAService {
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Request CDR event for session: %s, user: %s",
                     session.getSessionId(), username);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE);
         }
     }
 
@@ -162,6 +167,7 @@ public class COAService {
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Response CDR event for session: %s, user: %s, status: %s",
                     session.getSessionId(), username, responseStatus);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE);
         }
     }
 
@@ -195,6 +201,7 @@ public class COAService {
                 .onFailure().invoke(failure -> {
                         LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
                        /** monitoringService.recordCOASystemFailure(); */
+                        exceptionMetricsService.recordException(failure, ExceptionMetricsService.Layer.SERVICE);
                         generateAndSendCoaResponseCDR(session, username, "FAILED");
                 })
                 .replaceWithVoid();
@@ -295,6 +302,7 @@ public class COAService {
                             .onFailure().invoke(failure -> {
                                     LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
                                     monitoringService.recordCOASystemFailure();
+                                    exceptionMetricsService.recordException(failure, ExceptionMetricsService.Layer.SERVICE);
                             })
                             .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // treat HTTP failure as session removed
                 })

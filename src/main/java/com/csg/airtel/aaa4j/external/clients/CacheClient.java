@@ -3,6 +3,7 @@ package com.csg.airtel.aaa4j.external.clients;
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
@@ -41,6 +42,7 @@ public class CacheClient {
     private static final String GROUP_KEY_PREFIX = "group:";
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
+    private final ExceptionMetricsService exceptionMetricsService;
 
 
     private final ReactiveKeyCommands<String> keyCommands;
@@ -48,12 +50,14 @@ public class CacheClient {
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
                        ObjectMapper objectMapper,
-                       SessionExpiryIndex sessionExpiryIndex) {
+                       SessionExpiryIndex sessionExpiryIndex,
+                       ExceptionMetricsService exceptionMetricsService) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
+        this.exceptionMetricsService = exceptionMetricsService;
     }
     @Retry(
             maxRetries = 1,
@@ -77,6 +81,7 @@ public class CacheClient {
                         return groupId;
                     } catch (Exception e) {
                         LoggingUtil.logError(log, M_GET, null, "Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
+                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
                         throw new BaseException(
                                 "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -86,7 +91,10 @@ public class CacheClient {
                         );
                     }
                 }))
-                .onFailure().invoke(e -> LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId));
+                .onFailure().invoke(e -> {
+                    LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId);
+                    exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                });
     }
 
 
@@ -141,6 +149,7 @@ public class CacheClient {
                     } catch (Exception e) {
                         LoggingUtil.logError(log, M_STORE, null, "Failed to serialize user data for userId: %s - %s",
                                 userId, e.getMessage());
+                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
 
                         return Uni.createFrom().failure(new BaseException(
                                 "Failed to serialize user data",
@@ -180,6 +189,7 @@ public class CacheClient {
                         return userData;
                     } catch (Exception e) {
                         LoggingUtil.logError(log, M_GET, null, "Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
+                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
                         throw new BaseException(
                                 "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -189,7 +199,10 @@ public class CacheClient {
                         );
                     }
                 }))
-                .onFailure().invoke(e -> LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId));
+                .onFailure().invoke(e -> {
+                    LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId);
+                    exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                });
     }
 
 
@@ -233,6 +246,7 @@ public class CacheClient {
                     .replaceWithVoid();
         } catch (Exception e) {
             LoggingUtil.logError(log, M_UPDATE, null, "Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
             return Uni.createFrom().failure(new BaseException(
                     "Failed to serialize user data",
                     ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -299,6 +313,7 @@ public class CacheClient {
                                 userDataMap.put(userId, userData);
                             } catch (Exception e) {
                                 LoggingUtil.logError(log, M_BATCH, null, "Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
+                                exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
                             }
                         }
                     }
