@@ -68,7 +68,7 @@ public class CoAHttpClient {
                                 CoADisconnectResponse response = handleHttpResponse(ar.result(), sessionId);
                                 emitter.complete(response);
                             } catch (Exception e) {
-                                exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                                exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.HTTP_COA);
                                 if (e instanceof CoAResponseParsingException || e instanceof CoADisconnectException) {
                                     emitter.fail(e);
                                 } else {
@@ -79,7 +79,7 @@ public class CoAHttpClient {
                             }
                         } else {
                             LoggingUtil.logError(log, M_DISCONNECT, ar.cause(), "HTTP request failed for session: %s", sessionId);
-                            exceptionMetricsService.recordException(ar.cause(), ExceptionMetricsService.Layer.CLIENT);
+                            exceptionMetricsService.recordException(ar.cause(), ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.HTTP_COA);
                             emitter.fail(new CoADisconnectException(
                                 "HTTP request failed for session: " + sessionId,
                                 Response.Status.SERVICE_UNAVAILABLE,
@@ -120,7 +120,7 @@ public class CoAHttpClient {
         } catch (DecodeException e) {
             String errorMsg = "Failed to parse CoA response for session " + sessionId + ": " + response.bodyAsString();
             LoggingUtil.logError(log, M_DISCONNECT, e, errorMsg);
-            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.HTTP_COA);
             throw new CoAResponseParsingException(errorMsg, e);
         }
     }

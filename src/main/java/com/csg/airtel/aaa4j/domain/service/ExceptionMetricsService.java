@@ -8,6 +8,8 @@ import io.micrometer.core.instrument.MultiGauge;
 import io.micrometer.core.instrument.Tag;
 import io.micrometer.core.instrument.Tags;
 import io.quarkus.scheduler.Scheduled;
+import io.vertx.core.Context;
+import io.vertx.core.Vertx;
 import jakarta.annotation.PostConstruct;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -15,6 +17,7 @@ import org.jboss.logging.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +29,20 @@ import java.util.concurrent.atomic.DoubleAdder;
 /**
  * Aggregates application exceptions by their root-cause type and exposes them
  * to Prometheus via Micrometer.
- * walks the full type map under load.</p>
+ *
+ * <p>Dedup behaviour:
+ * <ul>
+ *   <li><b>Wrapper dedup</b> &mdash; when the same root cause is observed multiple
+ *       times as it propagates up through wrapping exceptions, only the first
+ *       observation is counted. A sentinel marker is attached to the root cause
+ *       via {@link Throwable#addSuppressed(Throwable)}.</li>
+ *   <li><b>Retry dedup</b> &mdash; when a request is retried (e.g. via {@code @Retry}
+ *       on a reactive method) and each attempt produces a fresh {@link Throwable}
+ *       instance, attempts sharing the same Vert.x request context within a short
+ *       TTL window are collapsed into a single observation, keyed by
+ *       {@code (rootClass, layer, source, contextId)}.</li>
+ * </ul>
+ * </p>
  */
 @ApplicationScoped
 public class ExceptionMetricsService {
@@ -36,6 +52,7 @@ public class ExceptionMetricsService {
     private static final String M_RECORD = "recordException";
     private static final String M_REFRESH = "refreshPercentages";
     private static final String M_RESET = "dailyReset";
+    private static final String M_EVICT = "evictDedupCache";
 
     private static final String METRIC_PER_LAYER = "application_exception_count";
     private static final String METRIC_ROOT_TOTAL = "application_exception_root_count";
@@ -44,9 +61,16 @@ public class ExceptionMetricsService {
 
     private static final String TAG_EXCEPTION_TYPE = "exception_type";
     private static final String TAG_LAYER = "layer";
+    private static final String TAG_SOURCE = "source";
 
     /** Hard cap on cause-chain walking; chains deeper than this are vanishingly rare and not worth iterating. */
     private static final int MAX_CAUSE_DEPTH = 16;
+
+    /** Retry dedup window: observations of the same (rootClass, layer, source, contextId) within this window are counted once. */
+    static final long DEDUP_TTL_MILLIS = 5_000L;
+
+    /** Hard cap on dedup cache size so a misbehaving caller can't grow it without bound. */
+    private static final int DEDUP_MAX_ENTRIES = 8_192;
 
     /** Application layers used as the {@code layer} tag value. */
     public enum Layer {
@@ -70,16 +94,45 @@ public class ExceptionMetricsService {
         }
     }
 
+    /**
+     * Originating subsystem of the exception. Distinguishes generic exceptions
+     * (e.g. {@code ConnectionException}, {@code TimeoutException}) that can come
+     * from multiple integrations, so dashboards can tell a Redis hiccup apart from
+     * a Kafka or Oracle stall.
+     */
+    public enum Source {
+        REDIS("redis"),
+        HTTP_COA("http_coa"),
+        HTTP_NAS("http_nas"),
+        DATABASE("database"),
+        KAFKA("kafka"),
+        INTERNAL("internal"),
+        UNKNOWN("unknown");
+
+        private final String label;
+
+        Source(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
+    }
+
     private final MeterRegistry registry;
 
-    /** exceptionType -> Counter[layer.ordinal()] — avoids per-call key concatenation. */
-    private final ConcurrentMap<String, Counter[]> perLayerCounters = new ConcurrentHashMap<>();
-    /** exceptionType -> root Counter (aggregated across layers). */
+    /** exceptionType -> Counter[layer.ordinal()][source.ordinal()] — avoids per-call key concatenation. */
+    private final ConcurrentMap<String, Counter[][]> perLayerCounters = new ConcurrentHashMap<>();
+    /** exceptionType -> root Counter (aggregated across layers and sources). */
     private final ConcurrentMap<String, Counter> rootCounters = new ConcurrentHashMap<>();
     /** exceptionType -> daily AtomicLong (resets at 00:00). */
     private final ConcurrentMap<String, AtomicLong> dailyRootCounts = new ConcurrentHashMap<>();
 
     private final DoubleAdder totalRootCount = new DoubleAdder();
+
+    /** Fingerprint -> expiry epoch millis. Suppresses retry-attempt duplicates within a short window. */
+    private final ConcurrentMap<String, Long> dedupCache = new ConcurrentHashMap<>();
 
     private MultiGauge percentageGauge;
 
@@ -103,60 +156,93 @@ public class ExceptionMetricsService {
     }
 
     /**
-     * Records an exception observation. Hot-path: zero allocation after warm-up.
+     * Backwards-compatible entry point. Callers that have not yet been updated to
+     * provide a {@link Source} are attributed to {@link Source#UNKNOWN}.
+     */
+    public void recordException(Throwable throwable, Layer layer) {
+        recordException(throwable, layer, Source.UNKNOWN);
+    }
+
+    /**
+     * Records an exception observation. Hot-path: zero allocation after warm-up
+     * for non-deduped calls.
      *
      * @param throwable the caught throwable; {@code null} is ignored
      * @param layer     the application layer where the exception was caught; {@code null} is ignored
+     * @param source    the originating subsystem; {@code null} is treated as {@link Source#UNKNOWN}
      */
-    public void recordException(Throwable throwable, Layer layer) {
+    public void recordException(Throwable throwable, Layer layer, Source source) {
         if (throwable == null || layer == null) {
             return;
         }
+        Source src = source == null ? Source.UNKNOWN : source;
         try {
-            String type = resolveRootCauseType(throwable);
+            Throwable root = resolveRootCause(throwable);
+            String type = simpleName(root);
 
-            Counter[] layerArr = perLayerCounters.get(type);
-            if (layerArr == null) {
-                layerArr = perLayerCounters.computeIfAbsent(type, k -> new Counter[Layer.VALUES.length]);
+            // Wrapper dedup: if this exact root cause has already been recorded
+            // as it bubbled up through wrapping layers, skip.
+            if (!markRecorded(root)) {
+                return;
             }
-            int idx = layer.ordinal();
-            Counter perLayer = layerArr[idx];
-            if (perLayer == null) {
-                perLayer = Counter.builder(METRIC_PER_LAYER)
-                        .description("Application exceptions broken down by root exception type and layer")
-                        .tags(Tags.of(TAG_EXCEPTION_TYPE, type, TAG_LAYER, layer.label()))
-                        .register(registry);
-                // Benign race: if two threads create it, Micrometer returns the same underlying meter.
-                layerArr[idx] = perLayer;
-            }
-            perLayer.increment();
 
-            Counter root = rootCounters.get(type);
-            if (root == null) {
-                root = rootCounters.computeIfAbsent(type, k -> Counter.builder(METRIC_ROOT_TOTAL)
-                        .description("Application exceptions aggregated across all layers by root exception type")
-                        .tag(TAG_EXCEPTION_TYPE, k)
-                        .register(registry));
+            // Retry dedup: collapse repeats of the same (root, layer, source) within
+            // the same in-flight request (Vert.x context) into a single observation.
+            if (isDuplicateRetry(type, layer, src)) {
+                return;
             }
-            root.increment();
 
-            AtomicLong daily = dailyRootCounts.get(type);
-            if (daily == null) {
-                daily = dailyRootCounts.computeIfAbsent(type, k -> new AtomicLong());
-            }
-            daily.incrementAndGet();
-
-            totalRootCount.add(1.0);
+            incrementCounters(type, layer, src);
         } catch (Exception e) {
             LoggingUtil.logWarn(log, M_RECORD, "Failed to record exception metric: %s", e.getMessage());
         }
     }
 
+    private void incrementCounters(String type, Layer layer, Source source) {
+        Counter[][] layerMatrix = perLayerCounters.get(type);
+        if (layerMatrix == null) {
+            layerMatrix = perLayerCounters.computeIfAbsent(type,
+                    k -> new Counter[Layer.VALUES.length][Source.values().length]);
+        }
+        int layerIdx = layer.ordinal();
+        int sourceIdx = source.ordinal();
+        Counter perLayer = layerMatrix[layerIdx][sourceIdx];
+        if (perLayer == null) {
+            perLayer = Counter.builder(METRIC_PER_LAYER)
+                    .description("Application exceptions broken down by root exception type, layer, and source")
+                    .tags(Tags.of(
+                            TAG_EXCEPTION_TYPE, type,
+                            TAG_LAYER, layer.label(),
+                            TAG_SOURCE, source.label()))
+                    .register(registry);
+            // Benign race: if two threads create it, Micrometer returns the same underlying meter.
+            layerMatrix[layerIdx][sourceIdx] = perLayer;
+        }
+        perLayer.increment();
+
+        Counter root = rootCounters.get(type);
+        if (root == null) {
+            root = rootCounters.computeIfAbsent(type, k -> Counter.builder(METRIC_ROOT_TOTAL)
+                    .description("Application exceptions aggregated across all layers/sources by root exception type")
+                    .tag(TAG_EXCEPTION_TYPE, k)
+                    .register(registry));
+        }
+        root.increment();
+
+        AtomicLong daily = dailyRootCounts.get(type);
+        if (daily == null) {
+            daily = dailyRootCounts.computeIfAbsent(type, k -> new AtomicLong());
+        }
+        daily.incrementAndGet();
+
+        totalRootCount.add(1.0);
+    }
+
     /**
-     * Resolves the deepest (root) cause class name without allocating a cycle-guard set.
+     * Walks the cause chain to the deepest non-null, non-self-referential cause.
      * Depth-bounded to {@value #MAX_CAUSE_DEPTH} hops.
      */
-    static String resolveRootCauseType(Throwable t) {
+    private static Throwable resolveRootCause(Throwable t) {
         Throwable cur = t;
         for (int i = 0; i < MAX_CAUSE_DEPTH; i++) {
             Throwable cause = cur.getCause();
@@ -165,8 +251,100 @@ public class ExceptionMetricsService {
             }
             cur = cause;
         }
-        String n = cur.getClass().getSimpleName();
-        return n.isEmpty() ? cur.getClass().getName() : n;
+        return cur;
+    }
+
+    private static String simpleName(Throwable t) {
+        String n = t.getClass().getSimpleName();
+        return n.isEmpty() ? t.getClass().getName() : n;
+    }
+
+    /** Retained for tests / external callers — resolves and returns the simple-name. */
+    static String resolveRootCauseType(Throwable t) {
+        return simpleName(resolveRootCause(t));
+    }
+
+    /**
+     * Marks {@code root} as recorded by attaching a {@link RecordedMarker} sentinel
+     * to its suppressed list. Returns {@code true} if the root was not previously
+     * marked (caller should record), {@code false} if already marked (caller should skip).
+     */
+    private static boolean markRecorded(Throwable root) {
+        Throwable[] suppressed = root.getSuppressed();
+        for (Throwable s : suppressed) {
+            if (s instanceof RecordedMarker) {
+                return false;
+            }
+        }
+        try {
+            root.addSuppressed(new RecordedMarker());
+        } catch (Throwable ignore) {
+            // Some throwables disable suppression; fall through and record anyway.
+        }
+        return true;
+    }
+
+    /**
+     * Returns {@code true} if a record for the same {@code (type, layer, source)}
+     * within the current Vert.x context was observed within {@link #DEDUP_TTL_MILLIS}.
+     * Otherwise stamps a fresh entry and returns {@code false}.
+     *
+     * <p>The Vert.x context identity hash ties dedup to a single in-flight reactive
+     * request, so unrelated parallel requests are not collapsed together.
+     * If no Vert.x context is bound (e.g. plain worker thread), falls back to the
+     * thread name &mdash; best-effort, still typically scoped to a single request
+     * on the standard fault-tolerance executor.</p>
+     */
+    private boolean isDuplicateRetry(String type, Layer layer, Source source) {
+        String ctxKey = contextKey();
+        String key = type + '|' + layer.ordinal() + '|' + source.ordinal() + '|' + ctxKey;
+        long now = System.currentTimeMillis();
+        long expiry = now + DEDUP_TTL_MILLIS;
+
+        Long existing = dedupCache.putIfAbsent(key, expiry);
+        if (existing == null) {
+            if (dedupCache.size() > DEDUP_MAX_ENTRIES) {
+                evictExpired(now);
+            }
+            return false;
+        }
+        if (existing <= now) {
+            // Stale entry — refresh and treat as new observation.
+            dedupCache.put(key, expiry);
+            return false;
+        }
+        return true;
+    }
+
+    private static String contextKey() {
+        try {
+            Context ctx = Vertx.currentContext();
+            if (ctx != null) {
+                return "v" + System.identityHashCode(ctx);
+            }
+        } catch (Throwable ignore) {
+            // Fall through to thread-name fallback.
+        }
+        return "t" + Thread.currentThread().getName();
+    }
+
+    /** Periodic sweep of expired dedup entries. */
+    @Scheduled(every = "10s")
+    void evictDedupCache() {
+        try {
+            evictExpired(System.currentTimeMillis());
+        } catch (Exception e) {
+            LoggingUtil.logWarn(log, M_EVICT, "Failed to evict dedup cache entries: %s", e.getMessage());
+        }
+    }
+
+    private void evictExpired(long now) {
+        Iterator<Map.Entry<String, Long>> it = dedupCache.entrySet().iterator();
+        while (it.hasNext()) {
+            if (it.next().getValue() <= now) {
+                it.remove();
+            }
+        }
     }
 
     /**
@@ -232,4 +410,15 @@ public class ExceptionMetricsService {
 
     /** Immutable view of one exception type's aggregated stats. */
     public record ExceptionStats(long count, double percentage, long dailyCount) {}
+
+    /**
+     * Sentinel attached as a suppressed exception to mark a root cause as already
+     * counted. Stack trace and suppression are disabled to keep it allocation-cheap.
+     */
+    private static final class RecordedMarker extends Throwable {
+        private static final long serialVersionUID = 1L;
+        RecordedMarker() {
+            super("EMS_RECORDED", null, false, false);
+        }
+    }
 }

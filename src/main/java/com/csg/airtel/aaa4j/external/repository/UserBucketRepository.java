@@ -117,7 +117,7 @@ public class UserBucketRepository {
                     .onItem().transform(this::mapRowsToServiceBuckets)
                 .onFailure().invoke(error -> {
                     LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s", userName);
-                    exceptionMetricsService.recordException(error, ExceptionMetricsService.Layer.DATABASE);
+                    exceptionMetricsService.recordException(error, ExceptionMetricsService.Layer.DATABASE, ExceptionMetricsService.Source.DATABASE);
                 })
                 .onItem().invoke(results -> {
                     Duration duration = Duration.between(startTime, Instant.now());
