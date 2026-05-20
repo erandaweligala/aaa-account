@@ -26,23 +26,6 @@ import java.util.concurrent.atomic.DoubleAdder;
 /**
  * Aggregates application exceptions by their root-cause type and exposes them
  * to Prometheus via Micrometer.
- *
- * <p>Three metrics are published:</p>
- * <ul>
- *   <li>{@code application_exception_count{exception_type, layer}} - per-layer counter</li>
- *   <li>{@code application_exception_root_count{exception_type}} - aggregated counter across layers</li>
- *   <li>{@code application_exception_percentage{exception_type}} - share of total exception volume</li>
- * </ul>
- *
- * <p>The "root" exception type is resolved by walking {@code Throwable#getCause()} to the deepest
- * cause (bounded depth, no allocation), so the same underlying failure surfaces as a single bucket
- * even when wrapped at intermediate layers.</p>
- *
- * <h2>Hot-path overhead</h2>
- * <p>{@link #recordException(Throwable, Layer)} is intentionally allocation-free on the steady-state
- * path (once a (type, layer) pair has been observed once): two map lookups, two counter increments,
- * one {@link AtomicLong#incrementAndGet()} and one {@link DoubleAdder#add(double)}. The percentage
- * gauge is recomputed only on a 30s schedule rather than after every record, so the recorder never
  * walks the full type map under load.</p>
  */
 @ApplicationScoped
@@ -183,7 +166,7 @@ public class ExceptionMetricsService {
             cur = cause;
         }
         String n = cur.getClass().getSimpleName();
-        return (n == null || n.isEmpty()) ? cur.getClass().getName() : n;
+        return n.isEmpty() ? cur.getClass().getName() : n;
     }
 
     /**
@@ -232,7 +215,7 @@ public class ExceptionMetricsService {
         List<Map.Entry<String, Counter>> entries = new ArrayList<>(rootCounters.entrySet());
         entries.sort((a, b) -> Double.compare(b.getValue().count(), a.getValue().count()));
 
-        Map<String, ExceptionStats> out = new LinkedHashMap<>(entries.size());
+        Map<String, ExceptionStats> out = LinkedHashMap.newLinkedHashMap(entries.size());
         for (Map.Entry<String, Counter> e : entries) {
             double count = e.getValue().count();
             double pct = total > 0.0 ? (count / total) * 100.0 : 0.0;

@@ -43,7 +43,6 @@ public class SessionTtlClient {
     /**
      * Sets a Redis key with the given TTL (in seconds) to track absolute session timeout.
      * When the key expires, the keyspace listener will terminate the session.
-     *
      * @param userId     The user ID
      * @param sessionId  The session ID
      * @param ttlSeconds Absolute timeout in seconds

@@ -27,7 +27,6 @@ public class CoAHttpClient {
     private final WebClientProvider webClientProvider;
     private final ExceptionMetricsService exceptionMetricsService;
 
-
     @ConfigProperty(name = "coa.nas.host")
     String host;
 
