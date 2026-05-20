@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.session.Balance;
 import com.csg.airtel.aaa4j.domain.model.session.BalanceWrapper;
 import com.csg.airtel.aaa4j.domain.service.BucketService;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.*;
@@ -25,9 +26,16 @@ public class BucketResource {
     private static final String M_SVC_STATUS = "serviceStatusUpdate";
     private static final String M_DELETE_SVC = "deleteService";
     private final BucketService bucketService;
+    private final ExceptionMetricsService exceptionMetricsService;
 
-    public BucketResource(BucketService bucketService) {
+    public BucketResource(BucketService bucketService,
+                          ExceptionMetricsService exceptionMetricsService) {
         this.bucketService = bucketService;
+        this.exceptionMetricsService = exceptionMetricsService;
+    }
+
+    private void recordResourceFailure(Throwable t) {
+        exceptionMetricsService.recordException(t, ExceptionMetricsService.Layer.RESOURCE);
     }
 
     @PATCH
@@ -42,7 +50,8 @@ public class BucketResource {
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
-                });
+                })
+                .onFailure().invoke(this::recordResourceFailure);
     }
 
     @PATCH
@@ -57,7 +66,8 @@ public class BucketResource {
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
-                });
+                })
+                .onFailure().invoke(this::recordResourceFailure);
     }
 
     @PATCH
@@ -72,7 +82,8 @@ public class BucketResource {
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
-                });
+                })
+                .onFailure().invoke(this::recordResourceFailure);
 
     }
 /**
@@ -119,7 +130,8 @@ public class BucketResource {
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
-                });
+                })
+                .onFailure().invoke(this::recordResourceFailure);
     }
 
     @PATCH
@@ -134,7 +146,8 @@ public class BucketResource {
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
-                });
+                })
+                .onFailure().invoke(this::recordResourceFailure);
     }
 
     @PATCH
@@ -151,7 +164,8 @@ public class BucketResource {
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
-                });
+                })
+                .onFailure().invoke(this::recordResourceFailure);
     }
 
     @DELETE
@@ -166,6 +180,7 @@ public class BucketResource {
                     return Response.status(apiResponse.getStatus())
                             .entity(apiResponse)
                             .build();
-                });
+                })
+                .onFailure().invoke(this::recordResourceFailure);
     }
 }

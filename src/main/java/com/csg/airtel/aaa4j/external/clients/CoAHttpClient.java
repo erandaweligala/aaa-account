@@ -4,6 +4,7 @@ import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.application.config.WebClientProvider;
 import com.csg.airtel.aaa4j.domain.model.AccountingResponseEvent;
 import com.csg.airtel.aaa4j.domain.model.coa.CoADisconnectResponse;
+import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.exception.CoADisconnectException;
 import com.csg.airtel.aaa4j.exception.CoAResponseParsingException;
 import io.smallrye.mutiny.Uni;
@@ -24,6 +25,7 @@ public class CoAHttpClient {
     private static final String M_DISCONNECT = "sendDisconnect";
 
     private final WebClientProvider webClientProvider;
+    private final ExceptionMetricsService exceptionMetricsService;
 
 
     @ConfigProperty(name = "coa.nas.host")
@@ -32,8 +34,10 @@ public class CoAHttpClient {
     @ConfigProperty(name = "coa.nas.port")
     Integer port;
 
-    public CoAHttpClient(WebClientProvider webClientProvider) {
+    public CoAHttpClient(WebClientProvider webClientProvider,
+                         ExceptionMetricsService exceptionMetricsService) {
         this.webClientProvider = webClientProvider;
+        this.exceptionMetricsService = exceptionMetricsService;
     }
 
     private static final String CONTENT_TYPE_JSON = "application/json";
@@ -65,6 +69,7 @@ public class CoAHttpClient {
                                 CoADisconnectResponse response = handleHttpResponse(ar.result(), sessionId);
                                 emitter.complete(response);
                             } catch (Exception e) {
+                                exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
                                 if (e instanceof CoAResponseParsingException || e instanceof CoADisconnectException) {
                                     emitter.fail(e);
                                 } else {
@@ -75,6 +80,7 @@ public class CoAHttpClient {
                             }
                         } else {
                             LoggingUtil.logError(log, M_DISCONNECT, ar.cause(), "HTTP request failed for session: %s", sessionId);
+                            exceptionMetricsService.recordException(ar.cause(), ExceptionMetricsService.Layer.CLIENT);
                             emitter.fail(new CoADisconnectException(
                                 "HTTP request failed for session: " + sessionId,
                                 Response.Status.SERVICE_UNAVAILABLE,
@@ -115,6 +121,7 @@ public class CoAHttpClient {
         } catch (DecodeException e) {
             String errorMsg = "Failed to parse CoA response for session " + sessionId + ": " + response.bodyAsString();
             LoggingUtil.logError(log, M_DISCONNECT, e, errorMsg);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
             throw new CoAResponseParsingException(errorMsg, e);
         }
     }
