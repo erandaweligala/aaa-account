@@ -35,7 +35,11 @@ public class BucketResource {
     }
 
     private void recordResourceFailure(Throwable t) {
-        exceptionMetricsService.recordException(t, ExceptionMetricsService.Layer.RESOURCE);
+        // Source.INTERNAL is the boundary recorder; deeper layers (CacheClient, UserBucketRepository,
+        // CoAHttpClient, etc.) already attribute the root-cause to a specific subsystem (REDIS, DATABASE,
+        // HTTP_COA, KAFKA). The wrapper-marker dedup in ExceptionMetricsService skips this call when the
+        // same root cause has already been counted with a more specific source.
+        exceptionMetricsService.recordException(t, ExceptionMetricsService.Layer.RESOURCE, ExceptionMetricsService.Source.INTERNAL);
     }
 
     @PATCH

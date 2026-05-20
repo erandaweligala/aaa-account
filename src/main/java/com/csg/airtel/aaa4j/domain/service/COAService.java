@@ -116,7 +116,7 @@ public class COAService {
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Disconnect CDR event for session: %s, user: %s",
                     session.getSessionId(), username);
-            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE, ExceptionMetricsService.Source.KAFKA);
         }
     }
 
@@ -141,7 +141,7 @@ public class COAService {
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Request CDR event for session: %s, user: %s",
                     session.getSessionId(), username);
-            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE, ExceptionMetricsService.Source.KAFKA);
         }
     }
 
@@ -167,7 +167,7 @@ public class COAService {
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Response CDR event for session: %s, user: %s, status: %s",
                     session.getSessionId(), username, responseStatus);
-            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE, ExceptionMetricsService.Source.KAFKA);
         }
     }
 
@@ -201,7 +201,7 @@ public class COAService {
                 .onFailure().invoke(failure -> {
                         LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
                        /** monitoringService.recordCOASystemFailure(); */
-                        exceptionMetricsService.recordException(failure, ExceptionMetricsService.Layer.SERVICE);
+                        exceptionMetricsService.recordException(failure, ExceptionMetricsService.Layer.SERVICE, ExceptionMetricsService.Source.HTTP_COA);
                         generateAndSendCoaResponseCDR(session, username, "FAILED");
                 })
                 .replaceWithVoid();
@@ -302,7 +302,7 @@ public class COAService {
                             .onFailure().invoke(failure -> {
                                     LoggingUtil.logError(log, M_COA, failure, "HTTP CoA disconnect failed for session: %s", session.getSessionId());
                                     monitoringService.recordCOASystemFailure();
-                                    exceptionMetricsService.recordException(failure, ExceptionMetricsService.Layer.SERVICE);
+                                    exceptionMetricsService.recordException(failure, ExceptionMetricsService.Layer.SERVICE, ExceptionMetricsService.Source.HTTP_COA);
                             })
                             .onFailure().recoverWithItem(new CoAResult(session.getSessionId(), false)); // treat HTTP failure as session removed
                 })

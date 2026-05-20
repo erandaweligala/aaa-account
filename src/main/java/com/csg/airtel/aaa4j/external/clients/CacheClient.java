@@ -81,7 +81,7 @@ public class CacheClient {
                         return groupId;
                     } catch (Exception e) {
                         LoggingUtil.logError(log, M_GET, null, "Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
-                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.REDIS);
                         throw new BaseException(
                                 "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -93,7 +93,7 @@ public class CacheClient {
                 }))
                 .onFailure().invoke(e -> {
                     LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId);
-                    exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                    exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.REDIS);
                 });
     }
 
@@ -149,7 +149,7 @@ public class CacheClient {
                     } catch (Exception e) {
                         LoggingUtil.logError(log, M_STORE, null, "Failed to serialize user data for userId: %s - %s",
                                 userId, e.getMessage());
-                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.REDIS);
 
                         return Uni.createFrom().failure(new BaseException(
                                 "Failed to serialize user data",
@@ -189,7 +189,7 @@ public class CacheClient {
                         return userData;
                     } catch (Exception e) {
                         LoggingUtil.logError(log, M_GET, null, "Failed to deserialize user data for userId: %s - %s", userId, e.getMessage());
-                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                        exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.REDIS);
                         throw new BaseException(
                                 "Failed to deserialize user data",
                                 ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -201,7 +201,7 @@ public class CacheClient {
                 }))
                 .onFailure().invoke(e -> {
                     LoggingUtil.logError(log, M_GET, e, "Failed to get user data for userId: %s", userId);
-                    exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                    exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.REDIS);
                 });
     }
 
@@ -246,7 +246,7 @@ public class CacheClient {
                     .replaceWithVoid();
         } catch (Exception e) {
             LoggingUtil.logError(log, M_UPDATE, null, "Failed to serialize user data for userId: %s - %s", userId, e.getMessage());
-            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+            exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.REDIS);
             return Uni.createFrom().failure(new BaseException(
                     "Failed to serialize user data",
                     ResponseCodeEnum.EXCEPTION_CLIENT_LAYER.description(),
@@ -313,7 +313,7 @@ public class CacheClient {
                                 userDataMap.put(userId, userData);
                             } catch (Exception e) {
                                 LoggingUtil.logError(log, M_BATCH, null, "Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
-                                exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT);
+                                exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.CLIENT, ExceptionMetricsService.Source.REDIS);
                             }
                         }
                     }
