@@ -3,6 +3,9 @@ package com.csg.airtel.aaa4j.external.repository;
 
 import com.csg.airtel.aaa4j.application.common.LoggingUtil;
 import com.csg.airtel.aaa4j.domain.model.ServiceBucketInfo;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import io.smallrye.mutiny.Uni;
 import io.vertx.mutiny.sqlclient.Pool;
 import io.vertx.mutiny.sqlclient.Row;
@@ -14,8 +17,11 @@ import org.eclipse.microprofile.faulttolerance.CircuitBreaker;
 import org.eclipse.microprofile.faulttolerance.Retry;
 import org.jboss.logging.Logger;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static com.csg.airtel.aaa4j.domain.constant.SQLConstant.QUERY_BALANCE;
 
@@ -53,10 +59,32 @@ public class UserBucketRepository {
     public static final String RECURRING_FLAG = "RECURRING_FLAG";
 
     final Pool client;
+    private final Timer accountingDbExecutionTimer;
+    private final AtomicLong lastAccountingDbExecutionTimeMs = new AtomicLong(0);
 
     @Inject
-    public UserBucketRepository(Pool client) {
+    public UserBucketRepository(Pool client,MeterRegistry meterRegistry) {
         this.client = client;
+        this.accountingDbExecutionTimer = Timer.builder("radius.accounting.db.execution.time")
+                .description("Time to complete a  DB execution time")
+                .publishPercentiles(0.5, 0.75, 0.90, 0.95, 0.99)
+                .publishPercentileHistogram()
+                .serviceLevelObjectives(
+                        Duration.ofMillis(10),
+                        Duration.ofMillis(20),
+                        Duration.ofMillis(50),
+                        Duration.ofMillis(100),
+                        Duration.ofMillis(250),
+                        Duration.ofMillis(500),
+                        Duration.ofMillis(1000),
+                        Duration.ofMillis(2500),
+                        Duration.ofMillis(5000))
+                .register(meterRegistry);
+
+        Gauge.builder("radius.accounting.db.execution.time.ms", lastAccountingDbExecutionTimeMs, AtomicLong::get)
+                .description("Duration in milliseconds of the most recently completed accounting request")
+                .register(meterRegistry);
+
     }
 
     /**
@@ -78,18 +106,19 @@ public class UserBucketRepository {
     )
     public Uni<List<ServiceBucketInfo>> getServiceBucketsByUserName(String userName) {
         LoggingUtil.logDebug(log, M_QUERY, "Fetching service buckets for user: %s", userName);
-        long startTime = System.currentTimeMillis();
+        Instant startTime = Instant.now();
         return client
                 .preparedQuery(QUERY_BALANCE)
                 .execute(Tuple.of(userName))
                     .onItem().transform(this::mapRowsToServiceBuckets)
                 .onFailure().invoke(error -> {
-                    long elapsed = System.currentTimeMillis() - startTime;
-                    LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s, queryTime=%dms", userName, elapsed);
+                    LoggingUtil.logError(log, M_QUERY, error, "Error fetching service buckets for user: %s", userName);
                 })
                 .onItem().invoke(results -> {
-                    long elapsed = System.currentTimeMillis() - startTime;
-                    LoggingUtil.logInfo(log, M_QUERY, "Fetched service buckets for user: %s, queryTime=%dms", userName, elapsed);
+                    Duration duration = Duration.between(startTime, Instant.now());
+                    accountingDbExecutionTimer.record(duration);
+                    lastAccountingDbExecutionTimeMs.set(duration.toMillis());
+                    LoggingUtil.logInfo(log, M_QUERY, "Fetched service buckets for user: %s", userName);
                 });
     }
 
