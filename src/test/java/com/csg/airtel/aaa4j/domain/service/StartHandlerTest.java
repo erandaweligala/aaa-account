@@ -45,6 +45,9 @@ class StartHandlerTest {
 
         startHandler = new StartHandler(utilCache, userRepository, accountProducer,
                 accountingUtil, sessionLifecycleManager, coaService);
+
+        // CDR send is now chained into the main pipeline; stub the default to avoid NPE.
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
     }
 
     private AccountingRequestDto createRequest(String user, String sessionId) {
