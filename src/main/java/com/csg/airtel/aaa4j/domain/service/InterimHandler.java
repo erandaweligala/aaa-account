@@ -91,8 +91,7 @@ public class InterimHandler {
 
         if("BARRED".equalsIgnoreCase(userData.getUserStatus())){
             LoggingUtil.logWarn(log, M_PROCESS, "User status is BARRED for user: %s", request.username());
-            generateAndSendCDR(request, session, session.getServiceId(), session.getPreviousUsageBucketId());
-            return Uni.createFrom().voidItem();
+            return generateAndSendCDR(request, session, session.getServiceId(), session.getPreviousUsageBucketId());
         }
         // Early return if session time hasn't increased
         if (request.sessionTime() <= session.getSessionTime()) {
@@ -110,9 +109,7 @@ public class InterimHandler {
                             LoggingUtil.logWarn(log, M_PROCESS, "update failed for sessionId: %s reason: %s", request.sessionId(),updateResult.errorMessage());
                         }
                         Session updatedSessions  = updateResult.sessionData() != null ? updateResult.sessionData():finalSession;
-                        generateAndSendCDR(request, updatedSessions, updatedSessions.getServiceId(), updatedSessions.getPreviousUsageBucketId());
-                        return Uni.createFrom().voidItem();
-
+                        return generateAndSendCDR(request, updatedSessions, updatedSessions.getServiceId(), updatedSessions.getPreviousUsageBucketId());
                     });
         }
     }
@@ -147,8 +144,8 @@ public class InterimHandler {
     }
 
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent, serviceId, bucketId);
+    private Uni<Void> generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
+        return CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildInterimCDREvent, serviceId, bucketId);
     }
 
 

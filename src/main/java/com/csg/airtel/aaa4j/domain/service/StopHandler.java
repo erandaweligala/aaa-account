@@ -89,10 +89,7 @@ public class StopHandler {
                     }
                 })
                 .call(() -> sessionLifecycleManager.onSessionTerminated(request.username(), request.sessionId()))
-                .invoke(() ->
-                    //send CDR event asynchronously
-                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId())
-                )
+                .call(() -> generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId()))
                 .invoke(() -> LoggingUtil.logDebug(log, M_PROCESS, "Session and balance cleaned for session: %s", request.sessionId()))
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_PROCESS, throwable, "Failed to process accounting stop for session: %s",
@@ -108,8 +105,8 @@ public class StopHandler {
         return accountingUtil.updateSessionAndBalance(userSessionData, session, request, bucketId);
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent, serviceId, bucketId);
+    private Uni<Void> generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
+        return CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStopCDREvent, serviceId, bucketId);
     }
 
     private Session createSession(AccountingRequestDto request) {

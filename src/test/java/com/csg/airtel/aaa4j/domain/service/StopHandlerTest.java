@@ -87,6 +87,7 @@ class StopHandlerTest {
         // 4. Setup the rest of the mocks
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), any())).thenReturn(Uni.createFrom().item(successResult));
         when(accountProducer.produceDBWriteEvent(any())).thenReturn(Uni.createFrom().voidItem());
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
         when(sessionLifecycleManager.onSessionTerminated(anyString(), anyString())).thenReturn(Uni.createFrom().voidItem());
 
         // 5. Execute
@@ -158,6 +159,7 @@ class StopHandlerTest {
         UpdateResult failResult = new UpdateResult(false, null, null,null,null,null,null);
         when(accountingUtil.updateSessionAndBalance(any(), any(), any(), any())).thenReturn(Uni.createFrom().item(failResult));
         when(sessionLifecycleManager.onSessionTerminated(anyString(), anyString())).thenReturn(Uni.createFrom().voidItem());
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
 
         stopHandler.processAccountingStop(userSessionData, requestDto, "buck-1")
                 .subscribe().withSubscriber(UniAssertSubscriber.create())

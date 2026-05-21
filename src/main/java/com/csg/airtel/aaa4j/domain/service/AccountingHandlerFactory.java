@@ -24,7 +24,7 @@ public class AccountingHandlerFactory {
     }
 
     public Uni<Void> getHandler(AccountingRequestDto request,String traceId) {
-        LoggingUtil.logInfo(LOG,"getHandler","Received accounting request for action type: %s",request.actionType());
+        LoggingUtil.logDebug(LOG,"getHandler","Received accounting request for action type: %s",request.actionType());
         return switch (request.actionType()) {
             case START -> startHandler.processAccountingStart(request,traceId);
             case INTERIM_UPDATE -> interimHandler.handleInterim(request,traceId);

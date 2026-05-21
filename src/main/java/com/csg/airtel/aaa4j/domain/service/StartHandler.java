@@ -191,9 +191,7 @@ public class StartHandler {
 
         return updateCachesForSession(request, userSessionData, newSession, isGroupBalance)
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), newSession))
-                .invoke(() ->
-                    generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId())
-                )
+                .call(() -> generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId()))
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_PROCESS_SESSION, throwable, "Failed to update cache for user: %s", request.username());
                     return Uni.createFrom().voidItem();
@@ -411,9 +409,7 @@ public class StartHandler {
         final Session finalSession = session;
         return userStorageUni
                 .call(() -> sessionLifecycleManager.onSessionCreated(request.username(), finalSession))
-                .onItem().invoke(unused ->
-                    generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId())
-                );
+                .call(() -> generateAndSendCDR(request, finalSession, finalSession.getServiceId(), finalSession.getPreviousUsageBucketId()));
     }
 
     private Uni<Void> handleNoValidBalance(AccountingRequestDto request) {
@@ -588,7 +584,7 @@ public class StartHandler {
         return true;
     }
 
-    private void generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
-        CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent, serviceId, bucketId);
+    private Uni<Void> generateAndSendCDR(AccountingRequestDto request, Session session, String serviceId, String bucketId) {
+        return CdrMappingUtil.generateAndSendCDR(request, session, accountProducer, CdrMappingUtil::buildStartCDREvent, serviceId, bucketId);
     }
 }

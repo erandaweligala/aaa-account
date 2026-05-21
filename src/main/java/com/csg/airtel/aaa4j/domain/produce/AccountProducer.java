@@ -64,7 +64,6 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceDBWriteEvent")
     public Uni<Void> produceDBWriteEvent(DBWriteRequest request) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceDBWriteEvent process Started sessionId : %s", request.getSessionId());
         return Uni.createFrom().emitter(em -> {
             Message<DBWriteRequest> message = Message.of(request)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -72,7 +71,9 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting DB create event for session: %s, %d ms", request.getSessionId(),System.currentTimeMillis()-startTime);
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debugf("Sent DB write event session=%s in %d ms", request.getSessionId(), System.currentTimeMillis() - startTime);
+                        }
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
@@ -103,7 +104,6 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingResponseEvent")
     public Uni<Void> produceAccountingResponseEvent(AccountingResponseEvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produceAccountingResponseEvent process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingResponseEvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -111,7 +111,9 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting response event for session: %s, %d ms", event.sessionId(),System.currentTimeMillis()-startTime);
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debugf("Sent response event session=%s in %d ms", event.sessionId(), System.currentTimeMillis() - startTime);
+                        }
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
@@ -139,7 +141,6 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceAccountingCDREvent")
     public Uni<Void> produceAccountingCDREvent(AccountingCDREvent event) {
         long startTime = System.currentTimeMillis();
-        LOG.infof("Start produce Accounting CDR Event process");
         return Uni.createFrom().emitter(em -> {
             Message<AccountingCDREvent> message = Message.of(event)
                     .addMetadata(OutgoingKafkaRecordMetadata.<String>builder()
@@ -147,7 +148,9 @@ public class AccountProducer {
                             .build())
                     .withAck(() -> {
                         em.complete(null);
-                        LOG.infof("Successfully sent accounting CDR event for session: %s, %d ms", event.getPayload().getSession().getSessionId(),System.currentTimeMillis()-startTime);
+                        if (LOG.isDebugEnabled()) {
+                            LOG.debugf("Sent CDR event session=%s in %d ms", event.getPayload().getSession().getSessionId(), System.currentTimeMillis() - startTime);
+                        }
                         return CompletableFuture.completedFuture(null);
                     })
                     .withNack(throwable -> {
@@ -269,8 +272,10 @@ public class AccountProducer {
     @Fallback(fallbackMethod = "fallbackProduceQuotaNotificationEvent")
     public Uni<Void> produceQuotaNotificationEvent(ThresholdExpiryEvent event) {
 
-        LOG.infof("Start produce Quota Notification Event for user: %s, threshold: %s",
-                event.data().serviceLineNumber(), event.meta().eventType());
+        if (LOG.isDebugEnabled()) {
+            LOG.debugf("Start produce Quota Notification Event for user: %s, threshold: %s",
+                    event.data().serviceLineNumber(), event.meta().eventType());
+        }
         /*
         return Uni.createFrom().emitter(em -> {
             Message<ThresholdExpiryEvent> message = Message.of(event)

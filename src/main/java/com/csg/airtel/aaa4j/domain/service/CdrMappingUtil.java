@@ -5,6 +5,7 @@ import com.csg.airtel.aaa4j.domain.model.AccountingRequestDto;
 import com.csg.airtel.aaa4j.domain.model.cdr.*;
 import com.csg.airtel.aaa4j.domain.model.session.Session;
 import com.csg.airtel.aaa4j.domain.produce.AccountProducer;
+import io.smallrye.mutiny.Uni;
 import lombok.Getter;
 import org.jboss.logging.Logger;
 
@@ -453,41 +454,35 @@ public class CdrMappingUtil {
     }
 
     /**
-     * Generates and sends a CDR event asynchronously.
-     * This method consolidates the duplicate CDR generation logic from StartHandler, InterimHandler, and StopHandler.
-     *
-     * @param request The accounting request
-     * @param session The session data
-     * @param accountProducer The producer to send the CDR event
-     * @param cdrBuilder Function that builds the appropriate CDR event type
-     * @param serviceId The service ID for the accounting CDR
-     * @param bucketId The bucket ID for the accounting CDR
+     * Generates a CDR event and returns a Uni so callers can chain it into the
+     * accounting pipeline. Returning the Uni propagates back-pressure: if the
+     * CDR producer slows down, the upstream consumer's concurrency gate (16)
+     * throttles polling instead of accumulating orphan in-flight publishes.
      */
-    public static void generateAndSendCDR(
+    public static Uni<Void> generateAndSendCDR(
             AccountingRequestDto request,
             Session session,
             AccountProducer accountProducer,
             BiFunction<AccountingRequestDto, Session, AccountingCDREvent> cdrBuilder,
             String serviceId,
             String bucketId) {
+        AccountingCDREvent cdrEvent;
         try {
-            AccountingCDREvent cdrEvent = cdrBuilder.apply(request, session);
-            // Update the accounting section with the provided serviceId and bucketId
+            cdrEvent = cdrBuilder.apply(request, session);
             if (cdrEvent.getPayload() != null && cdrEvent.getPayload().getAccounting() != null) {
                 cdrEvent.getPayload().getAccounting().setServiceId(serviceId);
                 cdrEvent.getPayload().getAccounting().setBucketId(bucketId);
             }
-
-            // Run asynchronously without blocking
-            accountProducer.produceAccountingCDREvent(cdrEvent)
-                    .subscribe()
-                    .with(
-                            success -> LoggingUtil.logInfo(log, M_CDR, "CDR event sent successfully for session: %s", request.sessionId()),
-                            failure -> LoggingUtil.logError(log, M_CDR, failure, "Failed to send CDR event for session: %s", request.sessionId())
-                    );
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building CDR event for session: %s", request.sessionId());
+            return Uni.createFrom().voidItem();
         }
+
+        return accountProducer.produceAccountingCDREvent(cdrEvent)
+                .onFailure().invoke(failure ->
+                        LoggingUtil.logError(log, M_CDR, failure, "Failed to send CDR event for session: %s", request.sessionId()))
+                .onFailure().recoverWithNull()
+                .replaceWithVoid();
     }
 
     private static long calculateTotalUsage(Long inputOctets, Long outputOctets,

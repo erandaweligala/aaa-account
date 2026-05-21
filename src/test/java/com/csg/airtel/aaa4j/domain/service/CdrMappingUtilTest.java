@@ -101,7 +101,8 @@ class CdrMappingUtilTest {
         BiFunction<AccountingRequestDto, Session, AccountingCDREvent> builder =
                 (req, sess) -> CdrMappingUtil.buildStartCDREvent(req, sess);
 
-        CdrMappingUtil.generateAndSendCDR(request, session, producer, builder, "service-1", "bucket-1");
+        Uni<Void> result = CdrMappingUtil.generateAndSendCDR(request, session, producer, builder, "service-1", "bucket-1");
+        result.subscribe().withSubscriber(UniAssertSubscriber.create()).assertCompleted();
 
         verify(producer, times(1)).produceAccountingCDREvent(any());
     }
@@ -116,10 +117,11 @@ class CdrMappingUtilTest {
         when(producer.produceAccountingCDREvent(any()))
                 .thenReturn(Uni.createFrom().failure(new RuntimeException("Kafka Down")));
 
-        CdrMappingUtil.generateAndSendCDR(request, session, producer, CdrMappingUtil::buildStartCDREvent, "s1", "b1");
+        Uni<Void> result = CdrMappingUtil.generateAndSendCDR(request, session, producer, CdrMappingUtil::buildStartCDREvent, "s1", "b1");
+        // Producer failure is recovered to a successful Uni so it does not abort the accounting pipeline.
+        result.subscribe().withSubscriber(UniAssertSubscriber.create()).assertCompleted();
 
         verify(producer).produceAccountingCDREvent(any());
-        // Since it's async and handled via .with(), we just ensure it doesn't throw exception to the caller
     }
 
     @Test
@@ -129,7 +131,8 @@ class CdrMappingUtilTest {
         AccountProducer producer = mock(AccountProducer.class);
 
         // Passing null session to trigger a NullPointerException inside the builder
-        CdrMappingUtil.generateAndSendCDR(request, null, producer, CdrMappingUtil::buildStartCDREvent, "s1", "b1");
+        Uni<Void> result = CdrMappingUtil.generateAndSendCDR(request, null, producer, CdrMappingUtil::buildStartCDREvent, "s1", "b1");
+        result.subscribe().withSubscriber(UniAssertSubscriber.create()).assertCompleted();
 
         verifyNoInteractions(producer); // Should have caught the error in the try-catch block
     }

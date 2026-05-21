@@ -93,6 +93,7 @@ class InterimHandlerTest {
                 .thenReturn(Uni.createFrom().item(successResult));
         when(sessionLifecycleManager.onSessionActivity(anyString(), anyString()))
                 .thenReturn(Uni.createFrom().voidItem());
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
 
         // Act
         interimHandler.handleInterim(request, traceId)
@@ -114,6 +115,7 @@ class InterimHandlerTest {
 
         when(cacheUtil.getUserData(anyString())).thenReturn(Uni.createFrom().item(userData));
         when(accountingHandler.findSessionById(any(), anyString())).thenReturn(session);
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
 
         // Act
         interimHandler.handleInterim(request, traceId)
@@ -196,6 +198,7 @@ class InterimHandlerTest {
 
         when(sessionLifecycleManager.onSessionCreated(any(), any()))
                 .thenReturn(Uni.createFrom().voidItem());
+        when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
 
         // Act
         interimHandler.handleInterim(customRequest, mockCsvData)
