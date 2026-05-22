@@ -1,5 +1,7 @@
 package com.csg.airtel.aaa4j.domain.model.session;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -9,6 +11,8 @@ import java.util.List;
 
 @Getter
 @Setter
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+@RegisterForReflection
 public class Balance {
     private Long initialBalance;
     private Long quota;

@@ -1,5 +1,7 @@
 package com.csg.airtel.aaa4j.domain.model.session;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.*;
 
 import java.util.ArrayList;
@@ -10,6 +12,8 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder(toBuilder = true)
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+@RegisterForReflection
 public class UserSessionData {
     private String sessionTimeOut;
     private String userStatus; //if bard user consume with global plan

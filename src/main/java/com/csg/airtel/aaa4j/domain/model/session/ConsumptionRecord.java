@@ -1,5 +1,7 @@
 package com.csg.airtel.aaa4j.domain.model.session;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import io.quarkus.runtime.annotations.RegisterForReflection;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -11,6 +13,8 @@ import java.time.LocalDate;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_EMPTY)
+@RegisterForReflection
 public class ConsumptionRecord {
     private LocalDate date;
     private Long bytesConsumed;
