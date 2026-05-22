@@ -119,6 +119,14 @@
           <version>1.18.30</version>
           <scope>provided</scope>
       </dependency>
+      <dependency>
+          <groupId>com.fasterxml.jackson.dataformat</groupId>
+          <artifactId>jackson-dataformat-cbor</artifactId>
+      </dependency>
+      <dependency>
+          <groupId>com.fasterxml.jackson.module</groupId>
+          <artifactId>jackson-module-blackbird</artifactId>
+      </dependency>
   </dependencies>
   <build>
     <plugins>

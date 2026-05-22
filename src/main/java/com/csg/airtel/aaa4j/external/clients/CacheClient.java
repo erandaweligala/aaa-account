@@ -5,7 +5,6 @@ import com.csg.airtel.aaa4j.domain.constant.ResponseCodeEnum;
 import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.exception.BaseException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
@@ -37,10 +36,11 @@ public class CacheClient {
     private static final String M_BATCH = "batchGet";
 
     final ReactiveRedisDataSource reactiveRedisDataSource;
-    final ObjectMapper objectMapper;
+    final SessionCacheCodec sessionCacheCodec;
     private static final String KEY_PREFIX = "user:";
     private static final String GROUP_KEY_PREFIX = "group:";
     private final ReactiveValueCommands<String, String> valueCommands;
+    private final ReactiveValueCommands<String, byte[]> userValueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
     private final ExceptionMetricsService exceptionMetricsService;
 
@@ -49,12 +49,13 @@ public class CacheClient {
 
     @Inject
     public CacheClient(ReactiveRedisDataSource reactiveRedisDataSource,
-                       ObjectMapper objectMapper,
+                       SessionCacheCodec sessionCacheCodec,
                        SessionExpiryIndex sessionExpiryIndex,
                        ExceptionMetricsService exceptionMetricsService) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
-        this.objectMapper = objectMapper;
+        this.sessionCacheCodec = sessionCacheCodec;
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
+        this.userValueCommands = reactiveRedisDataSource.value(String.class, byte[].class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
         this.exceptionMetricsService = exceptionMetricsService;
@@ -113,10 +114,10 @@ public class CacheClient {
         return Uni.createFrom().item(userData)
                 .onItem().transformToUni(data -> {
                     try {
-                        String jsonValue = objectMapper.writeValueAsString(data);
+                        byte[] encoded = sessionCacheCodec.encode(data);
 
                         // Always store user data
-                        Uni<?> storeUserDataUni = valueCommands.set(key, jsonValue);
+                        Uni<?> storeUserDataUni = userValueCommands.set(key, encoded);
 
                         // No group handling required
                         if (data == null || data.getGroupId() == null
@@ -177,11 +178,11 @@ public class CacheClient {
         LoggingUtil.logDebug(log, M_GET, "Retrieving user data for cache userId: %s", userId);
         String key = KEY_PREFIX + userId;
 
-        // Use cached valueCommands for better performance at high TPS
-        return valueCommands.get(key)
-                .onItem().ifNotNull().transform(Unchecked.function(json -> {
+        // Use cached userValueCommands for better performance at high TPS
+        return userValueCommands.get(key)
+                .onItem().ifNotNull().transform(Unchecked.function(payload -> {
                     try {
-                        UserSessionData userData = objectMapper.readValue(json, UserSessionData.class);
+                        UserSessionData userData = sessionCacheCodec.decode(payload);
 
                         LoggingUtil.logDebug(log, M_GET, "User data retrieved for userId: %s in %d ms",
                                 userId, (System.currentTimeMillis() - startTime));
@@ -220,8 +221,7 @@ public class CacheClient {
         String userKey = KEY_PREFIX + userId;
 
         try {
-            // Use cached valueCommands for better performance at high TPS
-            String jsonValue = objectMapper.writeValueAsString(userData);
+            byte[] encoded = sessionCacheCodec.encode(userData);
 
             // Run group and user SET operations in parallel for zero overhead
             if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
@@ -235,13 +235,13 @@ public class CacheClient {
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
                         valueCommands.set(groupKey, groupValues),
-                        valueCommands.set(userKey, jsonValue)
+                        userValueCommands.set(userKey, encoded)
                 ).discardItems()
                         .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId));
             }
 
             // If no groupId, only update user data
-            return valueCommands.set(userKey, jsonValue)
+            return userValueCommands.set(userKey, encoded)
                     .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId))
                     .replaceWithVoid();
         } catch (Exception e) {
@@ -298,18 +298,18 @@ public class CacheClient {
         }
 
         // Use MGET for single network round trip
-        return valueCommands.mget(keys)
+        return userValueCommands.mget(keys)
                 .onItem().transform(resultMap -> {
 
                     // Pre-size HashMap: capacity = size / 0.75 load factor + 1
                     Map<String, UserSessionData> userDataMap = HashMap.newHashMap((int) (size / 0.75) + 1);
-                    for (Map.Entry<String, String> entry : resultMap.entrySet()) {
-                        String value = entry.getValue();
-                        if (value != null && !value.isEmpty()) {
+                    for (Map.Entry<String, byte[]> entry : resultMap.entrySet()) {
+                        byte[] value = entry.getValue();
+                        if (value != null && value.length > 0) {
                             try {
                                 // Strip prefix from key to get userId
                                 String userId = entry.getKey().substring(KEY_PREFIX.length());
-                                UserSessionData userData = objectMapper.readValue(value, UserSessionData.class);
+                                UserSessionData userData = sessionCacheCodec.decode(value);
                                 userDataMap.put(userId, userData);
                             } catch (Exception e) {
                                 LoggingUtil.logError(log, M_BATCH, null, "Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
