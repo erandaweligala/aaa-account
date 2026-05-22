@@ -37,6 +37,10 @@
       <artifactId>quarkus-rest-jackson</artifactId>
     </dependency>
     <dependency>
+      <groupId>com.fasterxml.jackson.module</groupId>
+      <artifactId>jackson-module-blackbird</artifactId>
+    </dependency>
+    <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-reactive-oracle-client</artifactId>
     </dependency>

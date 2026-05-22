@@ -6,6 +6,8 @@ import com.csg.airtel.aaa4j.domain.model.session.UserSessionData;
 import com.csg.airtel.aaa4j.domain.service.ExceptionMetricsService;
 import com.csg.airtel.aaa4j.exception.BaseException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import io.quarkus.redis.datasource.ReactiveRedisDataSource;
 import io.quarkus.redis.datasource.keys.ReactiveKeyCommands;
 import io.quarkus.redis.datasource.value.ReactiveValueCommands;
@@ -38,8 +40,20 @@ public class CacheClient {
 
     final ReactiveRedisDataSource reactiveRedisDataSource;
     final ObjectMapper objectMapper;
+    /**
+     * Cached for UserSessionData so Jackson skips type-resolution on every call.
+     * Reader/Writer are immutable and thread-safe, unlike ObjectMapper itself.
+     */
+    private final ObjectReader userSessionDataReader;
+    private final ObjectWriter userSessionDataWriter;
     private static final String KEY_PREFIX = "user:";
     private static final String GROUP_KEY_PREFIX = "group:";
+    /**
+     * byte[] commands skip the Quarkus client's String<->UTF-8 round-trip; we feed
+     * Jackson bytes directly. String-typed commands kept for the group:* keys, which
+     * store a short CSV string, not JSON.
+     */
+    private final ReactiveValueCommands<String, byte[]> bytesValueCommands;
     private final ReactiveValueCommands<String, String> valueCommands;
     private final SessionExpiryIndex sessionExpiryIndex;
     private final ExceptionMetricsService exceptionMetricsService;
@@ -54,6 +68,9 @@ public class CacheClient {
                        ExceptionMetricsService exceptionMetricsService) {
         this.reactiveRedisDataSource = reactiveRedisDataSource;
         this.objectMapper = objectMapper;
+        this.userSessionDataReader = objectMapper.readerFor(UserSessionData.class);
+        this.userSessionDataWriter = objectMapper.writerFor(UserSessionData.class);
+        this.bytesValueCommands = reactiveRedisDataSource.value(String.class, byte[].class);
         this.valueCommands = reactiveRedisDataSource.value(String.class, String.class);
         this.keyCommands = reactiveRedisDataSource.key();
         this.sessionExpiryIndex = sessionExpiryIndex;
@@ -112,40 +129,9 @@ public class CacheClient {
 
         return Uni.createFrom().item(userData)
                 .onItem().transformToUni(data -> {
+                    byte[] jsonValue;
                     try {
-                        String jsonValue = objectMapper.writeValueAsString(data);
-
-                        // Always store user data
-                        Uni<?> storeUserDataUni = valueCommands.set(key, jsonValue);
-
-                        // No group handling required
-                        if (data == null || data.getGroupId() == null
-                                || "1".equalsIgnoreCase(data.getGroupId())) {
-                            return storeUserDataUni.replaceWithVoid();
-                        }
-
-                        String groupKey = GROUP_KEY_PREFIX + userName;
-                        String groupValues = new StringBuilder(32)
-                                .append(data.getGroupId()).append(',')
-                                .append(data.getConcurrency()).append(',')
-                                .append(data.getUserStatus()).append(',')
-                                .append(data.getSessionTimeOut()).toString();
-
-                        // Check cache first
-                        return valueCommands.get(groupKey)
-                                .onItem().transformToUni(existingValue -> {
-                                    if (existingValue == null) {
-                                        // Group cache missing → update it
-                                        return Uni.combine().all().unis(
-                                                valueCommands.set(groupKey, groupValues),
-                                                storeUserDataUni
-                                        ).discardItems();
-                                    }
-
-                                    // Group cache already exists → only store user data
-                                    return storeUserDataUni.replaceWithVoid();
-                                });
-
+                        jsonValue = userSessionDataWriter.writeValueAsBytes(data);
                     } catch (Exception e) {
                         LoggingUtil.logError(log, M_STORE, null, "Failed to serialize user data for userId: %s - %s",
                                 userId, e.getMessage());
@@ -159,6 +145,36 @@ public class CacheClient {
                                 null
                         ));
                     }
+
+                    Uni<?> storeUserDataUni = bytesValueCommands.set(key, jsonValue);
+
+                    // No group handling required
+                    if (data == null || data.getGroupId() == null
+                            || "1".equalsIgnoreCase(data.getGroupId())) {
+                        return storeUserDataUni.replaceWithVoid();
+                    }
+
+                    String groupKey = GROUP_KEY_PREFIX + userName;
+                    String groupValues = new StringBuilder(32)
+                            .append(data.getGroupId()).append(',')
+                            .append(data.getConcurrency()).append(',')
+                            .append(data.getUserStatus()).append(',')
+                            .append(data.getSessionTimeOut()).toString();
+
+                    // Check cache first
+                    return valueCommands.get(groupKey)
+                            .onItem().transformToUni(existingValue -> {
+                                if (existingValue == null) {
+                                    // Group cache missing → update it
+                                    return Uni.combine().all().unis(
+                                            valueCommands.set(groupKey, groupValues),
+                                            storeUserDataUni
+                                    ).discardItems();
+                                }
+
+                                // Group cache already exists → only store user data
+                                return storeUserDataUni.replaceWithVoid();
+                            });
                 });
     }
 
@@ -177,14 +193,15 @@ public class CacheClient {
         LoggingUtil.logDebug(log, M_GET, "Retrieving user data for cache userId: %s", userId);
         String key = KEY_PREFIX + userId;
 
-        // Use cached valueCommands for better performance at high TPS
-        return valueCommands.get(key)
-                .onItem().ifNotNull().transform(Unchecked.function(json -> {
+        return bytesValueCommands.get(key)
+                .onItem().ifNotNull().transform(Unchecked.function(bytes -> {
                     try {
-                        UserSessionData userData = objectMapper.readValue(json, UserSessionData.class);
+                        UserSessionData userData = userSessionDataReader.readValue(bytes);
 
-                        LoggingUtil.logDebug(log, M_GET, "User data retrieved for userId: %s in %d ms",
-                                userId, (System.currentTimeMillis() - startTime));
+                        if (log.isDebugEnabled()) {
+                            LoggingUtil.logDebug(log, M_GET, "User data retrieved for userId: %s in %d ms",
+                                    userId, (System.currentTimeMillis() - startTime));
+                        }
 
                         return userData;
                     } catch (Exception e) {
@@ -220,8 +237,7 @@ public class CacheClient {
         String userKey = KEY_PREFIX + userId;
 
         try {
-            // Use cached valueCommands for better performance at high TPS
-            String jsonValue = objectMapper.writeValueAsString(userData);
+            byte[] jsonValue = userSessionDataWriter.writeValueAsBytes(userData);
 
             // Run group and user SET operations in parallel for zero overhead
             if(userData != null && userData.getGroupId() != null && !userData.getGroupId().equalsIgnoreCase("1")) {
@@ -235,13 +251,13 @@ public class CacheClient {
                 // Combine both SET operations in parallel - reduces RTT by executing concurrently
                 return Uni.combine().all().unis(
                         valueCommands.set(groupKey, groupValues),
-                        valueCommands.set(userKey, jsonValue)
+                        bytesValueCommands.set(userKey, jsonValue)
                 ).discardItems()
                         .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId));
             }
 
             // If no groupId, only update user data
-            return valueCommands.set(userKey, jsonValue)
+            return bytesValueCommands.set(userKey, jsonValue)
                     .onFailure().invoke(err -> LoggingUtil.logError(log, M_UPDATE, err, "Failed to update cache for user %s", userId))
                     .replaceWithVoid();
         } catch (Exception e) {
@@ -298,18 +314,18 @@ public class CacheClient {
         }
 
         // Use MGET for single network round trip
-        return valueCommands.mget(keys)
+        return bytesValueCommands.mget(keys)
                 .onItem().transform(resultMap -> {
 
                     // Pre-size HashMap: capacity = size / 0.75 load factor + 1
                     Map<String, UserSessionData> userDataMap = HashMap.newHashMap((int) (size / 0.75) + 1);
-                    for (Map.Entry<String, String> entry : resultMap.entrySet()) {
-                        String value = entry.getValue();
-                        if (value != null && !value.isEmpty()) {
+                    for (Map.Entry<String, byte[]> entry : resultMap.entrySet()) {
+                        byte[] value = entry.getValue();
+                        if (value != null && value.length > 0) {
                             try {
                                 // Strip prefix from key to get userId
                                 String userId = entry.getKey().substring(KEY_PREFIX.length());
-                                UserSessionData userData = objectMapper.readValue(value, UserSessionData.class);
+                                UserSessionData userData = userSessionDataReader.readValue(value);
                                 userDataMap.put(userId, userData);
                             } catch (Exception e) {
                                 LoggingUtil.logError(log, M_BATCH, null, "Failed to deserialize user data for key %s: %s", entry.getKey(), e.getMessage());
