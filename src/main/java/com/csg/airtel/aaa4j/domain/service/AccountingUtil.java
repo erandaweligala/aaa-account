@@ -107,7 +107,17 @@ public class AccountingUtil {
         if (bucketId != null) {
             for (Balance balance : balances) {
                 if (bucketId.equals(balance.getBucketId())) {
-                    return balance;
+                    // Cheap eligibility gate: skip the bucket if it's expired or has no
+                    // quota left, so the full priority compute below can find a replacement.
+                    // Time-window and consumption-limit checks are deferred to the next
+                    // re-auth via shouldDisconnectSession — that keeps the INTERIM hot path
+                    // O(1) without changing disconnect semantics in the common case.
+                    if ((balance.getQuota() > 0 || balance.isUnlimited())
+                            && !balance.getBucketExpiryDate().isBefore(getNow())
+                            && !balance.getServiceExpiry().isBefore(getNow())) {
+                        return balance;
+                    }
+                    break;
                 }
             }
         }

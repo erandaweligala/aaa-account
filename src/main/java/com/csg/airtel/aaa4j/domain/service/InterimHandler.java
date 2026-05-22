@@ -100,7 +100,13 @@ public class InterimHandler {
 
         } else {
             Session finalSession = session;
-            return accountingUtil.updateSessionAndBalance(userData, session, request,null)
+            // Pass the session's previously-used bucket so AccountingUtil short-circuits
+            // computeHighestPriority's O(N) eligibility scan. The full priority recompute
+            // still runs when bucketId is unknown (new session) or when the current bucket
+            // exhausts/changes: shouldDisconnectSession() triggers re-auth, and START
+            // picks the next eligible bucket. Trade-off: a higher-priority bucket added
+            // mid-session is picked up on the next re-auth instead of immediately.
+            return accountingUtil.updateSessionAndBalance(userData, session, request, session.getPreviousUsageBucketId())
                     .call(() -> isNewSession
                             ? sessionLifecycleManager.onSessionCreated(request.username(), finalSession)
                             : sessionLifecycleManager.onSessionActivity(request.username(), request.sessionId()))
