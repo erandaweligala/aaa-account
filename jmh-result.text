@@ -1,0 +1,6 @@
+Benchmark                                                       Mode  Cnt   Score   Error  Units
+SessionCacheCodecBenchmark.decode_new_cborBlackbirdPrecompiled  avgt    5  32.982 ± 1.684  us/op
+SessionCacheCodecBenchmark.decode_old_jsonReflection            avgt    5  37.296 ± 2.327  us/op
+SessionCacheCodecBenchmark.encode_new_cborBlackbirdPrecompiled  avgt    5  11.966 ± 0.512  us/op
+SessionCacheCodecBenchmark.encode_old_jsonReflectionAsBytes     avgt    5  14.612 ± 1.771  us/op
+SessionCacheCodecBenchmark.encode_old_jsonReflectionAsString    avgt    5  15.006 ± 2.118  us/op
