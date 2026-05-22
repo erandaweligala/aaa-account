@@ -10,10 +10,14 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.cbor.databind.CBORMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.fasterxml.jackson.module.blackbird.BlackbirdModule;
+import io.micrometer.core.instrument.DistributionSummary;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Binary codec for UserSessionData backed by Jackson CBOR + Blackbird.
@@ -32,8 +36,13 @@ public class SessionCacheCodec {
     private final ObjectReader cborReader;
     private final ObjectReader jsonReader;
 
+    private final Timer encodeTimer;
+    private final Timer decodeCborTimer;
+    private final Timer decodeJsonTimer;
+    private final DistributionSummary payloadBytes;
+
     @Inject
-    public SessionCacheCodec(ObjectMapper jsonMapper) {
+    public SessionCacheCodec(ObjectMapper jsonMapper, MeterRegistry registry) {
         CBORMapper cborMapper = CBORMapper.builder()
                 .addModule(new BlackbirdModule())
                 .addModule(new JavaTimeModule())
@@ -44,19 +53,55 @@ public class SessionCacheCodec {
         this.cborWriter = cborMapper.writerFor(UserSessionData.class);
         this.cborReader = cborMapper.readerFor(UserSessionData.class);
         this.jsonReader = jsonMapper.readerFor(UserSessionData.class);
+
+        this.encodeTimer = Timer.builder("cache_codec_encode_seconds")
+                .description("Time to serialize UserSessionData to CBOR bytes")
+                .tag("format", "cbor")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+
+        this.decodeCborTimer = Timer.builder("cache_codec_decode_seconds")
+                .description("Time to deserialize UserSessionData from cache bytes")
+                .tag("format", "cbor")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+
+        // Tracks the JSON-fallback rate during rollout; should drift to ~0 within one TTL window.
+        this.decodeJsonTimer = Timer.builder("cache_codec_decode_seconds")
+                .description("Time to deserialize UserSessionData from cache bytes")
+                .tag("format", "json")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
+
+        this.payloadBytes = DistributionSummary.builder("cache_codec_payload_bytes")
+                .description("On-wire size of UserSessionData payloads in Redis")
+                .baseUnit("bytes")
+                .publishPercentiles(0.5, 0.95, 0.99)
+                .register(registry);
     }
 
     public byte[] encode(UserSessionData data) throws IOException {
-        return cborWriter.writeValueAsBytes(data);
+        long startNanos = System.nanoTime();
+        try {
+            byte[] encoded = cborWriter.writeValueAsBytes(data);
+            payloadBytes.record(encoded.length);
+            return encoded;
+        } finally {
+            encodeTimer.record(System.nanoTime() - startNanos, TimeUnit.NANOSECONDS);
+        }
     }
 
     public UserSessionData decode(byte[] payload) throws IOException {
         if (payload == null || payload.length == 0) {
             return null;
         }
-        if (payload[0] == JSON_OBJECT_START) {
-            return jsonReader.readValue(payload);
+        boolean isJson = payload[0] == JSON_OBJECT_START;
+        long startNanos = System.nanoTime();
+        try {
+            return isJson ? jsonReader.readValue(payload) : cborReader.readValue(payload);
+        } finally {
+            long elapsed = System.nanoTime() - startNanos;
+            (isJson ? decodeJsonTimer : decodeCborTimer).record(elapsed, TimeUnit.NANOSECONDS);
         }
-        return cborReader.readValue(payload);
     }
 }
