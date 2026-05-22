@@ -29,19 +29,6 @@ import java.util.concurrent.atomic.DoubleAdder;
 /**
  * Aggregates application exceptions by their root-cause type and exposes them
  * to Prometheus via Micrometer.
- *
- * <p>Dedup behaviour:
- * <ul>
- *   <li><b>Wrapper dedup</b> &mdash; when the same root cause is observed multiple
- *       times as it propagates up through wrapping exceptions, only the first
- *       observation is counted. A sentinel marker is attached to the root cause
- *       via {@link Throwable#addSuppressed(Throwable)}.</li>
- *   <li><b>Retry dedup</b> &mdash; when a request is retried (e.g. via {@code @Retry}
- *       on a reactive method) and each attempt produces a fresh {@link Throwable}
- *       instance, attempts sharing the same Vert.x request context within a short
- *       TTL window are collapsed into a single observation, keyed by
- *       {@code (rootClass, layer, source, contextId)}.</li>
- * </ul>
  * </p>
  */
 @ApplicationScoped
@@ -76,7 +63,7 @@ public class ExceptionMetricsService {
     public enum Layer {
         RESOURCE("resource"),
         SERVICE("service"),
-        DATABASE("database"),
+        DATABASE("repository"),
         CLIENT("client"),
         LISTENER("listener"),
         PRODUCER("producer");
@@ -101,13 +88,12 @@ public class ExceptionMetricsService {
      * a Kafka or Oracle stall.
      */
     public enum Source {
-        REDIS("redis"),
-        HTTP_COA("http_coa"),
-        HTTP_NAS("http_nas"),
-        DATABASE("database"),
-        KAFKA("kafka"),
-        INTERNAL("internal"),
-        UNKNOWN("unknown");
+        REDIS("redis error"),
+        HTTP_COA("http coa error"),
+        DATABASE("oracle database error "),
+        KAFKA("kafka error"),
+        INTERNAL("internal server error"),
+        UNKNOWN("unknown error");
 
         private final String label;
 
@@ -166,7 +152,6 @@ public class ExceptionMetricsService {
     /**
      * Records an exception observation. Hot-path: zero allocation after warm-up
      * for non-deduped calls.
-     *
      * @param throwable the caught throwable; {@code null} is ignored
      * @param layer     the application layer where the exception was caught; {@code null} is ignored
      * @param source    the originating subsystem; {@code null} is treated as {@link Source#UNKNOWN}
@@ -180,8 +165,6 @@ public class ExceptionMetricsService {
             Throwable root = resolveRootCause(throwable);
             String type = simpleName(root);
 
-            // Wrapper dedup: if this exact root cause has already been recorded
-            // as it bubbled up through wrapping layers, skip.
             if (!markRecorded(root)) {
                 return;
             }
