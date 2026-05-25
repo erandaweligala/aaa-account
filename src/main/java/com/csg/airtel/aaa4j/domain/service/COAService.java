@@ -14,6 +14,7 @@ import io.smallrye.mutiny.Multi;
 import io.smallrye.mutiny.Uni;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.jboss.logging.Logger;
+import org.slf4j.MDC;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -105,13 +106,16 @@ public class COAService {
     private void generateAndSendCoaDisconnectCDR(Session session, String username) {
         try {
             AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaDisconnectCDREvent(session, username);
+            final String sessionId = session.getSessionId();
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, M_CDR, "COA Disconnect CDR event sent successfully for session: %s, user: %s",
-                                    session.getSessionId(), username),
-                            failure -> LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Disconnect CDR event for session: %s, user: %s",
-                                    session.getSessionId(), username)
+                            success -> withMdc(sessionId, username, () ->
+                                    LoggingUtil.logInfo(log, M_CDR, "COA Disconnect CDR event sent successfully for session: %s, user: %s",
+                                            sessionId, username)),
+                            failure -> withMdc(sessionId, username, () ->
+                                    LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Disconnect CDR event for session: %s, user: %s",
+                                            sessionId, username))
                     );
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Disconnect CDR event for session: %s, user: %s",
@@ -130,13 +134,16 @@ public class COAService {
     private void generateAndSendCoaRequestCDR(Session session, String username) {
         try {
             AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaRequestCDREvent(session, username);
+            final String sessionId = session.getSessionId();
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, M_CDR, "COA Request CDR event sent successfully for session: %s, user: %s",
-                                    session.getSessionId(), username),
-                            failure -> LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Request CDR event for session: %s, user: %s",
-                                    session.getSessionId(), username)
+                            success -> withMdc(sessionId, username, () ->
+                                    LoggingUtil.logInfo(log, M_CDR, "COA Request CDR event sent successfully for session: %s, user: %s",
+                                            sessionId, username)),
+                            failure -> withMdc(sessionId, username, () ->
+                                    LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Request CDR event for session: %s, user: %s",
+                                            sessionId, username))
                     );
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Request CDR event for session: %s, user: %s",
@@ -156,18 +163,40 @@ public class COAService {
     private void generateAndSendCoaResponseCDR(Session session, String username, String responseStatus) {
         try {
             AccountingCDREvent cdrEvent = CdrMappingUtil.buildCoaResponseCDREvent(session, username, responseStatus);
+            final String sessionId = session.getSessionId();
             accountProducer.produceAccountingCDREvent(cdrEvent)
                     .subscribe()
                     .with(
-                            success -> LoggingUtil.logInfo(log, M_CDR, "COA Response CDR event sent successfully for session: %s, user: %s, status: %s",
-                                    session.getSessionId(), username, responseStatus),
-                            failure -> LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Response CDR event for session: %s, user: %s, status: %s",
-                                    session.getSessionId(), username, responseStatus)
+                            success -> withMdc(sessionId, username, () ->
+                                    LoggingUtil.logInfo(log, M_CDR, "COA Response CDR event sent successfully for session: %s, user: %s, status: %s",
+                                            sessionId, username, responseStatus)),
+                            failure -> withMdc(sessionId, username, () ->
+                                    LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Response CDR event for session: %s, user: %s, status: %s",
+                                            sessionId, username, responseStatus))
                     );
         } catch (Exception e) {
             LoggingUtil.logError(log, M_CDR, e, "Error building COA Response CDR event for session: %s, user: %s, status: %s",
                     session.getSessionId(), username, responseStatus);
             exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE, ExceptionMetricsService.Source.KAFKA);
+        }
+    }
+
+    /**
+     * Run {@code action} with sessionId/userName pushed onto SLF4J MDC so the
+     * configured log pattern's [%X{userName}][%X{sessionId}] columns render
+     * even when invoked from a Kafka producer ack thread that doesn't inherit
+     * the consumer thread's MDC. Always restores prior MDC state.
+     */
+    private static void withMdc(String sessionId, String username, Runnable action) {
+        String prevSession = MDC.get(LoggingUtil.SESSION_ID);
+        String prevUser = MDC.get(LoggingUtil.USER_NAME);
+        try {
+            if (sessionId != null) MDC.put(LoggingUtil.SESSION_ID, sessionId);
+            if (username != null) MDC.put(LoggingUtil.USER_NAME, username);
+            action.run();
+        } finally {
+            if (prevSession != null) MDC.put(LoggingUtil.SESSION_ID, prevSession); else MDC.remove(LoggingUtil.SESSION_ID);
+            if (prevUser != null) MDC.put(LoggingUtil.USER_NAME, prevUser); else MDC.remove(LoggingUtil.USER_NAME);
         }
     }
 
