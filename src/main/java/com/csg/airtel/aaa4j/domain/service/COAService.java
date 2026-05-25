@@ -318,7 +318,7 @@ public class COAService {
                     }
 
                     if (nakSessionIds.isEmpty()) {
-                        LoggingUtil.logInfo(log, M_COA, "No sessions received NAK for user: %s, returning original data", username);
+                        LoggingUtil.logWarn(log, M_COA, "No sessions received NAK for user: %s, returning original data", username);
                         return userSessionData;
                     }
 
@@ -330,7 +330,7 @@ public class COAService {
                         }
                     }
 
-                    LoggingUtil.logInfo(log, M_COA, "Removed %d NAK sessions from user: %s, remaining sessions: %d",
+                    LoggingUtil.logWarn(log, M_COA, "Removed %d NAK sessions from user: %s, remaining sessions: %d",
                             nakSessionIds.size(), username, remainingSessions.size());
 
                     // Return updated UserSessionData with NAK sessions removed

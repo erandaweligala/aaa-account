@@ -269,6 +269,8 @@ mp:
         receive.buffer.bytes: 131072    # 128KB socket buffer - right-sized for 2GB memory
         connections.max.idle.ms: 540000 # 9 min - keep broker connections alive under load
         failure-strategy: ignore
-        concurrency: 16                 # 16 concurrent slots with backpressure: max ~640 TPS/pod at 25ms avg
+        concurrency: 16
+        fetch.max.waitms: 500
+        # 16 concurrent slots with backpressure: max ~640 TPS/pod at 25ms avg
 
 

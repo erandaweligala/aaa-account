@@ -61,7 +61,7 @@ public class MonitoringService {
 
     @Inject
     public MonitoringService(MeterRegistry registry, ReactiveRedisDataSource reactiveRedisDataSource) {
-        LoggingUtil.logInfo(log, M_INIT, "Initializing MonitoringService with Micrometer metrics");
+        LoggingUtil.logDebug(log, M_INIT, "Initializing MonitoringService with Micrometer metrics");
 
         // Lifetime counters (cumulative, never reset)
         this.sessionsCreatedCounter = Counter.builder("open_session_count")
@@ -133,7 +133,7 @@ public class MonitoringService {
 
         this.redisValueCommands = reactiveRedisDataSource.value(String.class, Long.class);
 
-        LoggingUtil.logInfo(log, M_INIT, "MonitoringService initialized successfully");
+        LoggingUtil.logDebug(log, M_INIT, "MonitoringService initialized successfully");
     }
 
     public void recordSessionCreated() {
@@ -168,7 +168,7 @@ public class MonitoringService {
                                 v -> LoggingUtil.logDebug(log, M_RECORD, "Redis session terminated count incremented by %d", count),
                                 error -> LoggingUtil.logWarn(log, M_RECORD, "Failed to increment Redis terminated count by %d: %s", count, error.getMessage())
                         );
-                LoggingUtil.logInfo(log, M_RECORD, "Idle sessions terminated metric recorded. Count: %d, Total: %.0f",
+                LoggingUtil.logDebug(log, M_RECORD, "Idle sessions terminated metric recorded. Count: %d, Total: %.0f",
                         count, sessionsTerminatedCounter.count());
             }
         } catch (Exception e) {
@@ -273,7 +273,7 @@ public class MonitoringService {
         resetRedisKey(REDIS_KEY_DISCONNECT_FAILURE);
         resetRedisKey(REDIS_KEY_COA_SYSTEM_FAILURE);
 
-        LoggingUtil.logInfo(log, M_RESET, "Daily metric counters reset successfully for date: %s", currentDay);
+        LoggingUtil.logDebug(log, M_RESET, "Daily metric counters reset successfully for date: %s", currentDay);
     }
 
     // ---- Helpers ----
