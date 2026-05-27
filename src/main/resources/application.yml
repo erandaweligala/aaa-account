@@ -140,11 +140,11 @@ coa:
 #    host: airtel-aaa-radius-server-service.airtel-aaa.svc.cluster.local
     host: localhost
     port: 8088
-    response-timeout: 5000   # CoA HTTP response timeout in ms
+    response-timeout: 1500   # CoA HTTP response timeout in ms
 
 webclient:
   max-pool-size: 20                  # Right-sized for 300 TPS/pod HTTP/1.1
-  connect-timeout: 5000
+  connect-timeout: 1000
   idle-timeout: 60000
   keep-alive: true
   pipelining: true
