@@ -24,13 +24,12 @@ public class AccountingHandlerFactory {
     }
 
     public Uni<Void> getHandler(AccountingRequestDto request,String traceId) {
-        LoggingUtil.logDebug(LOG,"getHandler","Received accounting request for action type: %s",request.actionType());
-        Uni<Void> result = switch (request.actionType()) {
+        LoggingUtil.logInfo(LOG,"getHandler","Received accounting request for action type: %s",request.actionType());
+        return switch (request.actionType()) {
             case START -> startHandler.processAccountingStart(request,traceId);
             case INTERIM_UPDATE -> interimHandler.handleInterim(request,traceId);
             case STOP -> stopHandler.stopProcessing(request, null,traceId);
         };
-        return result.invoke(() -> LoggingUtil.logDebug(LOG,"getHandler","getHandler complete for action type: %s",request.actionType()));
     }
 
 }

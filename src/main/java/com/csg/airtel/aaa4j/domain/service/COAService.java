@@ -168,14 +168,14 @@ public class COAService {
                     .subscribe()
                     .with(
                             success -> withMdc(sessionId, username, () ->
-                                    LoggingUtil.logInfo(log, M_CDR, "COA Response CDR event sent successfully for session: %s, user: %s, status: %s",
-                                            sessionId, username, responseStatus)),
+                                    LoggingUtil.logInfo(log, M_CDR, "COA Response CDR event sent successfully for  status: %s",
+                                             responseStatus)),
                             failure -> withMdc(sessionId, username, () ->
-                                    LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Response CDR event for session: %s, user: %s, status: %s",
-                                            sessionId, username, responseStatus))
+                                    LoggingUtil.logError(log, M_CDR, failure, "Failed to send COA Response CDR event for  status: %s",
+                                             responseStatus))
                     );
         } catch (Exception e) {
-            LoggingUtil.logError(log, M_CDR, e, "Error building COA Response CDR event for session: %s, user: %s, status: %s",
+            LoggingUtil.logError(log, M_CDR, e, "Error building COA Response CDR event for  status: %s",
                     session.getSessionId(), username, responseStatus);
             exceptionMetricsService.recordException(e, ExceptionMetricsService.Layer.SERVICE, ExceptionMetricsService.Source.KAFKA);
         }

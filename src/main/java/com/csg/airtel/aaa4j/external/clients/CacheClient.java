@@ -174,7 +174,6 @@ public class CacheClient {
     )
     @Timeout(value = 3, unit = ChronoUnit.SECONDS)                  // Reduced from 8s - free worker threads faster on Redis slowdowns
     public Uni<UserSessionData> getUserData(String userId) {
-        final long startTime = log.isDebugEnabled() ? System.currentTimeMillis() : 0;
         LoggingUtil.logDebug(log, M_GET, "Retrieving user data for cache userId: %s", userId);
         String key = KEY_PREFIX + userId;
 
@@ -183,9 +182,8 @@ public class CacheClient {
                 .onItem().ifNotNull().transform(Unchecked.function(payload -> {
                     try {
                         UserSessionData userData = sessionCacheCodec.decode(payload);
-
-                        LoggingUtil.logDebug(log, M_GET, "User data retrieved for userId: %s in %d ms",
-                                userId, (System.currentTimeMillis() - startTime));
+                        LoggingUtil.logInfo(log, M_GET, "User data retrieved for userId: %s",
+                                userId);
 
                         return userData;
                     } catch (Exception e) {
