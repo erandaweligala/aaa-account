@@ -40,12 +40,17 @@ public class AccountingConsumer {
 
         setMdcContext(request);
 
+        LoggingUtil.logInfo(LOG, METHOD_CONSUME,
+                "Accounting process started for session: %s", request.sessionId());
+
         return accountingHandlerFactory.getHandler(request, request.eventId())
                 .onFailure().recoverWithUni(failure -> {
                     LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
                             "Failed processing session: %s", request.sessionId());
                     return Uni.createFrom().voidItem();
                 })
+                .onItem().invoke(() -> LoggingUtil.logInfo(LOG, METHOD_CONSUME,
+                        "Accounting process completed for session: %s", request.sessionId()))
                 .onTermination().invoke(this::clearMdcContext);
     }
 
