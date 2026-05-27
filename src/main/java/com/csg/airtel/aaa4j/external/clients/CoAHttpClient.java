@@ -33,6 +33,9 @@ public class CoAHttpClient {
     @ConfigProperty(name = "coa.nas.port")
     Integer port;
 
+    @ConfigProperty(name = "coa.nas.response-timeout", defaultValue = "5000")
+    Long responseTimeoutMs;
+
     public CoAHttpClient(WebClientProvider webClientProvider,
                          ExceptionMetricsService exceptionMetricsService) {
         this.webClientProvider = webClientProvider;
@@ -62,6 +65,7 @@ public class CoAHttpClient {
                     .post(port, host, COA_ENDPOINT)
                     .putHeader("Content-Type", CONTENT_TYPE_JSON)
                     .putHeader("Accept", CONTENT_TYPE_JSON)
+                    .timeout(responseTimeoutMs)
                     .sendBuffer(buffer, ar -> {
                         if (ar.succeeded()) {
                             try {
