@@ -40,6 +40,14 @@ public class AccountingConsumer {
 
         setMdcContext(request);
 
+        if (isBlank(request.username()) || isBlank(request.sessionId())) {
+            LoggingUtil.logWarn(LOG, METHOD_CONSUME,
+                    "Rejecting malformed accounting event: eventId=%s, username=%s, sessionId=%s",
+                    request.eventId(), request.username(), request.sessionId());
+            clearMdcContext();
+            return Uni.createFrom().voidItem();
+        }
+
         return accountingHandlerFactory.getHandler(request, request.eventId())
                 .onFailure().recoverWithUni(failure -> {
                     LoggingUtil.logError(LOG, METHOD_CONSUME, failure,
@@ -56,7 +64,11 @@ public class AccountingConsumer {
     }
 
     private String nvl(String value, String fallback) {
-        return value != null ? value : fallback;
+        return isBlank(value) ? fallback : value;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
     private void clearMdcContext() {
         MDC.remove(LoggingUtil.TRACE_ID);
