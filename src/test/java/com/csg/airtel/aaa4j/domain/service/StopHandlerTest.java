@@ -43,6 +43,9 @@ class StopHandlerTest {
     @Mock
     SessionLifecycleManager sessionLifecycleManager;
 
+    @Mock
+    ExceptionMetricsService exceptionMetricsService;
+
     private AccountingRequestDto requestDto;
     private UserSessionData userSessionData;
 

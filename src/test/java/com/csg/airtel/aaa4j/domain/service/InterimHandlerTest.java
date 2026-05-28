@@ -31,6 +31,7 @@ class InterimHandlerTest {
     @Mock COAService coaService;
     @Mock AccountingUtil accountingUtil;
     @Mock SessionLifecycleManager sessionLifecycleManager;
+    @Mock ExceptionMetricsService exceptionMetricsService;
 
     @InjectMocks
     InterimHandler interimHandler;

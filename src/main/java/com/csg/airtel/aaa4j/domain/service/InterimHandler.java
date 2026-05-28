@@ -26,6 +26,7 @@ public class InterimHandler {
 
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
+    private final ExceptionMetricsService exceptionMetricsService;
 
     @Inject
     public InterimHandler(
@@ -33,12 +34,14 @@ public class InterimHandler {
             CacheClient cacheUtil,
             AccountProducer accountProducer,
             AccountingUtil accountingUtil,
-            SessionLifecycleManager sessionLifecycleManager) {
+            SessionLifecycleManager sessionLifecycleManager,
+            ExceptionMetricsService exceptionMetricsService) {
         this.accountingHandler = accountingHandler;
         this.cacheUtil = cacheUtil;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
+        this.exceptionMetricsService = exceptionMetricsService;
     }
 
     public Uni<Void> handleInterim(AccountingRequestDto request,String traceId) {
@@ -59,6 +62,12 @@ public class InterimHandler {
                     // Handle other errors
                     LoggingUtil.logError(log, M_INTERIM, throwable, "Error processing accounting for user: %s",
                             request.username());
+                    // Service-layer defense-in-depth: inner layers (CacheClient, etc.) record at their
+                    // own layer/source; the dedup marker on the root cause makes this a no-op when they
+                    // already did. Catches failures that originate outside an instrumented inner layer.
+                    exceptionMetricsService.recordException(throwable,
+                            ExceptionMetricsService.Layer.SERVICE,
+                            ExceptionMetricsService.Source.INTERNAL);
                     return Uni.createFrom().voidItem();
                 });
     }
