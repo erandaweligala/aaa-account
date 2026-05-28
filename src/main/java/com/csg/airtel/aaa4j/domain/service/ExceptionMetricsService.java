@@ -90,7 +90,7 @@ public class ExceptionMetricsService {
     public enum Source {
         REDIS("redis error"),
         HTTP_COA("http coa request error"),
-        DATABASE("oracle database error "),
+        DATABASE("oracle database error"),
         KAFKA("kafka error"),
         INTERNAL("internal server error"),
         UNKNOWN("unknown error");
