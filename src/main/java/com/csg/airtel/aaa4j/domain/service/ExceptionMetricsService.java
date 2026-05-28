@@ -53,8 +53,10 @@ public class ExceptionMetricsService {
     /** Hard cap on cause-chain walking; chains deeper than this are vanishingly rare and not worth iterating. */
     private static final int MAX_CAUSE_DEPTH = 16;
 
-    /** Retry dedup window: observations of the same (rootClass, layer, source, contextId) within this window are counted once. */
-    static final long DEDUP_TTL_MILLIS = 5_000L;
+    /** Retry dedup: observations of the same (rootClass, layer, source, contextId) within this window are counted once.
+     *  Sized to collapse @Retry duplicates (typical retry delay 100&ndash;150 ms) while letting distinct
+     *  user requests outside that window be counted independently. */
+    static final long DEDUP_TTL_MILLIS = 500L;
 
     /** Hard cap on dedup cache size so a misbehaving caller can't grow it without bound. */
     private static final int DEDUP_MAX_ENTRIES = 8_192;
