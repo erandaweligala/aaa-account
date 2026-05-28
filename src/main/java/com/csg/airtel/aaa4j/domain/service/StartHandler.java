@@ -47,17 +47,15 @@ public class StartHandler {
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
     private final COAService coaService;
-    private final ExceptionMetricsService exceptionMetricsService;
 
     @Inject
-    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService, ExceptionMetricsService exceptionMetricsService) {
+    public StartHandler(CacheClient utilCache, UserBucketRepository userRepository, AccountProducer accountProducer, AccountingUtil accountingUtil, SessionLifecycleManager sessionLifecycleManager, COAService coaService) {
         this.utilCache = utilCache;
         this.userRepository = userRepository;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
         this.coaService = coaService;
-        this.exceptionMetricsService = exceptionMetricsService;
     }
 
     public Uni<Void> processAccountingStart(AccountingRequestDto request,String traceId) {
@@ -84,9 +82,6 @@ public class StartHandler {
                     // Handle other errors
                     LoggingUtil.logError(log, M_START, throwable, "Error processing accounting start for user: %s",
                             request.username());
-                    exceptionMetricsService.recordException(throwable,
-                            ExceptionMetricsService.Layer.SERVICE,
-                            ExceptionMetricsService.Source.INTERNAL);
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -199,9 +194,6 @@ public class StartHandler {
                 .call(() -> generateAndSendCDR(request, newSession, newSession.getServiceId(), newSession.getPreviousUsageBucketId()))
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_PROCESS_SESSION, throwable, "Failed to update cache for user: %s", request.username());
-                    exceptionMetricsService.recordException(throwable,
-                            ExceptionMetricsService.Layer.SERVICE,
-                            ExceptionMetricsService.Source.INTERNAL);
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -319,9 +311,6 @@ public class StartHandler {
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_HANDLE_NEW_SESSION, throwable, "Error creating new user session for user: %s",
                             request.username());
-                    exceptionMetricsService.recordException(throwable,
-                            ExceptionMetricsService.Layer.SERVICE,
-                            ExceptionMetricsService.Source.INTERNAL);
                     return Uni.createFrom().voidItem();
                 });
     }

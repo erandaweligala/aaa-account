@@ -27,7 +27,6 @@ public class StopHandler {
     private final AccountProducer accountProducer;
     private final AccountingUtil accountingUtil;
     private final SessionLifecycleManager sessionLifecycleManager;
-    private final ExceptionMetricsService exceptionMetricsService;
 
     @Inject
     public StopHandler(
@@ -35,14 +34,12 @@ public class StopHandler {
             CacheClient cacheUtil,
             AccountProducer accountProducer,
             AccountingUtil accountingUtil,
-            SessionLifecycleManager sessionLifecycleManager,
-            ExceptionMetricsService exceptionMetricsService) {
+            SessionLifecycleManager sessionLifecycleManager) {
         this.accountingHandler = accountingHandler;
         this.cacheUtil = cacheUtil;
         this.accountProducer = accountProducer;
         this.accountingUtil = accountingUtil;
         this.sessionLifecycleManager = sessionLifecycleManager;
-        this.exceptionMetricsService = exceptionMetricsService;
     }
 
     public Uni<Void> stopProcessing(AccountingRequestDto request,String bucketId,String traceId) {
@@ -54,9 +51,6 @@ public class StopHandler {
                 )
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_STOP, throwable, "Error processing accounting for user: %s", request.username());
-                    exceptionMetricsService.recordException(throwable,
-                            ExceptionMetricsService.Layer.SERVICE,
-                            ExceptionMetricsService.Source.INTERNAL);
                     return Uni.createFrom().voidItem();
                 });
     }
@@ -100,9 +94,6 @@ public class StopHandler {
                 .onFailure().recoverWithUni(throwable -> {
                     LoggingUtil.logError(log, M_PROCESS, throwable, "Failed to process accounting stop for session: %s",
                             request.sessionId());
-                    exceptionMetricsService.recordException(throwable,
-                            ExceptionMetricsService.Layer.SERVICE,
-                            ExceptionMetricsService.Source.INTERNAL);
                     return Uni.createFrom().voidItem();
                 });
     }

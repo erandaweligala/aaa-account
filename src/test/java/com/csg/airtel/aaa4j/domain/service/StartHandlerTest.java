@@ -31,7 +31,6 @@ class StartHandlerTest {
     private AccountingUtil accountingUtil;
     private SessionLifecycleManager sessionLifecycleManager;
     private COAService coaService;
-    private ExceptionMetricsService exceptionMetricsService;
     private StartHandler startHandler;
 
 
@@ -43,10 +42,9 @@ class StartHandlerTest {
         accountingUtil = mock(AccountingUtil.class);
         sessionLifecycleManager = mock(SessionLifecycleManager.class);
         coaService = mock(COAService.class);
-        exceptionMetricsService = mock(ExceptionMetricsService.class);
 
         startHandler = new StartHandler(utilCache, userRepository, accountProducer,
-                accountingUtil, sessionLifecycleManager, coaService, exceptionMetricsService);
+                accountingUtil, sessionLifecycleManager, coaService);
 
         // CDR send is now chained into the main pipeline; stub the default to avoid NPE.
         when(accountProducer.produceAccountingCDREvent(any())).thenReturn(Uni.createFrom().voidItem());
